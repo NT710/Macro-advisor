@@ -151,8 +151,8 @@ The improvement loop CAN adjust: limit order buffers, scaling pace, reconciliati
 The improvement loop CANNOT adjust: risk constraints, anti-bias rules, kill switch discipline, devil's advocate requirement.
 
 Persistent state files:
-- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md`
-- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/performance-tracker.md`
+- `outputs/improvement/amendment-tracker.md`
+- `outputs/improvement/performance-tracker.md`
 
 ---
 

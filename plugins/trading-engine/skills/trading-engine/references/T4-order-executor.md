@@ -6,8 +6,8 @@ Take the trade plan from T3 and submit the orders to Alpaca. This skill is mecha
 
 ## Inputs
 
-1. **Trade plan** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-trade-plan.json` (from T3)
-2. **Config** — `${CLAUDE_PLUGIN_ROOT}/config/user-config.json`
+1. **Trade plan** — `outputs/portfolio/latest-trade-plan.json` (from T3)
+2. **Config** — `config/user-config.json`
 
 ## Execution
 
@@ -39,7 +39,7 @@ echo '{"symbol": "SPY", "side": "buy", "qty": 10, "type": "limit", "limit_price"
 # Submit via trade executor
 python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
   --action submit_order \
-  --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json \
+  --config config/user-config.json \
   --order-file /tmp/order.json
 ```
 
@@ -47,9 +47,9 @@ Or for batch submission:
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
   --action submit_batch \
-  --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json \
-  --order-file ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-trade-plan-orders.json \
-  --output ${CLAUDE_PLUGIN_ROOT}/outputs/trades/
+  --config config/user-config.json \
+  --order-file outputs/portfolio/latest-trade-plan-orders.json \
+  --output outputs/trades/
 ```
 
 ### Post-Submission Verification
@@ -59,8 +59,8 @@ After all orders are submitted, take a new snapshot to verify:
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
   --action snapshot \
-  --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json \
-  --output ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/
+  --config config/user-config.json \
+  --output outputs/portfolio/
 ```
 
 Compare pre and post snapshots. Log:
@@ -79,7 +79,7 @@ Compare pre and post snapshots. Log:
 
 ## Output
 
-Save execution results to `${CLAUDE_PLUGIN_ROOT}/outputs/trades/YYYY-MM-DD-HHMM-execution.json`:
+Save execution results to `outputs/trades/YYYY-MM-DD-HHMM-execution.json`:
 
 ```json
 {

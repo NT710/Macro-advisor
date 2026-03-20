@@ -7,9 +7,9 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
 
 ## Execution
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` to find all proposed amendments that have not yet been implemented.
+1. Read `outputs/improvement/amendment-tracker.md` to find all proposed amendments that have not yet been implemented.
 
-2. Also check the latest `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/*-trading-improvement.md` report for any new proposals not yet in the tracker.
+2. Also check the latest `outputs/improvement/*-trading-improvement.md` report for any new proposals not yet in the tracker.
 
 3. If no pending amendments exist, tell the user: "No pending amendments. The system will propose new improvements after the next weekly run."
 
@@ -38,11 +38,11 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
 9. Regenerate the dashboard to reflect the updated improvement state:
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
-     --portfolio ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/ \
-     --trades ${CLAUDE_PLUGIN_ROOT}/outputs/trades/ \
-     --performance ${CLAUDE_PLUGIN_ROOT}/outputs/performance/ \
-     --improvement ${CLAUDE_PLUGIN_ROOT}/outputs/improvement/ \
-     --output ${CLAUDE_PLUGIN_ROOT}/outputs/dashboard/
+     --portfolio outputs/portfolio/ \
+     --trades outputs/trades/ \
+     --performance outputs/performance/ \
+     --improvement outputs/improvement/ \
+     --output outputs/dashboard/
    ```
 
 ## Guardrails

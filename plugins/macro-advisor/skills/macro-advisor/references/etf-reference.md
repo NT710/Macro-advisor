@@ -2,7 +2,7 @@
 
 Consulted by the thesis generator (Skill 7) and Monday briefing (Skill 9) when they need ETF tickers. Collection skills (1-5) and synthesis (6) generally don't need this file.
 
-> **Note:** Run `/macro-advisor:setup` to generate the currency-specific equivalents section (Layer 1) at the top of this file. Until setup runs, only USD tickers are available below.
+> **Note:** This file contains universal USD tickers. Currency-specific equivalents (Layer 1) are stored in `config/etf-overrides.md` in the workspace, generated during `/macro-advisor:setup`. Always read `config/etf-overrides.md` first for the user's preferred currency, then fall back to this file for USD defaults.
 
 ---
 

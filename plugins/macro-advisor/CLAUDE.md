@@ -1,20 +1,32 @@
 # Macro Advisor — Project Instructions
 
-This is an autonomous macro research system. When working in this folder, follow these instructions.
+This is an autonomous macro research system.
+
+## File Location Convention
+
+This plugin uses two locations:
+
+- **`${CLAUDE_PLUGIN_ROOT}/`** — Plugin code (scripts, skill references, RULES.md, etf-reference.md, methodology.md). Read-only at runtime. Lives in Cowork's plugin cache.
+- **Workspace** — All runtime data: `outputs/`, `config/user-config.json`, `config/etf-overrides.md`. Written during setup and each run. Persists in the user's selected Cowork folder.
+
+The workspace path is stored as `workspace_path` in `config/user-config.json` (resolved to an absolute path during setup). On startup, every command reads this config and `cd`s to the workspace path. This ensures output paths resolve correctly regardless of the initial working directory.
+
+When reading plugin code, use `${CLAUDE_PLUGIN_ROOT}/`. When reading or writing outputs and user config, use relative paths from the workspace (e.g., `outputs/synthesis/`, `config/user-config.json`).
 
 ## Architecture Documentation
 
-The system's methodology, architecture, and design decisions are documented in `methodology.md`. This is the source of truth for how the system works.
+The system's methodology, architecture, and design decisions are documented in `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/methodology.md`. This is the source of truth for how the system works.
 
 **When you change any architectural decision — execution order, skill additions, new data sources, delivery format changes, analytical framework updates — update `methodology.md` to reflect the change.** The methodology doc must always match the current state of the system. If a user reads methodology.md, they should understand exactly how the system works today, not how it worked three iterations ago.
 
 ## Key Files
 
-- `skills/RULES.md` — universal policy (data integrity, sizing, language, discipline). Read before executing any skill.
-- `skills/references/etf-reference.md` — ETF lookup tables (broad, thematic, currency-specific equivalents).
-- `methodology.md` — full system documentation. Keep in sync with any changes.
-- `outputs/improvement/amendment-tracker.md` — persistent record of skill amendments and their effectiveness.
-- `outputs/improvement/accuracy-tracker.md` — persistent record of analytical call accuracy.
+- `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` — universal policy (data integrity, sizing, language, discipline). Read before executing any skill.
+- `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/etf-reference.md` — ETF lookup tables (USD defaults, broad, thematic).
+- `config/etf-overrides.md` — Currency-specific ETF equivalents (workspace, generated during setup).
+- `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/methodology.md` — full system documentation. Keep in sync with any changes.
+- `outputs/improvement/amendment-tracker.md` — persistent record of skill amendments and their effectiveness (workspace).
+- `outputs/improvement/accuracy-tracker.md` — persistent record of analytical call accuracy (workspace).
 
 ## Scheduled Task
 

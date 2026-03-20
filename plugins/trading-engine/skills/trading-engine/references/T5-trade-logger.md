@@ -6,14 +6,14 @@ Consolidate all trade activity from the current run into a permanent, auditable 
 
 ## Inputs
 
-1. **Execution results** — `${CLAUDE_PLUGIN_ROOT}/outputs/trades/YYYY-MM-DD-HHMM-execution.json` (from T4)
-2. **Trade plan** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-trade-plan.json` (from T3)
-3. **Reasoning log** — `${CLAUDE_PLUGIN_ROOT}/outputs/trades/YYYY-MM-DD-reasoning.md` (from T3)
-4. **Post-execution snapshot** — latest from `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/`
+1. **Execution results** — `outputs/trades/YYYY-MM-DD-HHMM-execution.json` (from T4)
+2. **Trade plan** — `outputs/portfolio/latest-trade-plan.json` (from T3)
+3. **Reasoning log** — `outputs/trades/YYYY-MM-DD-reasoning.md` (from T3)
+4. **Post-execution snapshot** — latest from `outputs/portfolio/`
 
 ## Log Entry Format
 
-For each trade executed, append to `${CLAUDE_PLUGIN_ROOT}/outputs/trades/trade-log.json` (cumulative file):
+For each trade executed, append to `outputs/trades/trade-log.json` (cumulative file):
 
 ```json
 {
@@ -48,7 +48,7 @@ When a position is closed (sell trade), find the matching open trade(s) and upda
 
 ## Summary Log
 
-Also produce a human-readable weekly summary appended to `${CLAUDE_PLUGIN_ROOT}/outputs/trades/weekly-summaries.md`:
+Also produce a human-readable weekly summary appended to `outputs/trades/weekly-summaries.md`:
 
 ```markdown
 ## Trading Summary — [Date] ([Run Type])
@@ -84,7 +84,7 @@ Also produce a human-readable weekly summary appended to `${CLAUDE_PLUGIN_ROOT}/
 
 ## Closed Trade Tracking
 
-When a position is fully closed, create a closed-trade entry in `${CLAUDE_PLUGIN_ROOT}/outputs/trades/closed-trades.json`:
+When a position is fully closed, create a closed-trade entry in `outputs/trades/closed-trades.json`:
 
 ```json
 {

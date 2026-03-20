@@ -10,23 +10,23 @@ Measure how the trading engine is actually performing. This is the only skill th
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
      --action performance_snapshot \
-     --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json \
-     --output ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/
+     --config config/user-config.json \
+     --output outputs/portfolio/
    ```
-2. **Historical snapshots** — all files in `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/`
-3. **Trade log** — `${CLAUDE_PLUGIN_ROOT}/outputs/trades/trade-log.json`
-4. **Closed trades** — `${CLAUDE_PLUGIN_ROOT}/outputs/trades/closed-trades.json`
+2. **Historical snapshots** — all files in `outputs/portfolio/`
+3. **Trade log** — `outputs/trades/trade-log.json`
+4. **Closed trades** — `outputs/trades/closed-trades.json`
 5. **Performance calculator** — run the script:
    ```bash
    python ${CLAUDE_PLUGIN_ROOT}/scripts/performance_calculator.py \
-     --snapshots ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/ \
-     --trades ${CLAUDE_PLUGIN_ROOT}/outputs/trades/ \
-     --output ${CLAUDE_PLUGIN_ROOT}/outputs/performance/
+     --snapshots outputs/portfolio/ \
+     --trades outputs/trades/ \
+     --output outputs/performance/
    ```
 
 ## Weekly Performance Report
 
-Produce `${CLAUDE_PLUGIN_ROOT}/outputs/performance/YYYY-Www-performance.md`:
+Produce `outputs/performance/YYYY-Www-performance.md`:
 
 ```markdown
 ## Trading Engine Performance — Week of [Date]

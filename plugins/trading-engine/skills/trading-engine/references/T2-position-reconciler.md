@@ -6,8 +6,8 @@ Compare what we currently hold (from T0 snapshot) against what we should hold (f
 
 ## Inputs
 
-1. **Portfolio snapshot** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-snapshot.json` (from T0)
-2. **Trade signals** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-signals.json` (from T1)
+1. **Portfolio snapshot** — `outputs/portfolio/latest-snapshot.json` (from T0)
+2. **Trade signals** — `outputs/portfolio/latest-signals.json` (from T1)
 3. **Risk limits** — `${CLAUDE_PLUGIN_ROOT}/config/risk-limits.json`
 4. **Regime templates** — `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json`
 
@@ -82,7 +82,7 @@ If the current portfolio holds a symbol that does not appear in the target alloc
 
 ## Output Format
 
-Save to `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-reconciliation.json`:
+Save to `outputs/portfolio/latest-reconciliation.json`:
 
 ```json
 {

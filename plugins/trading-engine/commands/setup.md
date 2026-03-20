@@ -103,10 +103,19 @@ ls "$MACRO_PATH/synthesis/" "$MACRO_PATH/theses/" 2>/dev/null
 ```
 If validation fails, warn that the macro advisor may not have completed a full cycle yet but save the resolved absolute path anyway.
 
-## Step 6: Create Output Directories
+## Step 6: Resolve Workspace Path
 
 ```bash
-mkdir -p ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio ${CLAUDE_PLUGIN_ROOT}/outputs/trades ${CLAUDE_PLUGIN_ROOT}/outputs/performance ${CLAUDE_PLUGIN_ROOT}/outputs/improvement ${CLAUDE_PLUGIN_ROOT}/outputs/dashboard
+WORKSPACE_PATH=$(pwd)
+echo "Workspace resolved to: $WORKSPACE_PATH"
+```
+
+Store this as `workspace_path` in the config (Step 8).
+
+## Step 7: Create Output Directories
+
+```bash
+mkdir -p outputs/portfolio outputs/trades outputs/performance outputs/improvement outputs/dashboard
 ```
 
 Create seed files for the improvement and trade trackers:
@@ -149,7 +158,7 @@ Cumulative record of execution quality metrics across runs.
 **outputs/trades/trade-log.json:** `[]`
 **outputs/trades/closed-trades.json:** `[]`
 
-## Step 7: Schedule
+## Step 8: Schedule
 
 Ask the user using AskUserQuestion:
 
@@ -165,16 +174,17 @@ Options: Wednesday 18:00 CET (recommended), Skip Wednesday checks, Custom time
 
 Create scheduled tasks based on their answers.
 
-## Step 8: Write Configuration
+## Step 9: Write Configuration
 
-Save all user preferences to `${CLAUDE_PLUGIN_ROOT}/config/user-config.json`:
+Save all user preferences to `config/user-config.json`:
 
 ```json
 {
+  "workspace_path": "/absolute/path/to/workspace",
   "alpaca_api_key": "USER_KEY_HERE",
   "alpaca_secret_key": "USER_SECRET_HERE",
   "paper": true,
-  "macro_advisor_outputs": "PATH_TO_MACRO_OUTPUTS",
+  "macro_advisor_outputs": "ABSOLUTE_PATH_TO_MACRO_OUTPUTS",
   "schedule_day": "sunday",
   "schedule_time": "19:00",
   "schedule_timezone": "CET",
@@ -185,12 +195,14 @@ Save all user preferences to `${CLAUDE_PLUGIN_ROOT}/config/user-config.json`:
 }
 ```
 
-## Step 9: Validation Run
+The `workspace_path` is the absolute path resolved in Step 6. All commands read this on startup and `cd` to it, so output paths resolve correctly regardless of initial working directory.
+
+## Step 10: Validation Run
 
 Run T0 (portfolio snapshot) to verify the full pipeline works:
 
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py --action snapshot --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json --output ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py --action snapshot --config config/user-config.json --output outputs/portfolio/
 ```
 
 Report results. If everything passes, tell the user:

@@ -8,7 +8,7 @@ T1 is stateless. It reads the macro advisor outputs fresh every run. It does not
 
 ## Inputs
 
-Read the macro advisor output path from `${CLAUDE_PLUGIN_ROOT}/config/user-config.json` → `macro_advisor_outputs`. This is an absolute path resolved during setup. All paths below are relative to that directory.
+Read the macro advisor output path from `config/user-config.json` → `macro_advisor_outputs`. This is an absolute path resolved during setup. All paths below are relative to that directory.
 
 1. **Latest weekly synthesis** — find the most recent file in `{macro_advisor_outputs}/synthesis/`. If the synthesis directory is empty, check the briefing for embedded regime assessment.
 2. **Active theses** — all files in `{macro_advisor_outputs}/theses/active/`
@@ -138,7 +138,7 @@ This is the most important step. A missed kill switch trigger means the trading 
 
 ## Output Format
 
-Produce a single JSON file: `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-signals.json`
+Produce a single JSON file: `outputs/portfolio/latest-signals.json`
 
 ```json
 {

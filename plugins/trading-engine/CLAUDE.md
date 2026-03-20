@@ -2,6 +2,17 @@
 
 This is an autonomous trading system that executes trades on Alpaca paper trading based on signals from the Macro Advisor.
 
+## File Location Convention
+
+This plugin uses two locations:
+
+- **`${CLAUDE_PLUGIN_ROOT}/`** — Plugin code (scripts, skill references, config templates, RULES.md). Read-only at runtime. Lives in Cowork's plugin cache.
+- **Workspace** — All runtime data: `outputs/`, `config/user-config.json`. Written during setup and each run. Persists in the user's selected Cowork folder.
+
+The workspace path is stored as `workspace_path` in `config/user-config.json` (resolved to an absolute path during setup). On startup, every command reads this config and `cd`s to the workspace path. This ensures output paths resolve correctly regardless of the initial working directory.
+
+When reading plugin code, use `${CLAUDE_PLUGIN_ROOT}/`. When reading or writing outputs and user config, use relative paths from the workspace (e.g., `outputs/portfolio/`, `config/user-config.json`).
+
 ## Architecture Documentation
 
 The system's methodology, architecture, and design decisions are documented in `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/methodology.md`. This is the source of truth for how the system works.
@@ -13,10 +24,10 @@ The system's methodology, architecture, and design decisions are documented in `
 - `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md` — universal policy (risk constraints, execution discipline, anti-bias rules). Read before executing any skill.
 - `${CLAUDE_PLUGIN_ROOT}/config/risk-limits.json` — hardcoded risk parameters. NOT adjustable by T7 improvement loop.
 - `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json` — baseline allocations per regime. Starting points, not gospel.
-- `${CLAUDE_PLUGIN_ROOT}/config/user-config.json` — API keys and user preferences (created during setup, git-ignored).
+- `config/user-config.json` — API keys and user preferences (created during setup in the workspace, git-ignored).
 - `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/methodology.md` — full system documentation. Keep in sync with changes.
-- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` — persistent record of skill amendments.
-- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/performance-tracker.md` — persistent record of execution quality.
+- `outputs/improvement/amendment-tracker.md` — persistent record of skill amendments.
+- `outputs/improvement/performance-tracker.md` — persistent record of execution quality.
 
 ## Scheduled Tasks
 

@@ -83,17 +83,30 @@ For each category:
 
 **Currency note:** Include a note explaining the denomination (e.g., "USD on SIX" = tradeable on Swiss exchange but denominated in USD, "[currency] hedged" = eliminates FX risk).
 
-Write the currency-specific section at the **top** of `skills/macro-advisor/references/etf-reference.md`, above the existing Broad Allocation and Thematic sections. Do not delete or modify the existing USD sections.
+Write the currency-specific section to `config/etf-overrides.md` in the workspace. This file persists across plugin reinstalls.
+
+The base ETF reference (`${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/etf-reference.md`) ships with USD tickers and is read-only. The workspace override adds currency-specific equivalents. Skills that need ETF lookups read both files: `config/etf-overrides.md` first (currency-specific), then the plugin's `etf-reference.md` (USD defaults and thematic).
 
 Show the user the resulting currency mapping and ask for confirmation before proceeding.
 
-## Step 6: Create Output Directories
+## Step 6: Resolve Workspace Path
+
+The workspace path is where all outputs and user config live. Resolve it now so scheduled tasks and other contexts can always find the workspace regardless of working directory.
 
 ```bash
-mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest
+WORKSPACE_PATH=$(pwd)
+echo "Workspace resolved to: $WORKSPACE_PATH"
 ```
 
-## Step 7: Schedule
+Store this as `workspace_path` in the config (Step 8). All commands will read this path from config and use it for outputs.
+
+## Step 7: Create Output Directories
+
+```bash
+mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest config
+```
+
+## Step 8: Schedule
 
 Ask the user using AskUserQuestion:
 
@@ -107,12 +120,13 @@ Options: CET (Central European), ET (US Eastern), PT (US Pacific), GMT
 
 Based on their answers, create a scheduled task using the schedule tool. The task should execute the full skill chain: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9.
 
-## Step 8: Write Configuration
+## Step 9: Write Configuration
 
 Save all user preferences to `config/user-config.json`:
 
 ```json
 {
+  "workspace_path": "/absolute/path/to/workspace",
   "fred_api_key": "USER_KEY",
   "preferred_currency": "CHF",
   "browser_access": true,
@@ -124,7 +138,9 @@ Save all user preferences to `config/user-config.json`:
 }
 ```
 
-## Step 9: Validation Run
+The `workspace_path` is the absolute path resolved in Step 6. This allows commands and scheduled tasks to find outputs regardless of what working directory they start from.
+
+## Step 10: Validation Run
 
 Run a quick validation:
 
