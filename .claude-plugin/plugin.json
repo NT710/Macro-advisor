@@ -7,28 +7,3 @@
   },
   "keywords": ["macro", "economics", "etf", "investing", "research", "dashboard"]
 }
-```
-6. Click **Commit changes**
-
-**For `.gitignore`:**
-1. Same process — **Add file → Create new file**
-2. Filename: `.gitignore`
-3. Paste:
-```
-# User configuration (contains API keys)
-config/user-config.json
-
-# Runtime outputs
-outputs/
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-
-# macOS
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
