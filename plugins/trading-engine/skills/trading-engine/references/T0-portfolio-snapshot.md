@@ -9,15 +9,15 @@ Capture the current state of the Alpaca paper trading account. This is the factu
 Run the trade executor in snapshot mode:
 
 ```bash
-python scripts/trade_executor.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
   --action snapshot \
-  --config config/user-config.json \
-  --output outputs/portfolio/
+  --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json \
+  --output ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/
 ```
 
 ## Output
 
-The script produces `outputs/portfolio/latest-snapshot.json` containing:
+The script produces `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-snapshot.json` containing:
 
 - **Account state:** cash, equity, portfolio_value, buying_power
 - **Positions:** symbol, qty, side, market_value, current_price, avg_entry_price (NO unrealized P&L — that's deliberately excluded from T0)

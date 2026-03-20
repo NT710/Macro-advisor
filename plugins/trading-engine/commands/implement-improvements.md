@@ -7,9 +7,9 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
 
 ## Execution
 
-1. Read `outputs/improvement/amendment-tracker.md` to find all proposed amendments that have not yet been implemented.
+1. Read `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` to find all proposed amendments that have not yet been implemented.
 
-2. Also check the latest `outputs/improvement/*-trading-improvement.md` report for any new proposals not yet in the tracker.
+2. Also check the latest `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/*-trading-improvement.md` report for any new proposals not yet in the tracker.
 
 3. If no pending amendments exist, tell the user: "No pending amendments. The system will propose new improvements after the next weekly run."
 
@@ -26,7 +26,7 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
    Options: Yes — implement it, No — skip it, Tell me more — explain the reasoning in detail
 
 6. For amendments the user approves:
-   - Apply the change to the relevant skill reference file in `skills/trading-engine/references/`
+   - Apply the change to the relevant skill reference file in `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/`
    - Update the amendment tracker to mark it as IMPLEMENTED with the current date
    - Log the implementation so the next T7 run can evaluate whether it improved results
 
@@ -37,15 +37,15 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
 
 9. Regenerate the dashboard to reflect the updated improvement state:
    ```bash
-   python scripts/generate_dashboard.py \
-     --portfolio outputs/portfolio/ \
-     --trades outputs/trades/ \
-     --performance outputs/performance/ \
-     --improvement outputs/improvement/ \
-     --output outputs/dashboard/
+   python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
+     --portfolio ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/ \
+     --trades ${CLAUDE_PLUGIN_ROOT}/outputs/trades/ \
+     --performance ${CLAUDE_PLUGIN_ROOT}/outputs/performance/ \
+     --improvement ${CLAUDE_PLUGIN_ROOT}/outputs/improvement/ \
+     --output ${CLAUDE_PLUGIN_ROOT}/outputs/dashboard/
    ```
 
 ## Guardrails
 
 - NEVER implement amendments that modify risk constraints, anti-bias rules, kill switch discipline, or the devil's advocate requirement. If T7 somehow proposed such an amendment, flag it as an error and skip it.
-- Read `skills/trading-engine/references/RULES.md` to verify no approved amendment would violate the universal rules.
+- Read `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md` to verify no approved amendment would violate the universal rules.

@@ -8,12 +8,15 @@ T1 is stateless. It reads the macro advisor outputs fresh every run. It does not
 
 ## Inputs
 
-Read the macro advisor output path from `config/user-config.json` → `macro_advisor_outputs`. All paths below are relative to that directory.
+Read the macro advisor output path from `${CLAUDE_PLUGIN_ROOT}/config/user-config.json` → `macro_advisor_outputs`. This is an absolute path resolved during setup. All paths below are relative to that directory.
 
 1. **Latest weekly synthesis** — find the most recent file in `{macro_advisor_outputs}/synthesis/`. If the synthesis directory is empty, check the briefing for embedded regime assessment.
 2. **Active theses** — all files in `{macro_advisor_outputs}/theses/active/`
 3. **Latest data snapshot** — `{macro_advisor_outputs}/data/latest-snapshot.json`
-4. **ETF reference** — look for `etf-reference.md` in the macro advisor's skills/references directory (sibling to the outputs directory)
+4. **ETF reference** — look for `etf-reference.md` by checking these paths in order:
+   - `{macro_advisor_outputs}/../skills/macro-advisor/references/etf-reference.md` (standard plugin layout — outputs/ is a sibling of skills/)
+   - `{macro_advisor_outputs}/../../skills/macro-advisor/references/etf-reference.md` (if outputs path goes one level deeper)
+   - If neither exists, log a warning: "ETF reference not found — ticker mapping will use macro advisor synthesis text only. Currency-specific ETF mapping may be incomplete."
 
 Also check `{macro_advisor_outputs}/briefings/` for the latest dashboard HTML if synthesis files are not available — the briefing contains the regime assessment embedded in the HTML.
 
@@ -67,7 +70,7 @@ From the synthesis cross-asset implications table, extract each row:
 }
 ```
 
-Map the stance to a target weight using the regime template from `config/regime-templates.json`. The template provides baseline weights; the synthesis stance adjusts them (Bull = template weight * 1.2, Neutral = template weight, Bear = template weight * 0.5, or 0 if avoiding).
+Map the stance to a target weight using the regime template from `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json`. The template provides baseline weights; the synthesis stance adjusts them (Bull = template weight * 1.2, Neutral = template weight, Bear = template weight * 0.5, or 0 if avoiding).
 
 ### Step 3: Sector Signals
 
@@ -135,7 +138,7 @@ This is the most important step. A missed kill switch trigger means the trading 
 
 ## Output Format
 
-Produce a single JSON file: `outputs/portfolio/latest-signals.json`
+Produce a single JSON file: `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-signals.json`
 
 ```json
 {

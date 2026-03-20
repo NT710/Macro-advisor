@@ -76,7 +76,7 @@ done
 
 Also check if the macro-advisor plugin is installed by looking for its outputs in the Cowork plugin cache.
 
-**If auto-detected:** Tell the user: "Found Macro Advisor outputs at [path]. I'll use this automatically." Save the resolved absolute path.
+**If auto-detected:** Tell the user: "Found Macro Advisor outputs at [path]. I'll use this automatically." **Important:** Always resolve the path to an absolute path using `realpath` before saving to config. Never store a relative path — the trading engine may run from any working directory.
 
 **If NOT auto-detected:** Ask the user using AskUserQuestion:
 
@@ -92,17 +92,21 @@ If user selects "Not installed yet", save `macro_advisor_outputs` as empty strin
 
 "Setup will continue, but the trading engine will skip all new trades until macro data is available. Install the macro advisor from this same marketplace and run `/macro-advisor:setup` followed by `/macro-advisor:run-weekly`, then update `config/user-config.json` with the outputs path."
 
+**If user provided a manual path:** Resolve it to an absolute path using `realpath` before saving to config.
+
 **Validation:** If a path was provided (auto or manual), verify it contains the expected structure:
 ```bash
+# Resolve to absolute and verify
+MACRO_PATH=$(realpath "$MACRO_PATH")
 # Must contain synthesis/ and theses/ directories with at least one file
 ls "$MACRO_PATH/synthesis/" "$MACRO_PATH/theses/" 2>/dev/null
 ```
-If validation fails, warn that the macro advisor may not have completed a full cycle yet but save the path anyway.
+If validation fails, warn that the macro advisor may not have completed a full cycle yet but save the resolved absolute path anyway.
 
 ## Step 6: Create Output Directories
 
 ```bash
-mkdir -p outputs/portfolio outputs/trades outputs/performance outputs/improvement outputs/dashboard
+mkdir -p ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio ${CLAUDE_PLUGIN_ROOT}/outputs/trades ${CLAUDE_PLUGIN_ROOT}/outputs/performance ${CLAUDE_PLUGIN_ROOT}/outputs/improvement ${CLAUDE_PLUGIN_ROOT}/outputs/dashboard
 ```
 
 Create seed files for the improvement and trade trackers:
@@ -163,7 +167,7 @@ Create scheduled tasks based on their answers.
 
 ## Step 8: Write Configuration
 
-Save all user preferences to `config/user-config.json`:
+Save all user preferences to `${CLAUDE_PLUGIN_ROOT}/config/user-config.json`:
 
 ```json
 {
@@ -186,7 +190,7 @@ Save all user preferences to `config/user-config.json`:
 Run T0 (portfolio snapshot) to verify the full pipeline works:
 
 ```bash
-python scripts/trade_executor.py --action snapshot --config config/user-config.json --output outputs/portfolio/
+python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py --action snapshot --config ${CLAUDE_PLUGIN_ROOT}/config/user-config.json --output ${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/
 ```
 
 Report results. If everything passes, tell the user:

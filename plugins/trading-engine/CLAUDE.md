@@ -4,19 +4,19 @@ This is an autonomous trading system that executes trades on Alpaca paper tradin
 
 ## Architecture Documentation
 
-The system's methodology, architecture, and design decisions are documented in `skills/trading-engine/references/methodology.md`. This is the source of truth for how the system works.
+The system's methodology, architecture, and design decisions are documented in `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/methodology.md`. This is the source of truth for how the system works.
 
 **When you change any architectural decision — execution order, skill additions, risk parameters, allocation logic — update `methodology.md` to reflect the change.**
 
 ## Key Files
 
-- `skills/trading-engine/references/RULES.md` — universal policy (risk constraints, execution discipline, anti-bias rules). Read before executing any skill.
-- `config/risk-limits.json` — hardcoded risk parameters. NOT adjustable by T7 improvement loop.
-- `config/regime-templates.json` — baseline allocations per regime. Starting points, not gospel.
-- `config/user-config.json` — API keys and user preferences (created during setup, git-ignored).
-- `skills/trading-engine/references/methodology.md` — full system documentation. Keep in sync with changes.
-- `outputs/improvement/amendment-tracker.md` — persistent record of skill amendments.
-- `outputs/improvement/performance-tracker.md` — persistent record of execution quality.
+- `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md` — universal policy (risk constraints, execution discipline, anti-bias rules). Read before executing any skill.
+- `${CLAUDE_PLUGIN_ROOT}/config/risk-limits.json` — hardcoded risk parameters. NOT adjustable by T7 improvement loop.
+- `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json` — baseline allocations per regime. Starting points, not gospel.
+- `${CLAUDE_PLUGIN_ROOT}/config/user-config.json` — API keys and user preferences (created during setup, git-ignored).
+- `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/methodology.md` — full system documentation. Keep in sync with changes.
+- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` — persistent record of skill amendments.
+- `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/performance-tracker.md` — persistent record of execution quality.
 
 ## Scheduled Tasks
 

@@ -13,10 +13,10 @@ Same cognee-inspired architecture as the macro advisor's improvement loop. The t
 Read ALL of the following:
 
 **Amendment tracker (read first):**
-`outputs/improvement/amendment-tracker.md` — check before proposing new amendments.
+`${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` — check before proposing new amendments.
 
 **Performance tracker (read for cumulative scoring):**
-`outputs/improvement/performance-tracker.md` — persistent record of execution quality over time.
+`${CLAUDE_PLUGIN_ROOT}/outputs/improvement/performance-tracker.md` — persistent record of execution quality over time.
 
 **Meta blocks from all skills produced in the current run:**
 1. T0 Portfolio Snapshot meta
@@ -27,7 +27,7 @@ Read ALL of the following:
 6. T5 Trade Logger meta
 7. T6 Performance Tracker meta
 
-**Latest performance report:** `outputs/performance/`
+**Latest performance report:** `${CLAUDE_PLUGIN_ROOT}/outputs/performance/`
 
 **Prior improvement loop output** (if exists) for trend context.
 
@@ -151,13 +151,13 @@ Same as macro advisor Skill 8:
 
 EFFECTIVE → keep. INEFFECTIVE after 2 weeks → revert. INCONCLUSIVE → keep checking.
 
-Update `outputs/improvement/amendment-tracker.md` with results.
+Update `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/amendment-tracker.md` with results.
 
 ---
 
 ## Output Format
 
-Save as `outputs/improvement/YYYY-Www-trading-improvement.md`:
+Save as `${CLAUDE_PLUGIN_ROOT}/outputs/improvement/YYYY-Www-trading-improvement.md`:
 
 ```markdown
 ## Trading Engine Self-Improvement — Week of [Date]

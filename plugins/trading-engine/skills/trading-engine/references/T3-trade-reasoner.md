@@ -8,10 +8,10 @@ T3 receives position sizes but NOT unrealized P&L. It cannot see whether a posit
 
 ## Inputs
 
-1. **Reconciliation** — `outputs/portfolio/latest-reconciliation.json` (from T2)
-2. **Signals** — `outputs/portfolio/latest-signals.json` (from T1)
-3. **Risk limits** — `config/risk-limits.json`
-4. **Trade log** — most recent entries from `outputs/trades/` (to check scaling state — how much of a target position we've already built)
+1. **Reconciliation** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-reconciliation.json` (from T2)
+2. **Signals** — `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-signals.json` (from T1)
+3. **Risk limits** — `${CLAUDE_PLUGIN_ROOT}/config/risk-limits.json`
+4. **Trade log** — most recent entries from `${CLAUDE_PLUGIN_ROOT}/outputs/trades/` (to check scaling state — how much of a target position we've already built)
 
 ## Decision Framework
 
@@ -108,7 +108,7 @@ Positions flagged as "orphaned" by T2 (no matching target):
 
 Produce two files:
 
-### 1. Trade Plan: `outputs/portfolio/latest-trade-plan.json`
+### 1. Trade Plan: `${CLAUDE_PLUGIN_ROOT}/outputs/portfolio/latest-trade-plan.json`
 
 ```json
 {
@@ -152,7 +152,7 @@ Produce two files:
 }
 ```
 
-### 2. Reasoning Log: `outputs/trades/YYYY-MM-DD-reasoning.md`
+### 2. Reasoning Log: `${CLAUDE_PLUGIN_ROOT}/outputs/trades/YYYY-MM-DD-reasoning.md`
 
 A readable markdown document explaining every decision:
 
