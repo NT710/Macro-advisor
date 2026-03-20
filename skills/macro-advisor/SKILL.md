@@ -50,7 +50,11 @@ Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 6 → 7 → 11(if triggered) �
 
 ## ETF Reference
 
-`references/etf-reference.md` contains the ETF lookup tables (broad allocation, thematic/sector, currency equivalents). This file is generated dynamically during `/setup` based on the user's preferred currency and hedging preference, and can be refreshed with `/update-etfs`.
+ETF selection uses three layers:
+
+1. **Reference table** (`references/etf-reference.md`) — primary ETFs in the user's preferred currency, built during `/setup` and refreshable with `/update-etfs`
+2. **USD fallback** — where no ETF exists in the preferred currency, the reference table includes a USD-denominated alternative (flagged)
+3. **Dynamic discovery** (`etf_lookup.py`) — searches ~100 liquid ETFs on Yahoo Finance for thematic/niche exposures not in the reference table, verifies real price data before recommending
 
 ## Scripts
 
@@ -85,5 +89,5 @@ The system reads `config/user-config.json` for user preferences set during `/set
 
 - `fred_api_key` — FRED API key
 - `preferred_currency` — CHF, EUR, USD, or GBP
-- `hedging_preference` — hedged or unhedged
+- `browser_access` — whether Chrome extension is available (for analyst monitoring)
 - `schedule` — day and time for the weekly run

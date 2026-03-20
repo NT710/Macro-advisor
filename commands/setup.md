@@ -37,40 +37,32 @@ If the test fails, tell the user the key is invalid and ask them to try again.
 
 Check if Chrome browser tools are available (~~browser). If not, inform the user:
 
-"The Macro Advisor uses browser access to scrape justETF for ETF data and to read external analyst feeds (Steno Research, Alpine Macro). You'll need to enable the Chrome extension for Claude.
+"The Macro Advisor uses browser access to read external analyst feeds (Steno Research X feed, Alpine Macro LinkedIn). This enables Skill 10 (Analyst Monitor) to follow links and read full articles for cross-referencing against theses. You'll need to enable the Chrome extension for Claude.
 
-Without browser access, the system will still work but:
-- ETF mapping will use Yahoo Finance data only (less comprehensive)
-- Analyst monitoring (Skill 10) will be limited to web search"
+Without browser access, the system will still work but analyst monitoring (Skill 10) will be limited to web search instead of browsing full articles.
+
+If you enable browser access, make sure you are logged in to X (for Steno Research) and LinkedIn (for Alpine Macro) in your Chrome browser."
 
 Ask if they want to proceed with or without browser access.
 
-## Step 4: Currency and Hedging Preference
+## Step 4: Currency Preference
 
 Ask the user using AskUserQuestion:
 
 "What is your preferred currency for ETF investments?"
 Options: CHF, EUR, USD, GBP
 
-Then ask:
+## Step 5: Build ETF Reference Table
 
-"Do you prefer currency-hedged or unhedged ETFs?"
-Options: Hedged (reduces currency risk, slightly higher TER), Unhedged (accepts currency exposure, lower TER)
+Using the user's currency preference, build the ETF reference table for their currency. The system uses three layers for ETF selection:
 
-## Step 5: Dynamic ETF Mapping
+**Layer 1 — User's preferred currency.** For each major asset class (US large cap, US small cap, international developed, emerging markets, US treasuries, corporate bonds, high yield, gold, commodities, real estate), use `etf_lookup.py` and Yahoo Finance to find the best available ETF denominated in the user's preferred currency. Rank by TER (lowest first), then AUM (highest first).
 
-Using the user's currency and hedging preferences, build the ETF reference table:
+**Layer 2 — USD fallback.** Where no ETF exists in the user's preferred currency for an asset class, include the USD-denominated equivalent and flag it as a fallback.
 
-1. For each asset class in the allocation framework (US large cap, US small cap, international developed, emerging markets, US treasuries, corporate bonds, high yield, gold, commodities, real estate):
-   - Search justETF via ~~browser (or Yahoo Finance as fallback) for ETFs denominated in the user's preferred currency
-   - Filter by hedging preference
-   - Rank by TER (lowest first), then AUM (highest first)
-   - Select the top option
-   - If no match exists in the preferred currency, fall back to USD and flag it
+**Layer 3 — Dynamic discovery.** The existing `etf_lookup.py` script handles thematic and niche ETFs not in the reference table. This runs automatically during thesis generation — no setup needed.
 
-2. Write the result to `skills/macro-advisor/references/etf-reference.md` in the working directory, replacing the template version.
-
-3. Show the user the resulting ETF mapping and ask for confirmation.
+Write the Layer 1 + Layer 2 results to `skills/macro-advisor/references/etf-reference.md` in the working directory. Show the user the resulting mapping and ask for confirmation.
 
 ## Step 6: Create Output Directories
 
@@ -100,7 +92,6 @@ Save all user preferences to `config/user-config.json`:
 {
   "fred_api_key": "USER_KEY",
   "preferred_currency": "CHF",
-  "hedging_preference": "hedged",
   "browser_access": true,
   "schedule_day": "sunday",
   "schedule_time": "16:00",

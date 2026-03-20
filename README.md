@@ -35,11 +35,10 @@ Run `/setup` after installation. It will walk you through:
 
 1. **Python dependencies** — installs fredapi, yfinance, pandas, numpy
 2. **FRED API key** — free from [fred.stlouisfed.org](https://fred.stlouisfed.org) (My Account → API Keys)
-3. **Browser access** — optional but recommended for ETF scraping and analyst monitoring
+3. **Browser access** — optional, for reading external analyst feeds (Steno Research, Alpine Macro)
 4. **Currency preference** — CHF, EUR, USD, or GBP
-5. **Hedging preference** — hedged or unhedged ETFs
-6. **ETF mapping** — dynamically builds your ETF reference table based on your currency/hedging choices
-7. **Schedule** — when to run the weekly analysis
+5. **ETF mapping** — builds your ETF reference table for your preferred currency (USD fallback where needed, plus dynamic discovery for niche ETFs)
+6. **Schedule** — when to run the weekly analysis
 
 ## Commands
 
@@ -54,7 +53,7 @@ Run `/setup` after installation. It will walk you through:
 - Claude Cowork (desktop app)
 - Python 3.8+
 - Free FRED API key
-- Chrome extension (optional, for ETF scraping and analyst feed browsing)
+- Chrome extension (optional, for analyst feed browsing)
 
 ## How It Works
 
