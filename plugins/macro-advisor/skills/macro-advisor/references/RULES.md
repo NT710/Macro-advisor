@@ -24,9 +24,9 @@ Read this file before executing any skill. These rules override all other instru
 
 ## Investment Context
 
-1. **ETF-focused portfolio.** All thesis expressions and allocation recommendations use specific ETF instruments. The user invests through ETFs. For ETF tickers, CHF equivalents, and thematic lookup, read `references/etf-reference.md`.
+1. **ETF-focused portfolio.** All thesis expressions and allocation recommendations use specific ETF instruments. The user invests through ETFs. For ETF tickers, currency-specific equivalents, and thematic lookup, read `references/etf-reference.md`.
 
-2. **CHF preference.** The user is domiciled in Switzerland and prefers CHF-listed ETFs to avoid currency exposure. When recommending an ETF, check `references/etf-reference.md` for CHF equivalents first. If a CHF version exists, show it as primary with the US ticker in parentheses. If not, show USD and note "(no CHF equivalent)." This is a listing preference — it does not change the investment thesis.
+2. **Currency preference.** The user's preferred currency is set in `config/user-config.json` (field: `preferred_currency`). When recommending an ETF, check `references/etf-reference.md` for equivalents in the user's preferred currency first. If a local-currency version exists, show it as primary with the US ticker in parentheses. If not, show USD and note "(no [currency] equivalent)." This is a listing preference — it does not change the investment thesis.
 
 3. **Sizing — two distinct modes:**
    - **Monday Briefing (regime view):** Directional tilts only. "Favor CSSPX.SW over CSNDX.SW" or "add exposure to ZGLD.SW." Direction and instrument, not percentages.

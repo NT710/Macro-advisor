@@ -38,11 +38,12 @@ Most geopolitical noise doesn't change the macro regime. This skill exists to ca
 - Strategic reserve releases or builds
 - Energy transition policy (subsidies, mandates, carbon pricing)
 
-### Swiss-Specific
-- Bilateral agreements with EU (framework negotiations)
-- SNB policy signals (FX intervention stance)
-- Swiss tax policy changes
-- Swiss financial regulation changes
+### User-Domicile-Specific
+Check `config/user-config.json` for the user's `preferred_currency` to determine domicile relevance:
+- **CHF:** Swiss bilateral agreements with EU, SNB policy signals (FX intervention), Swiss tax/regulation changes
+- **EUR:** ECB policy transmission, EU fiscal rules, Eurozone-specific regulation
+- **GBP:** BoE policy signals, UK trade agreements, UK fiscal policy changes
+- **USD:** Domestic policy is already covered in the sections above
 
 ## Execution Steps
 
@@ -51,7 +52,7 @@ Most geopolitical noise doesn't change the macro regime. This skill exists to ca
 3. Search for regulatory actions with market impact
 4. Search for geopolitical flashpoints affecting energy or trade flows
 5. Search for upcoming elections or political transitions
-6. Search for Swiss-specific policy developments
+6. Search for user-domicile-specific policy developments (based on preferred_currency in config)
 7. Filter: only include items with identifiable market transmission mechanisms
 8. Synthesize into output format
 
@@ -63,7 +64,7 @@ Most geopolitical noise doesn't change the macro regime. This skill exists to ca
 - "US debt ceiling budget [YEAR]"
 - "China stimulus property policy [YEAR]"
 - "semiconductor export controls [YEAR]"
-- "Switzerland EU bilateral [YEAR]"
+- User-domicile-specific searches (e.g., "Switzerland EU bilateral [YEAR]" for CHF users, "UK trade policy [YEAR]" for GBP users)
 
 ### Tier 2: Rate-limit prone — use fallback strategy
 
@@ -111,8 +112,8 @@ Prioritize: government announcements, Reuters, FT, Politico (for EU), South Chin
 ### Regime Change Risk
 [Is there anything here that could shift the macro regime? If yes, explain the mechanism. If not, state explicitly: "No regime-change risk identified this period."]
 
-### Swiss-Specific
-[Anything relevant to Swiss-domiciled portfolio or CHF exposure. If nothing, state: "No Swiss-specific developments."]
+### Domicile-Specific
+[Anything relevant to the user's domicile (based on preferred_currency) or local currency exposure. If nothing, state: "No domicile-specific developments."]
 ```
 
 ## Quality Standards

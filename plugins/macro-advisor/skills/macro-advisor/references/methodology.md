@@ -177,7 +177,7 @@ Theses are specific, falsifiable investment bets classified into two types:
 Both types share:
 - Plain English summary (readable by a non-specialist)
 - Testable assumptions (each checked weekly)
-- First/second/third-order ETF expressions (verified via etf_lookup.py, CHF-listed where available)
+- First/second/third-order ETF expressions (verified via etf_lookup.py, listed in user's preferred currency where available)
 - Kill switches (specific, measurable — if met, thesis is INVALIDATED, no negotiation)
 - Parameter review (when analyst insights challenge thesis parameters, flagged for review)
 - Time horizon derived from the mechanism, not from a default
@@ -234,9 +234,9 @@ Historical week selector allows browsing past briefings and improvement reports.
 
 ### ETF-Focused
 
-All recommendations use specific ETF tickers. CHF-listed equivalents from SIX Swiss Exchange are primary (verified via Yahoo Finance). USD tickers shown in parentheses when no CHF version exists.
+All recommendations use specific ETF tickers. Equivalents in the user's preferred currency are primary (verified via Yahoo Finance). USD tickers shown in parentheses when no local-currency version exists. The user's preferred currency is set in `config/user-config.json`.
 
-Reference tables: `skills/references/etf-reference.md` (broad allocation, thematic/sector, CHF equivalents).
+Reference tables: `skills/references/etf-reference.md` (broad allocation, thematic/sector, currency-specific equivalents).
 Dynamic discovery: `scripts/etf_lookup.py` searches ~100 liquid ETFs and verifies real price data before recommending.
 
 ### Sizing
@@ -326,7 +326,7 @@ Macro Advisor/
 ├── skills/
 │   ├── RULES.md                    (universal policy — data integrity, sizing, language, discipline)
 │   ├── references/
-│   │   └── etf-reference.md        (ETF lookup tables — broad, thematic, CHF)
+│   │   └── etf-reference.md        (ETF lookup tables — broad, thematic, currency-specific)
 │   ├── 00-data-collection.md
 │   ├── 01-central-bank-watch.md    (v1.1)
 │   ├── 02-liquidity-credit-monitor.md (v1.1)

@@ -87,11 +87,11 @@ Read the actual files in `outputs/theses/active/`. Files prefixed with ACTIVE- a
 
 ## Cross-Asset View
 
-What to own, what to avoid, and why. CHF-listed ETFs where available (US ticker in parentheses for reference). Read `skills/references/etf-reference.md` for the CHF equivalents.
+What to own, what to avoid, and why. ETFs in the user's preferred currency where available (US ticker in parentheses for reference). Read `skills/references/etf-reference.md` for currency-specific equivalents and `config/user-config.json` for the user's `preferred_currency`.
 
 | What | Direction | ETFs | Why (plain language) |
 |------|-----------|------|---------------------|
-| US Stocks (broad) | [Buy/Hold/Reduce] | [CHF ticker or US ticker] | [one sentence your friend would understand] |
+| US Stocks (broad) | [Buy/Hold/Reduce] | [preferred currency ticker or US ticker] | [one sentence your friend would understand] |
 | International Stocks | [direction] | [tickers] | [one sentence] |
 | Long-Term Bonds | [direction] | [tickers] | [one sentence] |
 | Short-Term Bonds/Cash | [direction] | [tickers] | [one sentence] |
