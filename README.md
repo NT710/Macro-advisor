@@ -8,7 +8,14 @@ A Claude Cowork plugin marketplace for autonomous macro research and paper tradi
 
 Autonomous macro research system. Pulls 62+ economic data series from FRED and Yahoo Finance, identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) using the Alpine Macro liquidity-first framework, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
-**Setup:** `/macro-advisor:setup` — walks you through FRED API key, currency preference, ETF mapping, and scheduling.
+**Commands:**
+
+- `/macro-advisor:setup` — First-run setup. Walks you through FRED API key, currency preference, ETF mapping, and scheduling.
+- `/macro-advisor:run-weekly` — Run the full 13-skill weekly analysis cycle manually. Collects data, analyzes all macro pillars, identifies regime, generates/monitors theses, scores accuracy, and produces the HTML dashboard.
+- `/macro-advisor:investigate-theme` — Investigate a macro theme you find interesting. Runs Skill 11 structural research and Skill 7 thesis evaluation against the latest data. Use this anytime between weekly runs when you spot something worth exploring.
+- `/macro-advisor:activate-thesis` — List draft theses with numbered selection and activate the ones you want monitored. Activated theses get weekly kill switch and assumption checks.
+- `/macro-advisor:update-etfs` — Refresh the dynamic ETF mapping. Searches for current liquid ETFs matching your currency and thematic preferences.
+- `/macro-advisor:implement-improvements` — Review and apply self-improvement amendments proposed by the system. The improvement loop proposes changes but nothing takes effect without your explicit approval.
 
 [Full documentation →](plugins/macro-advisor/README.md)
 
@@ -18,7 +25,11 @@ Autonomous paper trading system. Reads the Macro Advisor's regime assessments an
 
 > **Beta:** Active development. Expect changes to skill logic, dashboard format, and improvement loop behavior between versions.
 
-**Setup:** `/trading-engine:setup` — walks you through Alpaca API keys, macro advisor path detection, and scheduling.
+**Commands:**
+
+- `/trading-engine:setup` — First-run setup. Walks you through Alpaca API keys, macro advisor path detection, and scheduling.
+- `/trading-engine:run-trading` — Run the full trading engine cycle manually. Reads macro advisor outputs, reconciles positions, reasons through trades, executes on Alpaca, and generates the P&L dashboard.
+- `/trading-engine:implement-improvements` — Review and apply self-improvement amendments proposed by the trading engine.
 
 [Full documentation →](plugins/trading-engine/README.md)
 
@@ -89,7 +100,7 @@ Both plugins share a philosophy of epistemic humility and anti-confirmation bias
 plugins/
   macro-advisor/            # Macro research plugin
     .claude-plugin/
-    commands/               # /setup, /run-weekly, /update-etfs, /implement-improvements
+    commands/               # /setup, /run-weekly, /investigate-theme, /activate-thesis, /update-etfs, /implement-improvements
     skills/                 # 13-skill research chain
     scripts/                # Data collection, dashboard generation
     config/                 # Risk templates, regime definitions
