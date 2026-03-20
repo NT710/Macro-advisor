@@ -29,3 +29,4 @@ After the Monday Briefing (Skill 9) generates the HTML dashboard, report to the 
 - How many active theses
 - Any new theses generated or existing theses invalidated
 - The dashboard file location
+- If Skill 8 proposed any amendments, include: "X skill amendments proposed this week. Run `/implement-improvements` to review and apply them."

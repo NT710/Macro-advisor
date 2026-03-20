@@ -47,6 +47,7 @@ Run `/setup` after installation. It will walk you through:
 | `/setup` | First-run configuration |
 | `/run-weekly` | Run the full analysis cycle manually |
 | `/update-etfs` | Refresh ETF mapping with current market offerings |
+| `/implement-improvements` | Review and apply self-improvement amendments proposed by the system |
 
 ## Requirements
 
