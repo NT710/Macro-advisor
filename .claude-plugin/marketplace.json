@@ -6,7 +6,7 @@
   "plugins": [
     {
       "name": "macro-advisor",
-      "source": ".",
+      "source": "./plugins/macro-advisor",
       "description": "Autonomous macro research system using the Alpine Macro framework. Collects economic data, monitors central banks, tracks liquidity conditions, scans geopolitical risks, synthesizes macro regimes, generates investment theses with ETF implementation, and delivers weekly HTML dashboards."
     }
   ]
