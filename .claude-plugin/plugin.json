@@ -1,0 +1,34 @@
+{
+  "name": "macro-advisor",
+  "version": "0.1.0",
+  "description": "Autonomous macro research system using the Alpine Macro framework. Collects economic data, monitors central banks, tracks liquidity conditions, scans geopolitical risks, synthesizes macro regimes, generates investment theses with ETF implementation, and delivers weekly HTML dashboards.",
+  "author": {
+    "name": "Macro Advisor Contributors"
+  },
+  "keywords": ["macro", "economics", "etf", "investing", "research", "dashboard"]
+}
+```
+6. Click **Commit changes**
+
+**For `.gitignore`:**
+1. Same process — **Add file → Create new file**
+2. Filename: `.gitignore`
+3. Paste:
+```
+# User configuration (contains API keys)
+config/user-config.json
+
+# Runtime outputs
+outputs/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
