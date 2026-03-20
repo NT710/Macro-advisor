@@ -2,52 +2,7 @@
 
 Consulted by the thesis generator (Skill 7) and Monday briefing (Skill 9) when they need ETF tickers. Collection skills (1-5) and synthesis (6) generally don't need this file.
 
-## CHF Equivalents on SIX Swiss Exchange
-
-All tickers verified with real price data via Yahoo Finance (2026-03-19). SIX tickers use .SW suffix.
-
-**US Equities:**
-- SPY/VOO → **CSSPX.SW** — iShares Core S&P 500 UCITS ETF (USD, CHF-tradeable on SIX)
-- SPY/VOO → **VUSA.SW** — Vanguard S&P 500 UCITS ETF (CHF)
-- QQQ → **EQQQ.SW** — Invesco EQQQ NASDAQ-100 UCITS ETF (USD on SIX)
-- QQQ → **CSNDX.SW** — iShares NASDAQ 100 UCITS ETF (USD on SIX)
-- IWM → **CSUSS.SW** — iShares MSCI USA Small Cap UCITS ETF (USD on SIX)
-- VTV → **IWVL.SW** — iShares Edge MSCI World Value Factor UCITS ETF (USD on SIX)
-
-**International/EM:**
-- EFA → **IMEA.SW** — iShares Core MSCI Europe UCITS ETF (CHF)
-- EFA → **SWDA.SW** — iShares Core MSCI World UCITS ETF (USD on SIX, broader than EAFE)
-- EEM/VWO → **IEMS.SW** — iShares MSCI EM Small Cap UCITS ETF (USD on SIX)
-- FXI → **FXC.SW** — iShares China Large Cap UCITS ETF (USD on SIX)
-- FXI → **CNYA.SW** — iShares MSCI China A UCITS ETF (USD on SIX)
-
-**Bonds:**
-- TLT → **IDTL.SW** — iShares USD Treasury Bond 20+yr UCITS ETF (USD on SIX)
-- TLT → **DTLE.SW** — iShares USD Treasury Bond 20+yr UCITS ETF (EUR hedged on SIX)
-- TLT → **CSBGU7.SW** — iShares USD Treasury Bond 7-10yr UCITS ETF (USD on SIX)
-- AGG → **AGGH.SW** — iShares Core Global Aggregate Bond UCITS ETF (EUR hedged on SIX)
-- SHV/BIL → **CSBGC3.SW** — iShares Swiss Domestic Government Bond 0-3yr ETF (CHF)
-- TIP → **ITPS.SW** — iShares USD TIPS UCITS ETF (USD on SIX)
-- HYG → **IHYG.SW** — iShares EUR High Yield Corp Bond UCITS ETF (CHF)
-- LQD → **LQDE.SW** — iShares USD Corp Bond UCITS ETF (USD on SIX)
-
-**Commodities:**
-- GLD → **ZGLD.SW** — Swisscanto Gold ETF (CHF) — Swiss-domiciled, physically backed
-- GLD → **AUUSI.SW** — UBS Gold ETF (CHF)
-- USO → **OILCHA.SW** — UBS CMCI Oil SF UCITS ETF (CHF hedged)
-- DJP/GSG → **CCUSAS.SW** — UBS CMCI Composite SF UCITS ETF (USD on SIX)
-
-**Sector/Thematic (verified on SIX):**
-- XLE → **IUES.SW** — iShares S&P 500 Energy Sector UCITS ETF (USD on SIX)
-- XLF → **IUFS.SW** — iShares S&P 500 Financials Sector UCITS ETF (USD on SIX)
-- XLV → **IUHC.SW** — iShares S&P 500 Health Care Sector UCITS ETF (USD on SIX)
-- SMH → **SEMI.SW** — iShares MSCI Global Semiconductors UCITS ETF (USD on SIX)
-- ITA → No CHF equivalent (niche: aerospace & defense)
-- ARKQ → No CHF equivalent (niche: robotics & drones)
-- URA → No CHF equivalent (niche: uranium)
-- CIBR → No CHF equivalent (niche: cybersecurity)
-
-**Currency note:** "USD on SIX" = tradeable on Swiss exchange but denominated in USD (avoids US brokerage, still carries USD exposure). "CHF hedged" = eliminates USD/CHF risk (CSSPX.SW, OILCHA.SW, CSBGC3.SW).
+> **Note:** Run `/macro-advisor:setup` to generate the currency-specific equivalents section (Layer 1) at the top of this file. Until setup runs, only USD tickers are available below.
 
 ---
 
