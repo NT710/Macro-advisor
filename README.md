@@ -1,77 +1,105 @@
-# Macro Advisor
+# Macro Advisor Marketplace
 
-An autonomous macro research system for Claude Cowork. Collects economic data from FRED and Yahoo Finance, identifies macro regimes using the Alpine Macro framework (liquidity-first, four-quadrant regime model), generates investment theses with specific ETF implementation, and delivers weekly HTML dashboards.
+A Claude Cowork plugin marketplace for autonomous macro research and paper trading. Two plugins that work independently but chain together: the Macro Advisor generates weekly macro regime assessments and investment theses, the Trading Engine translates those into portfolio positions on Alpaca paper trading.
 
-## What It Does
+## Plugins
 
-Every week, the system:
+### Macro Advisor `v0.2.0`
 
-1. Pulls 62+ economic data series from FRED and Yahoo Finance
-2. Analyzes central bank policy, liquidity conditions, macro data, geopolitical risks, and market positioning
-3. Reads external analyst feeds for cross-referencing
-4. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation)
-5. Generates and monitors investment theses with testable assumptions and kill switches
-6. Scores its own accuracy and self-improves
-7. Delivers an HTML dashboard with briefing, regime map, thesis reports, and system health
+Autonomous macro research system. Pulls 62+ economic data series from FRED and Yahoo Finance, identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) using the Alpine Macro liquidity-first framework, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
+
+**Setup:** `/macro-advisor:setup` — walks you through FRED API key, currency preference, ETF mapping, and scheduling.
+
+[Full documentation →](plugins/macro-advisor/README.md)
+
+### Trading Engine `v0.1.0-beta`
+
+Autonomous paper trading system. Reads the Macro Advisor's regime assessments and theses, reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
+
+> **Beta:** Active development. Expect changes to skill logic, dashboard format, and improvement loop behavior between versions.
+
+**Setup:** `/trading-engine:setup` — walks you through Alpaca API keys, macro advisor path detection, and scheduling.
+
+[Full documentation →](plugins/trading-engine/README.md)
+
+## How They Chain Together
+
+```
+Macro Advisor (Sunday 17:00 CET)          Trading Engine (Sunday 19:00 CET)
+─────────────────────────────────          ─────────────────────────────────
+FRED / Yahoo Finance / Analysts            Reads macro advisor outputs
+        ↓                                          ↓
+Regime identification                      Portfolio snapshot (Alpaca)
+        ↓                                          ↓
+Thesis generation + kill switches          Position reconciliation
+        ↓                                          ↓
+Self-improvement scoring                   Trade reasoning + devil's advocate
+        ↓                                          ↓
+HTML dashboard                             Order execution (Alpaca)
+                                                   ↓
+                                           P&L attribution + self-improvement
+                                                   ↓
+                                           HTML dashboard (P&L, Trades, Improvements)
+```
+
+The Trading Engine runs two hours after the Macro Advisor to ensure fresh macro data is available. On Wednesdays, a lighter defense-only check runs kill switches and drawdown monitoring without generating new positions.
+
+Each plugin works independently. The Macro Advisor is useful on its own as a research tool. The Trading Engine requires the Macro Advisor's outputs but handles graceful degradation — if macro data is stale, it processes only kill switch exits and skips new positions.
 
 ## Installation
 
-### As a Cowork Plugin
+### As a Cowork Marketplace
 
 1. In Claude Cowork, go to **Settings → Plugins → Add marketplace**
-2. Enter the GitHub repo URL
-3. Click **Sync**
-4. Run `/setup` in a new session
+2. Enter: `https://github.com/NT710/Macro-advisor`
+3. Click **Sync** — both plugins appear in your plugin list
+4. Run `/macro-advisor:setup` first, then `/trading-engine:setup`
 
 ### From GitHub
 
-1. Clone this repo
-2. Open Claude Cowork and point it at the cloned folder
-3. Run `/setup`
+```bash
+git clone https://github.com/NT710/Macro-advisor.git
+```
 
-## Setup
+Open Claude Cowork and point it at the cloned folder. Run the setup commands above.
 
-Run `/setup` after installation. It will walk you through:
+## Key Design Principles
 
-1. **Python dependencies** — installs fredapi, yfinance, pandas, numpy
-2. **FRED API key** — free from [fred.stlouisfed.org](https://fred.stlouisfed.org) (My Account → API Keys)
-3. **Browser access** — optional, for reading external analyst feeds (Steno Research, Alpine Macro)
-4. **Currency preference** — CHF, EUR, USD, or GBP
-5. **ETF mapping** — builds your ETF reference table for your preferred currency (USD fallback where needed, plus dynamic discovery for niche ETFs)
-6. **Schedule** — when to run the weekly analysis
+Both plugins share a philosophy of epistemic humility and anti-confirmation bias:
 
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `/setup` | First-run configuration |
-| `/run-weekly` | Run the full analysis cycle manually |
-| `/update-etfs` | Refresh ETF mapping with current market offerings |
-| `/implement-improvements` | Review and apply self-improvement amendments proposed by the system |
+- **Stateless reasoning** — each run starts fresh from data, not from prior conclusions
+- **Kill switches are immediate** — no exceptions, no delays, no "one more day"
+- **P&L blindness** — the trading reasoner never sees unrealized gains/losses when deciding positions
+- **Self-improvement with human gate** — both systems propose amendments to their own logic, but nothing changes without explicit user approval
+- **Risk limits are hardcoded** — the self-improvement loop cannot modify position limits, drawdown triggers, or cash minimums
 
 ## Requirements
 
 - Claude Cowork (desktop app)
 - Python 3.8+
-- Free FRED API key
-- Chrome extension (optional, for analyst feed browsing)
+- Free FRED API key ([fred.stlouisfed.org](https://fred.stlouisfed.org))
+- Free Alpaca paper trading account ([alpaca.markets](https://alpaca.markets)) — Trading Engine only
+- Chrome extension — optional, for analyst feed browsing in Macro Advisor
 
-## How It Works
-
-The system runs 13 skills in sequence, each building on the previous:
+## Repository Structure
 
 ```
-Data Collection → Central Bank Watch → Liquidity Monitor → Macro Tracker →
-Geopolitical Scanner → Positioning & Sentiment → Analyst Monitor →
-Weekly Synthesis → Thesis Generator → Self-Improvement → Thesis Presentation →
-Monday Briefing
+.claude-plugin/
+  marketplace.json          # Marketplace manifest listing both plugins
+plugins/
+  macro-advisor/            # Macro research plugin
+    .claude-plugin/
+    commands/               # /setup, /run-weekly, /update-etfs, /implement-improvements
+    skills/                 # 13-skill research chain
+    scripts/                # Data collection, dashboard generation
+    config/                 # Risk templates, regime definitions
+  trading-engine/           # Paper trading plugin (beta)
+    .claude-plugin/
+    commands/               # /setup, /run-trading, /implement-improvements
+    skills/                 # 8-skill trading chain (T0–T7)
+    scripts/                # Trade execution, performance calculation, dashboard
+    config/                 # Risk limits, regime templates
 ```
-
-Full methodology is documented in `skills/macro-advisor/references/methodology.md`.
-
-## Configuration
-
-All user preferences are stored in `config/user-config.json` (created during setup, not tracked in git). Add this to your `.gitignore` if you fork the repo.
 
 ## License
 
