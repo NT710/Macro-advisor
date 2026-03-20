@@ -45,7 +45,9 @@ Run `/setup` after installation. It will walk you through:
 | Command | Description |
 |---------|-------------|
 | `/setup` | First-run configuration |
-| `/run-weekly` | Run the full analysis cycle manually |
+| `/run-weekly` | Run the full 13-skill analysis cycle manually |
+| `/investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
+| `/activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
 | `/update-etfs` | Refresh ETF mapping with current market offerings |
 | `/implement-improvements` | Review and apply self-improvement amendments proposed by the system |
 

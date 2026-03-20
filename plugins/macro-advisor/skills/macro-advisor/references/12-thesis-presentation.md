@@ -80,12 +80,15 @@ The deep-read document. When someone clicks into a thesis from the briefing, thi
 ---
 
 ## Expression
+
+**CRITICAL: Preserve the First / Second / Third / Avoid order labels from the Skill 7 thesis file.** These signal the causal hierarchy of the trade — first-order is the obvious direct play, second-order is less obvious and slower to price in, third-order is the contrarian or defensive angle. Do not flatten these into a generic table. The order label IS the insight.
+
 | Order | ETF | Direction | Rationale |
 |-------|-----|-----------|-----------|
-| First | [ticker] | [buy/sell] | [one sentence] |
-| Second | [ticker] | [buy/sell] | [one sentence] |
-| Third | [ticker] | [buy/sell] | [one sentence] |
-| Avoid | [ticker] | reduce | [one sentence] |
+| First-order | [ticker] | [buy/sell] | [one sentence — why this is the direct play] |
+| Second-order | [ticker] | [buy/sell] | [one sentence — what causal link, why the market is slower to see it] |
+| Third-order | [ticker] | [buy/sell] | [one sentence — the contrarian or hedge angle] |
+| Avoid | [ticker] | reduce | [one sentence — why this underperforms if thesis plays out] |
 
 ---
 
@@ -97,6 +100,12 @@ The deep-read document. When someone clicks into a thesis from the briefing, thi
 | [W-2] | [status] | [what changed] |
 | [W-1] | [status] | [what changed] |
 | Current | [status] | [what changed] |
+
+---
+
+## Source
+**Technical thesis file:** `outputs/theses/active/[ACTIVE-or-DRAFT]-[thesis-name].md`
+[This links the presentation to the underlying structured thesis with raw assumptions, kill switch definitions, and mechanism details.]
 ```
 
 #### Structural Thesis Report
@@ -196,7 +205,9 @@ For each thesis that gets a chart, produce a JSON block that `generate_dashboard
 }
 ```
 
-Save chart specifications alongside the thesis presentation files. The dashboard generator reads these to render the charts.
+Save chart specifications as **separate JSON files** alongside the thesis presentation files: `outputs/theses/presentations/[thesis-name]-charts.json`. The dashboard generator reads these files to render the charts as interactive Chart.js canvases.
+
+**CRITICAL: Do NOT embed chart JSON in the report markdown.** The chart spec is machine-readable input for the dashboard renderer, not human-readable content. If you put the JSON in the report, it shows up as a raw code block in the dashboard instead of a rendered chart. The report should reference the chart ("See chart above" or similar) — the dashboard generator handles rendering.
 
 ---
 

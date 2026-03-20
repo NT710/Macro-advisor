@@ -225,7 +225,7 @@ def parse_regime_from_synthesis(synthesis_text):
 
 def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                    all_weeks=None, all_weeks_data=None, regime_history=None,
-                   skill_files=None, methodology=None):
+                   skill_files=None, methodology=None, output_dir=None):
     """Generate the full HTML dashboard with multi-week history support."""
 
     all_weeks = all_weeks or [week]
@@ -261,9 +261,13 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     deduped = sorted(thesis_names.values(), key=lambda x: (0 if x[2] == "ACTIVE" else 1, x[0]))
 
     # Load thesis chart specs from presentations directory
-    presentations_dir = output_dir / "theses" / "presentations"
     thesis_chart_specs = {}
-    if presentations_dir.exists():
+    thesis_presentations = {}
+    if output_dir is not None:
+        presentations_dir = output_dir / "theses" / "presentations"
+    else:
+        presentations_dir = None
+    if presentations_dir is not None and presentations_dir.exists():
         for f in presentations_dir.glob("*-charts.json"):
             try:
                 thesis_chart_specs[f.stem.replace("-charts", "")] = json.loads(f.read_text(encoding="utf-8"))
@@ -271,8 +275,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 pass
 
     # Load thesis presentation reports (Skill 12 output) for enriched rendering
-    thesis_presentations = {}
-    if presentations_dir.exists():
+    if presentations_dir is not None and presentations_dir.exists():
         for f in presentations_dir.glob("*-report.md"):
             thesis_presentations[f.stem.replace("-report", "")] = f.read_text(encoding="utf-8")
 
@@ -305,7 +308,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         chart_spec = thesis_chart_specs.get(thesis_key)
         if chart_spec:
             chart_id = f"thesis-chart-{i}"
-            chart_html = f'<div class="chart-container"><h3>{chart_spec.get("title", "Thesis Chart")}</h3><canvas id="{chart_id}"></canvas></div>'
+            chart_html = f'<div class="chart-container"><h3>{chart_spec.get("title", "Thesis Chart")}</h3><canvas id="{chart_id}" data-thesis-key="{thesis_key}"></canvas></div>'
 
         thesis_tabs += (
             f'<button class="thesis-tab {active_class}" onclick="showThesis({i})">'
@@ -314,10 +317,14 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             f'<span class="badge {badge_class}">{status}</span>'
             f'</button>\n'
         )
+        # Build source link to technical thesis file
+        source_link = f'<div style="margin-top: 24px; padding: 12px 16px; background: var(--surface2); border-radius: 8px; border-left: 3px solid var(--accent);"><span style="color: var(--text-muted); font-size: 13px;">Technical thesis file:</span> <code style="color: var(--accent); font-size: 13px;">outputs/theses/active/{name}</code></div>'
+
         thesis_contents += (
             f'<div class="thesis-content" id="thesis-{i}" style="display:{display}">'
             f'{chart_html}'
             f'{md_to_html(render_content)}'
+            f'{source_link}'
             f'</div>\n'
         )
 
@@ -722,7 +729,6 @@ tr:hover td {{
     <button onclick="showTab('regime')">Regime Map</button>
     <button onclick="showTab('theses')">Theses</button>
     <button onclick="showTab('improvement')">System Health</button>
-    <button onclick="showTab('skills')">Skills</button>
     <button onclick="showTab('about')">About</button>
 </div>
 
@@ -758,13 +764,6 @@ tr:hover td {{
     <!-- Improvement Tab -->
     <div class="tab-content" id="tab-improvement">
         {improvement_weeks_html}
-    </div>
-
-    <!-- Skills Tab -->
-    <div class="tab-content" id="tab-skills">
-        <h2>System Skills</h2>
-        <p style="color: var(--text-muted); margin-bottom: 20px;">Click any skill to expand and read its full definition.</p>
-        {skills_html}
     </div>
 
     <!-- About Tab -->
@@ -959,44 +958,100 @@ new Chart(ctx, {{
 // Thesis-specific charts (rendered from Skill 12 chart specs)
 const thesisChartSpecs = __THESIS_CHART_SPECS_PLACEHOLDER__;
 Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
-    // Find the canvas by looking for thesis-chart-N pattern
-    const canvases = document.querySelectorAll('canvas[id^="thesis-chart-"]');
-    canvases.forEach(canvas => {{
-        if (canvas.closest('.thesis-content') && !canvas._chartRendered) {{
-            const datasets = (spec.datasets || []).map((ds, idx) => ({{
-                label: ds.label || 'Series',
-                data: ds.data || [],
-                borderColor: ds.color || ['#60a5fa', '#34d399', '#f87171', '#fbbf24'][idx % 4],
-                backgroundColor: 'transparent',
-                borderWidth: 2,
-                pointRadius: 0,
-                tension: 0.3,
-            }}));
-            if (datasets.length > 0 && datasets[0].data.length > 0) {{
-                new Chart(canvas.getContext('2d'), {{
-                    type: spec.chart_type || 'line',
-                    data: {{
-                        labels: datasets[0].data.map(d => d.x || d.date || ''),
-                        datasets: datasets.map(ds => ({{
-                            ...ds,
-                            data: ds.data.map(d => d.y || d.value || d),
-                        }})),
-                    }},
-                    options: {{
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        aspectRatio: 2.5,
-                        scales: {{
-                            x: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }} }},
-                            y: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3' }} }},
-                        }},
-                        plugins: {{ legend: {{ labels: {{ color: '#8b8fa3' }} }} }},
-                    }},
-                }});
-                canvas._chartRendered = true;
-            }}
+    // Find canvas matching this thesis by data-thesis-key attribute
+    const canvas = document.querySelector(`canvas[data-thesis-key="${{key}}"]`);
+    if (!canvas || canvas._chartRendered) return;
+
+    // Support two formats:
+    // Format A (native Chart.js): spec has type, data.labels, data.datasets directly
+    // Format B (Skill 12 internal): spec has chart_type, datasets with [{data: [{x,y},...]}]
+    if (spec.data && spec.data.datasets) {{
+        // Format A: native Chart.js config — pass through with dark-theme defaults
+        const chartConfig = {{
+            type: spec.type || 'line',
+            data: spec.data,
+            options: spec.options || {{
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
+                scales: {{
+                    x: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }} }},
+                    y: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3' }} }},
+                }},
+                plugins: {{ legend: {{ labels: {{ color: '#8b8fa3' }} }} }},
+            }},
+        }};
+        // Ensure dark theme on any pre-set options
+        if (spec.options) {{
+            const s = chartConfig.options.scales = chartConfig.options.scales || {{}};
+            ['x','y','y1'].forEach(axis => {{
+                if (s[axis]) {{
+                    s[axis].grid = s[axis].grid || {{}};
+                    s[axis].grid.color = s[axis].grid.color || 'rgba(255,255,255,0.06)';
+                    s[axis].ticks = s[axis].ticks || {{}};
+                    s[axis].ticks.color = s[axis].ticks.color || '#8b8fa3';
+                }}
+            }});
+            const p = chartConfig.options.plugins = chartConfig.options.plugins || {{}};
+            p.legend = p.legend || {{}};
+            p.legend.labels = p.legend.labels || {{}};
+            p.legend.labels.color = p.legend.labels.color || '#8b8fa3';
         }}
-    }});
+        new Chart(canvas.getContext('2d'), chartConfig);
+        canvas._chartRendered = true;
+    }} else if (spec.datasets) {{
+        // Format B: internal format with chart_type and datasets[{data:[{x,y},...], color}]
+        const datasets = spec.datasets.map((ds, idx) => ({{
+            label: ds.label || 'Series',
+            data: ds.data || [],
+            borderColor: ds.color || ['#60a5fa', '#34d399', '#f87171', '#fbbf24'][idx % 4],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+        }}));
+        if (datasets.length > 0 && datasets[0].data.length > 0) {{
+            new Chart(canvas.getContext('2d'), {{
+                type: spec.chart_type || 'line',
+                data: {{
+                    labels: datasets[0].data.map(d => d.x || d.date || ''),
+                    datasets: datasets.map(ds => ({{
+                        ...ds,
+                        data: ds.data.map(d => d.y || d.value || d),
+                    }})),
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2.5,
+                    scales: {{
+                        x: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }} }},
+                        y: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3' }} }},
+                    }},
+                    plugins: {{ legend: {{ labels: {{ color: '#8b8fa3' }} }} }},
+                }},
+            }});
+            canvas._chartRendered = true;
+        }}
+    }}
+}});
+
+// Hide raw Chart.js JSON spec code blocks that Skill 12 embeds in presentation reports
+document.querySelectorAll('.thesis-content .code-block').forEach(block => {{
+    const text = block.textContent || '';
+    if (text.includes('"type"') && text.includes('"datasets"') && (text.includes('"borderColor"') || text.includes('"chart_type"'))) {{
+        block.style.display = 'none';
+    }}
+}});
+// Also hide any "Chart Specification" headers preceding hidden code blocks
+document.querySelectorAll('.thesis-content h3, .thesis-content h4').forEach(header => {{
+    const text = (header.textContent || '').toLowerCase();
+    if (text.includes('chart specification') || text.includes('chart spec')) {{
+        const next = header.nextElementSibling;
+        if (next && next.style.display === 'none') {{
+            header.style.display = 'none';
+        }}
+    }}
 }});
 </script>
 
@@ -1034,6 +1089,7 @@ def main():
     parser.add_argument("--week", required=True, help="Week identifier (e.g., 2026-W12)")
     parser.add_argument("--output-dir", required=True, help="Macro Advisor outputs directory")
     parser.add_argument("--out", required=True, help="Output HTML file path")
+    parser.add_argument("--plugin-root", default=None, help="Plugin root directory (for locating methodology.md and skill files)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -1087,8 +1143,10 @@ def main():
         for f in sorted(skills_dir.glob("*.md")):
             skill_files.append((f.name, f.read_text(encoding="utf-8")))
 
-    # Read methodology for the About tab
-    methodology = read_file(output_dir.parent / "methodology.md")
+    # Read methodology for the About tab from plugin root (read-only cache is fine)
+    methodology = ""
+    if args.plugin_root:
+        methodology = read_file(Path(args.plugin_root) / "skills" / "macro-advisor" / "references" / "methodology.md")
 
     # Generate HTML — pass all weeks data, regime history, skills, methodology
     html = generate_html(
@@ -1098,6 +1156,7 @@ def main():
         regime_history=regime_history,
         skill_files=skill_files,
         methodology=methodology,
+        output_dir=output_dir,
     )
 
     # Write output

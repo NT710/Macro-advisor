@@ -172,12 +172,15 @@ Produce an inspection report:
 
 ## Step 3: AMEND — Propose Specific Changes
 
-For each issue identified in the inspection, propose a targeted amendment. Amendments must be:
+For each issue identified in the inspection, propose a targeted amendment. **Before proposing any amendment, read the target skill's definition file** from `references/` to verify the capability doesn't already exist. If the skill definition already covers the proposed change — for example, Skill 7 already defines thesis monitoring, or Skill 12 already defines chart generation — do not propose the amendment. Instead, note that the capability exists and diagnose why it didn't fire (e.g., first-run timing, missing input, execution order). Proposing infrastructure that already exists wastes human review time and signals that the improvement loop isn't reading the system it's trying to improve.
+
+Amendments must be:
 
 1. **Specific** — not "improve search strategy" but "in Skill 2, replace search query 'M2 money supply latest' with 'Federal Reserve H.6 money stock [month] [YEAR]'"
 2. **Targeted** — change one thing at a time, not rewrite the whole skill
 3. **Justified** — explain why this change should fix the issue based on the evidence
 4. **Reversible** — the original instruction must be preserved in the changelog
+5. **Non-redundant** — verified against the target skill's definition that this capability doesn't already exist
 
 ### Amendment Template
 

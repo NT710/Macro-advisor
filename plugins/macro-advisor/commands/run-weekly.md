@@ -134,6 +134,7 @@ After Skill 9, generate the HTML dashboard:
 python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
   --week YYYY-Www \
   --output-dir outputs/ \
+  --plugin-root ${CLAUDE_PLUGIN_ROOT} \
   --out outputs/briefings/YYYY-Www-dashboard.html
 ```
 
