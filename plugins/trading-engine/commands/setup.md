@@ -5,6 +5,16 @@ allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 
 Run the first-time setup for the Trading Engine. Execute each step sequentially. Do not skip steps.
 
+## Step 0: Verify Workspace Folder
+
+Before anything else, check that the user has selected a workspace folder in Cowork. The workspace folder is where all outputs, config, and data persist between sessions. Without it, everything is written to a temporary directory that vanishes.
+
+Check if the current working directory is inside a Cowork workspace (i.e., under `/sessions/*/mnt/` with a user-selected folder mounted). If the path looks like a temporary session directory with no mounted folder, stop and tell the user:
+
+"You need to select a workspace folder before running setup. Click the folder icon in Cowork and choose a folder on your computer — this is where all trading engine outputs, config, and data will be saved. Once selected, run `/trading-engine:setup` again."
+
+Do not proceed past this step without a workspace folder.
+
 ## Step 1: Install Python Dependencies
 
 ```bash

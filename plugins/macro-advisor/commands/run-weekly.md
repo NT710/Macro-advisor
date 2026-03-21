@@ -76,9 +76,15 @@ Save to: `outputs/collection/positioning/YYYY-Www-positioning.md`
 
 ### SKILL 10: External Analyst Monitor
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/10-analyst-monitor.md`
-Browse Andreas Steno's X feed and Alpine Macro's LinkedIn via Chrome. Read with fresh eyes — no pre-loaded expectations. Report what they're actually saying, with dates. Follow links to full articles — the feed headlines are teasers, the articles contain the real analysis.
-If Chrome/browser unavailable (check `browser_access` in config), fall back to web search.
+Monitor 8 external macro analysts across two groups:
+- **Group A (frequent):** Andreas Steno (X), Luke Gromen (X), Alfonso Peccatiello/Macro Compass (Substack), MacroVoices (podcast transcripts)
+- **Group B (less frequent):** Howard Marks/Oaktree (memos), Lyn Alden (monthly newsletter), Evergreen Gavekal (blog), Alpine Macro (LinkedIn)
+
+Browse X feeds and LinkedIn via Chrome. Use WebFetch for Substack, Oaktree, Lyn Alden, Evergreen Gavekal, and MacroVoices (these don't require Chrome). Read with fresh eyes — no pre-loaded expectations. Report what they're actually saying, with dates. Follow links to full articles — the feed headlines are teasers, the articles contain the real analysis.
+Group B sources: check for new content first. If nothing new since last week, note it in one line and move on. Don't re-analyze stale content.
+If Chrome/browser unavailable (check `browser_access` in config), fall back to web search for the social media sources.
 Save to: `outputs/collection/YYYY-Www-analyst-monitor.md`
+Also update: `outputs/collection/analyst-themes.md` (overwrite with current themes — see Skill 10 Step 5).
 
 ### SKILL 6: Weekly Macro Synthesis
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-synthesis.md` + ALL collection outputs (Skills 1-5) + analyst monitor (Skill 10) + snapshot + prior synthesis (if exists in `outputs/synthesis/`).
@@ -86,8 +92,11 @@ Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 
 ### SKILL 7: Thesis Generator & Monitor
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/07-thesis-generator-monitor.md`
-Read: synthesis + active theses in `outputs/theses/active/` + analyst monitor output + data snapshot.
-CRITICAL: Cross-reference analyst monitor findings against active thesis assumptions, kill switches, and mechanisms. If external insights are directly relevant to a thesis parameter, flag it as a "Parameter Review."
+Read: synthesis + active theses in `outputs/theses/active/` + analyst themes index (`outputs/collection/analyst-themes.md`) + current week analyst monitor output (`outputs/collection/YYYY-Www-analyst-monitor.md`) + data snapshot. If a theme in the index is relevant to an active thesis, follow the Detail link to read the full weekly analyst file for substance.
+**Function A (Generate):** Two thesis sources:
+- **Data patterns:** Scan synthesis for divergences, dislocations, regime shifts per standard process.
+- **Analyst-sourced candidates:** Scan analyst monitor for structural views or novel frameworks not captured by existing theses or the synthesis. Max 2 analyst-sourced investigation candidates per week. Each auto-triggers Skill 11 — no human gate. Tag provenance as "analyst-sourced: [name]" on every candidate.
+**Function B (Monitor):** Cross-reference analyst monitor findings against active thesis assumptions, kill switches, and mechanisms. If external insights are directly relevant to a thesis parameter, flag as "Parameter Review" and write finding to thesis file.
 For structural thesis candidates: check for existing Skill 11 research brief in `outputs/research/`. If none exists, flag for Skill 11 invocation — do not generate a structural thesis without the research foundation.
 For themes not in the ETF reference table, run:
 ```bash
@@ -98,8 +107,10 @@ Save monitor: `outputs/collection/YYYY-Www-thesis-monitor.md`
 
 ### SKILL 11: Structural Research (IF TRIGGERED by Skill 7)
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/11-structural-research.md`
-Only runs if Skill 7 flagged a structural thesis candidate. Most weeks this does not fire.
-Save to: `outputs/research/[theme-name]-research.md`
+Runs if Skill 7 flagged a structural thesis candidate (from data patterns or analyst-sourced). Most weeks this does not fire.
+Data access: read `outputs/data/latest-snapshot.json` first. For FRED series not in the snapshot, pull on-demand to `outputs/data/research-temp/`. Use `etf_lookup.py` for price data. Web search for everything else.
+For analyst-sourced investigations: the analyst's framework is a hypothesis to test, not a conclusion. Evidence independence must be assessed — if the research can't find support beyond the originating analyst's own claims, conviction is reduced.
+Save to: `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
 ### SKILL 8: Self-Improvement Loop
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs + prior improvement output (if exists).
@@ -165,3 +176,5 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 12. Always deliver briefing + theses + improvement doc.
 13. Skill 12 renders thesis presentations — it does not generate analytical content or editorialize.
 14. Structural theses require a Skill 11 research brief before generation. Flag if missing.
+15. Analyst-sourced thesis candidates must be tagged with provenance. Max 2 per week. Skill 11 is the quality filter — not a human approval gate.
+16. Analyst-sourced investigations must produce independent evidence. If evidence base relies primarily on the originating analyst, conviction is reduced.

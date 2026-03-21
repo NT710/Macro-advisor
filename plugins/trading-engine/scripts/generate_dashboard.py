@@ -1,17 +1,14 @@
 #!/usr/bin/env python3
 """
-Trading Dashboard Generator
+Trading Dashboard Generator (Alpine Report Edition)
 
 Produces a self-contained HTML file with three tabs:
-  1. P&L — portfolio value chart, return metrics, attribution, drawdown, risk state
-  2. Trades — trade log table, closed trades, devil's advocate log
+  1. P&L — portfolio value chart, return metrics with sparklines, attribution
+  2. Trades — trade log with sort/filter, closed trades
   3. Improvements — system health, pending amendment proposals, evaluated amendments
 
-Reads from:
-  - outputs/portfolio/ (snapshots)
-  - outputs/trades/ (trade-log.json, closed-trades.json, reasoning logs)
-  - outputs/performance/ (latest-performance-report.json)
-  - outputs/improvement/ (amendment-tracker.md, latest improvement report)
+Uses Jinja2 template at scripts/trading-dashboard-template.html.
+Design tokens are in scripts/design_tokens.py (local copy, duplicated in macro-advisor).
 
 Usage:
     python generate_dashboard.py \
@@ -23,13 +20,23 @@ Usage:
 """
 
 import argparse
+import base64
 import json
+import math
 import os
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 import html as html_lib
+
+from jinja2 import Environment, FileSystemLoader, select_autoescape
+
+# ---------------------------------------------------------------------------
+# Import local design tokens
+# ---------------------------------------------------------------------------
+
+from design_tokens import CSS_VARIABLES, FONT_FACE_CSS
 
 
 def load_json(path):
@@ -97,6 +104,98 @@ def fmt_pct(val):
         return f"{val:+.2f}%"
     except (ValueError, TypeError):
         return str(val)
+
+
+def _num(val, default=0):
+    """Coerce a value to float, returning default for None/non-numeric."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def inline_asset(path):
+    """Read a local asset file and return content for embedding.
+
+    .woff2 files → base64 data URI
+    .js files → raw content
+    """
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Asset not found: {path}")
+    if p.suffix == ".woff2":
+        data = p.read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:font/woff2;base64,{b64}"
+    return p.read_text(encoding="utf-8")
+
+
+def generate_sparkline(values, width=80, height=20, color="currentColor", stroke_width=1.5):
+    """Generate an inline SVG sparkline.
+
+    Returns empty string for <2 non-None values.
+    Handles None/NaN values by drawing broken line segments with gaps.
+    All-equal values render as a flat horizontal line at midpoint.
+    """
+    points = []
+    for i, v in enumerate(values or []):
+        if v is not None and not (isinstance(v, float) and math.isnan(v)):
+            points.append((i, float(v)))
+
+    if len(points) < 2:
+        return ""
+
+    n = len(values)
+    y_vals = [p[1] for p in points]
+    min_v = min(y_vals)
+    max_v = max(y_vals)
+
+    v_range = max_v - min_v if max_v != min_v else 1.0
+    mid_y = height / 2
+
+    def scale_x(idx):
+        return (idx / max(n - 1, 1)) * width
+
+    def scale_y(v):
+        if max_v == min_v:
+            return mid_y
+        return height - ((v - min_v) / v_range) * (height - 2) - 1
+
+    segments = []
+    current_segment = []
+    for i in range(n):
+        v = values[i]
+        if v is not None and not (isinstance(v, float) and math.isnan(v)):
+            current_segment.append((scale_x(i), scale_y(float(v))))
+        else:
+            if len(current_segment) >= 2:
+                segments.append(current_segment)
+            current_segment = []
+    if len(current_segment) >= 2:
+        segments.append(current_segment)
+    elif len(current_segment) == 1 and segments:
+        segments[-1].append(current_segment[0])
+
+    if not segments:
+        return ""
+
+    polylines = []
+    for seg in segments:
+        pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
+        polylines.append(
+            f'<polyline points="{pts}" fill="none" stroke="{color}" '
+            f'stroke-width="{stroke_width}" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+
+    label_text = f"Sparkline showing {len(points)} data points"
+    return (
+        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
+        f'role="img" aria-label="{label_text}" style="vertical-align:middle">'
+        + "".join(polylines)
+        + "</svg>"
+    )
 
 
 def parse_amendment_tracker(improvement_dir):
@@ -418,7 +517,7 @@ def _build_improvements_tab(report, amendments):
 
 
 def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, improvement_dir=None):
-    """Generate the HTML dashboard."""
+    """Generate the HTML dashboard using Jinja2 template."""
 
     # Load data
     perf_report = load_json(os.path.join(performance_dir, "latest-performance-report.json"))
@@ -432,7 +531,11 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
 
     # Load improvement data
     amendments = []
-    improvement_report = {"health_score": None, "health_trend": None, "proposals": [], "recommendations": [], "execution_quality": {}, "reasoning_quality": {}, "performance_quality": {}, "risk_discipline": {}, "skills_at_risk": None}
+    improvement_report = {
+        "health_score": None, "health_trend": None, "proposals": [],
+        "recommendations": [], "execution_quality": {}, "reasoning_quality": {},
+        "performance_quality": {}, "risk_discipline": {}, "skills_at_risk": None,
+    }
     if improvement_dir:
         amendments = parse_amendment_tracker(improvement_dir)
         improvement_report = parse_latest_improvement_report(improvement_dir)
@@ -440,691 +543,136 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     # Extract performance metrics
     returns = perf_report.get("returns", {})
     risk = perf_report.get("risk", {})
-    win_rate = perf_report.get("win_rate", {})
+    win_rate_data = perf_report.get("win_rate", {})
     attribution = perf_report.get("attribution", {})
-    sharpe = perf_report.get("sharpe_ratio", 0)
 
-    portfolio_value = returns.get("ending_value", 0) or 0
-    starting_value = returns.get("starting_value", 0) or 0
-    total_return = returns.get("total_return_pct", 0) or 0
-    hwm = risk.get("high_water_mark", 0) or 0
-    max_dd = risk.get("max_drawdown_pct", 0) or 0
-    current_dd = risk.get("current_drawdown_pct", 0) or 0
+    portfolio_value_raw = _num(returns.get("ending_value"))
+    total_return_raw = _num(returns.get("total_return_pct"))
+    starting_value = _num(returns.get("starting_value"))
+    total_pl_raw = portfolio_value_raw - starting_value if starting_value else 0
+    sharpe_raw = _num(perf_report.get("sharpe_ratio"))
+    max_dd_raw = _num(risk.get("max_drawdown_pct"))
+    current_dd_raw = _num(risk.get("current_drawdown_pct"))
+    wr_rate_raw = win_rate_data.get("win_rate")
+    wr_total = _num(win_rate_data.get("total_closed"), 0)
 
     # Build chart data from snapshots
     chart_labels = []
     chart_values = []
     for snap in snapshots:
         ts = snap.get("timestamp", "")
-        val = snap.get("account", {}).get("portfolio_value", 0)
-        # Extract date portion
+        val = _num(snap.get("account", {}).get("portfolio_value"))
         date_str = ts[:10] if len(ts) >= 10 else ts
         chart_labels.append(date_str)
         chart_values.append(round(val, 2))
 
-    # If no snapshots, use performance report data
     if not chart_labels and returns.get("daily_returns"):
         for dr in returns["daily_returns"]:
             chart_labels.append(dr.get("date", "")[:10])
-            chart_values.append(round(dr.get("portfolio_value", 0), 2))
+            chart_values.append(round(_num(dr.get("portfolio_value")), 2))
 
-    # Build trade rows
-    trade_rows_html = ""
-    for t in trade_log:
-        trade_rows_html += f"""<tr>
-            <td>{esc(t.get('date', ''))[:10]}</td>
-            <td>{esc(t.get('run_type', ''))}</td>
-            <td><strong>{esc(t.get('symbol', ''))}</strong></td>
-            <td class="{'buy-cell' if t.get('side') == 'buy' else 'sell-cell'}">{esc(t.get('side', '').upper())}</td>
-            <td>{t.get('qty', '')}</td>
-            <td>{fmt_money(t.get('fill_price'))}</td>
-            <td>{esc(t.get('order_type', ''))}</td>
-            <td>{esc(t.get('layer', ''))}</td>
-            <td>{esc(t.get('thesis', '') or '—')}</td>
-            <td>{esc(t.get('status', ''))}</td>
-            <td class="reason-cell">{esc(t.get('reason', '')[:80])}</td>
-        </tr>"""
+    # Build sparklines (last 26 data points)
+    equity_curve = chart_values[-26:] if chart_values else []
+    sparkline_portfolio = generate_sparkline(equity_curve, color="#60a5fa") if len(equity_curve) >= 2 else ""
+    sparkline_pl = generate_sparkline(
+        [v - starting_value for v in equity_curve] if starting_value and equity_curve else [],
+        color="#34d399",
+    )
 
-    if not trade_rows_html:
-        trade_rows_html = '<tr><td colspan="11" class="empty-state">No trades recorded yet. Run the trading engine to see trades here.</td></tr>'
+    # Win rate sparkline from rolling 20-trade window
+    winrate_history = []
+    if closed_trades and len(closed_trades) >= 2:
+        window = 20
+        for i in range(len(closed_trades)):
+            start = max(0, i - window + 1)
+            chunk = closed_trades[start:i + 1]
+            wins = sum(1 for c in chunk if _num(c.get("realized_pl")) > 0)
+            winrate_history.append(wins / len(chunk) * 100 if chunk else 0)
+    sparkline_winrate = generate_sparkline(winrate_history[-26:], color="#34d399") if len(winrate_history) >= 2 else ""
 
-    # Build closed trade rows
-    closed_rows_html = ""
-    for ct in closed_trades:
-        pl = ct.get("realized_pl", 0) or 0
-        pl_pct = ct.get("realized_pl_pct", 0) or 0
-        pl_class = "positive" if pl > 0 else "negative" if pl < 0 else ""
-        bear_hit = ct.get("bear_case_realized")
-        bear_icon = "&#10004;" if bear_hit else "&#10008;" if bear_hit is False else "—"
+    # Load Jinja2 template
+    script_dir = Path(__file__).parent
+    template_path = script_dir / "trading-dashboard-template.html"
+    if not template_path.exists():
+        print(f"ERROR: Template not found at {template_path}", file=sys.stderr)
+        print("Expected: plugins/trading-engine/scripts/trading-dashboard-template.html", file=sys.stderr)
+        sys.exit(1)
 
-        closed_rows_html += f"""<tr>
-            <td><strong>{esc(ct.get('symbol', ''))}</strong></td>
-            <td>{esc(ct.get('entry_date', ''))}</td>
-            <td>{esc(ct.get('exit_date', ''))}</td>
-            <td>{ct.get('holding_days', '—')}</td>
-            <td>{fmt_money(ct.get('entry_price'))}</td>
-            <td>{fmt_money(ct.get('exit_price'))}</td>
-            <td class="{pl_class}">{fmt_money(pl)}</td>
-            <td class="{pl_class}">{fmt_pct(pl_pct)}</td>
-            <td>{esc(ct.get('layer', ''))}</td>
-            <td>{esc(ct.get('close_reason', ''))}</td>
-            <td>{bear_icon}</td>
-        </tr>"""
+    # Load assets from local assets/ directory
+    assets_dir = script_dir / "assets"
+    try:
+        chart_js = inline_asset(assets_dir / "chart.min.js")
+    except FileNotFoundError:
+        print("WARNING: Chart.js not found — equity curve chart will not render", file=sys.stderr)
+        chart_js = "/* Chart.js not available */"
 
-    if not closed_rows_html:
-        closed_rows_html = '<tr><td colspan="11" class="empty-state">No closed trades yet.</td></tr>'
+    try:
+        font_data_uri = inline_asset(assets_dir / "inter-latin.woff2")
+    except FileNotFoundError:
+        print("WARNING: Inter font not found — using system fonts", file=sys.stderr)
+        font_data_uri = ""
 
-    # Attribution summary
-    layer_counts = attribution.get("trade_count_by_layer", {})
-    mechanism_counts = attribution.get("trade_count_by_mechanism", {})
+    # Set up Jinja2 environment
+    env = Environment(
+        loader=FileSystemLoader(str(script_dir)),
+        autoescape=select_autoescape([]),
+    )
+    env.filters["fmt_money"] = lambda v: fmt_money(v)
+    env.filters["fmt_pct"] = lambda v: fmt_pct(v)
 
-    attr_layer_html = ""
-    for layer, count in layer_counts.items():
-        attr_layer_html += f"<tr><td>{esc(layer)}</td><td>{count}</td></tr>"
-    if not attr_layer_html:
-        attr_layer_html = '<tr><td colspan="2">No data yet</td></tr>'
-
-    attr_mechanism_html = ""
-    for mech, count in mechanism_counts.items():
-        attr_mechanism_html += f"<tr><td>{esc(mech)}</td><td>{count}</td></tr>"
-    if not attr_mechanism_html:
-        attr_mechanism_html = '<tr><td colspan="2">No data yet</td></tr>'
-
-    # Win rate summary
-    wr_total = win_rate.get("total_closed", 0)
-    wr_wins = win_rate.get("wins", 0)
-    wr_losses = win_rate.get("losses", 0)
-    wr_rate = win_rate.get("win_rate")
-    wr_avg_win = win_rate.get("avg_win")
-    wr_avg_loss = win_rate.get("avg_loss")
-    wr_pf = win_rate.get("profit_factor")
-
-    # Drawdown alert
-    drawdown_alert = ""
-    if current_dd and current_dd >= 7.0:
-        drawdown_alert = f"""
-        <div class="alert alert-danger">
-            &#9888; DRAWDOWN ALERT: Portfolio is {current_dd:.1f}% below high water mark.
-            Circuit breaker triggers at 10%.
-        </div>"""
+    template = env.get_template("trading-dashboard-template.html")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    dashboard_html = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trading Engine Dashboard</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<style>
-    :root {{
-        --bg: #0f1117;
-        --surface: #1a1d27;
-        --surface2: #252836;
-        --border: #2e3246;
-        --text: #e4e6f0;
-        --text-dim: #8b8fa3;
-        --accent: #6c8cff;
-        --accent-hover: #5a7aee;
-        --positive: #34d399;
-        --negative: #f87171;
-        --warning: #fbbf24;
-    }}
-
-    * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-
-    body {{
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-        background: var(--bg);
-        color: var(--text);
-        line-height: 1.6;
-    }}
-
-    .container {{
-        max-width: 1280px;
-        margin: 0 auto;
-        padding: 24px;
-    }}
-
-    header {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid var(--border);
-    }}
-
-    header h1 {{
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text);
-    }}
-
-    header .timestamp {{
-        font-size: 0.85rem;
-        color: var(--text-dim);
-    }}
-
-    .tabs {{
-        display: flex;
-        gap: 4px;
-        margin-bottom: 24px;
-        background: var(--surface);
-        border-radius: 8px;
-        padding: 4px;
-        width: fit-content;
-    }}
-
-    .tab {{
-        padding: 10px 24px;
-        border: none;
-        background: transparent;
-        color: var(--text-dim);
-        cursor: pointer;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        font-weight: 500;
-        transition: all 0.2s;
-    }}
-
-    .tab:hover {{
-        color: var(--text);
-        background: var(--surface2);
-    }}
-
-    .tab.active {{
-        background: var(--accent);
-        color: white;
-    }}
-
-    .tab-content {{
-        display: none;
-    }}
-
-    .tab-content.active {{
-        display: block;
-    }}
-
-    .metric-grid {{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 16px;
-        margin-bottom: 24px;
-    }}
-
-    .metric-card {{
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 16px;
-    }}
-
-    .metric-card .label {{
-        font-size: 0.75rem;
-        color: var(--text-dim);
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
-    }}
-
-    .metric-card .value {{
-        font-size: 1.5rem;
-        font-weight: 600;
-    }}
-
-    .metric-card .value.positive {{ color: var(--positive); }}
-    .metric-card .value.negative {{ color: var(--negative); }}
-
-    .chart-container {{
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }}
-
-    .chart-container h3 {{
-        font-size: 0.9rem;
-        color: var(--text-dim);
-        margin-bottom: 12px;
-        font-weight: 500;
-    }}
-
-    .section {{
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 24px;
-    }}
-
-    .section h3 {{
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 16px;
-        color: var(--text);
-    }}
-
-    table {{
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.85rem;
-    }}
-
-    th {{
-        text-align: left;
-        padding: 8px 12px;
-        color: var(--text-dim);
-        font-weight: 500;
-        border-bottom: 1px solid var(--border);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-
-    td {{
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text);
-    }}
-
-    tr:hover {{
-        background: var(--surface2);
-    }}
-
-    .buy-cell {{ color: var(--positive); font-weight: 600; }}
-    .sell-cell {{ color: var(--negative); font-weight: 600; }}
-    .positive {{ color: var(--positive); }}
-    .negative {{ color: var(--negative); }}
-    .reason-cell {{ max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-    .empty-state {{ text-align: center; color: var(--text-dim); padding: 32px !important; }}
-
-    .two-col {{
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 16px;
-    }}
-
-    .alert {{
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 24px;
-        font-weight: 500;
-    }}
-
-    .alert-danger {{
-        background: rgba(248, 113, 113, 0.15);
-        border: 1px solid var(--negative);
-        color: var(--negative);
-    }}
-
-    .badge {{
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--warning);
-        color: var(--bg);
-        font-size: 0.7rem;
-        font-weight: 700;
-        border-radius: 10px;
-        min-width: 18px;
-        height: 18px;
-        padding: 0 5px;
-        margin-left: 6px;
-    }}
-
-    .proposal-card {{
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 16px;
-    }}
-
-    .proposal-card.pending {{
-        border-left: 3px solid var(--warning);
-    }}
-
-    .proposal-card.implemented {{
-        border-left: 3px solid var(--positive);
-    }}
-
-    .proposal-card.reverted {{
-        border-left: 3px solid var(--negative);
-    }}
-
-    .proposal-header {{
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 12px;
-    }}
-
-    .proposal-header h4 {{
-        font-size: 0.95rem;
-        font-weight: 600;
-    }}
-
-    .proposal-status {{
-        font-size: 0.75rem;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }}
-
-    .status-pending {{
-        background: rgba(251, 191, 36, 0.15);
-        color: var(--warning);
-    }}
-
-    .status-implemented {{
-        background: rgba(52, 211, 153, 0.15);
-        color: var(--positive);
-    }}
-
-    .status-effective {{
-        background: rgba(52, 211, 153, 0.15);
-        color: var(--positive);
-    }}
-
-    .status-ineffective {{
-        background: rgba(248, 113, 113, 0.15);
-        color: var(--negative);
-    }}
-
-    .status-inconclusive {{
-        background: rgba(139, 143, 163, 0.15);
-        color: var(--text-dim);
-    }}
-
-    .proposal-detail {{
-        font-size: 0.85rem;
-        color: var(--text-dim);
-        margin-bottom: 6px;
-    }}
-
-    .proposal-detail strong {{
-        color: var(--text);
-    }}
-
-    .proposal-diff {{
-        margin: 12px 0;
-        padding: 12px;
-        background: var(--bg);
-        border-radius: 6px;
-        font-size: 0.8rem;
-        font-family: 'SF Mono', 'Fira Code', monospace;
-    }}
-
-    .diff-remove {{
-        color: var(--negative);
-        text-decoration: line-through;
-        opacity: 0.7;
-    }}
-
-    .diff-add {{
-        color: var(--positive);
-    }}
-
-    .recommendation-card {{
-        background: var(--surface2);
-        border-radius: 6px;
-        padding: 12px 16px;
-        margin-bottom: 8px;
-        font-size: 0.85rem;
-        border-left: 3px solid var(--accent);
-    }}
-
-    .health-indicator {{
-        display: inline-block;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        margin-right: 8px;
-    }}
-
-    .health-improving {{ background: var(--positive); }}
-    .health-stable {{ background: var(--accent); }}
-    .health-degrading {{ background: var(--negative); }}
-
-    .action-hint {{
-        margin-top: 16px;
-        padding: 12px 16px;
-        background: rgba(108, 140, 255, 0.1);
-        border: 1px solid rgba(108, 140, 255, 0.3);
-        border-radius: 8px;
-        font-size: 0.85rem;
-        color: var(--accent);
-    }}
-
-    @media (max-width: 768px) {{
-        .two-col {{ grid-template-columns: 1fr; }}
-        .metric-grid {{ grid-template-columns: repeat(2, 1fr); }}
-    }}
-</style>
-</head>
-<body>
-<div class="container">
-    <header>
-        <h1>Trading Engine Dashboard</h1>
-        <span class="timestamp">Generated: {now}</span>
-    </header>
-
-    {drawdown_alert}
-
-    <div class="tabs">
-        <button class="tab active" onclick="switchTab('pnl')">P&L</button>
-        <button class="tab" onclick="switchTab('trades')">Trades</button>
-        <button class="tab" onclick="switchTab('improvements')">Improvements{' <span class="badge">' + str(len(improvement_report["proposals"])) + '</span>' if improvement_report["proposals"] else ''}</button>
-    </div>
-
-    <!-- P&L TAB -->
-    <div id="tab-pnl" class="tab-content active">
-        <div class="metric-grid">
-            <div class="metric-card">
-                <div class="label">Portfolio Value</div>
-                <div class="value">{fmt_money(portfolio_value)}</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Total Return</div>
-                <div class="value {'positive' if total_return > 0 else 'negative' if total_return < 0 else ''}">{fmt_pct(total_return)}</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Sharpe Ratio</div>
-                <div class="value">{sharpe:.2f}</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">High Water Mark</div>
-                <div class="value">{fmt_money(hwm)}</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Max Drawdown</div>
-                <div class="value negative">{fmt_pct(-max_dd) if max_dd else '—'}</div>
-            </div>
-            <div class="metric-card">
-                <div class="label">Current Drawdown</div>
-                <div class="value {'negative' if current_dd > 3 else ''}">{fmt_pct(-current_dd) if current_dd else '—'}</div>
-            </div>
-        </div>
-
-        <div class="chart-container">
-            <h3>Portfolio Value Over Time</h3>
-            <canvas id="valueChart" height="80"></canvas>
-        </div>
-
-        <div class="two-col">
-            <div class="section">
-                <h3>Attribution by Layer</h3>
-                <table>
-                    <thead><tr><th>Layer</th><th>Trades</th></tr></thead>
-                    <tbody>{attr_layer_html}</tbody>
-                </table>
-            </div>
-            <div class="section">
-                <h3>Attribution by Mechanism</h3>
-                <table>
-                    <thead><tr><th>Mechanism</th><th>Trades</th></tr></thead>
-                    <tbody>{attr_mechanism_html}</tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>Win Rate Summary</h3>
-            <div class="metric-grid">
-                <div class="metric-card">
-                    <div class="label">Closed Trades</div>
-                    <div class="value">{wr_total}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="label">Win Rate</div>
-                    <div class="value {'positive' if wr_rate and wr_rate > 50 else ''}">{f'{wr_rate:.1f}%' if wr_rate is not None else '—'}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="label">Avg Win</div>
-                    <div class="value positive">{fmt_money(wr_avg_win)}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="label">Avg Loss</div>
-                    <div class="value negative">{fmt_money(wr_avg_loss)}</div>
-                </div>
-                <div class="metric-card">
-                    <div class="label">Profit Factor</div>
-                    <div class="value">{f'{wr_pf:.2f}' if wr_pf is not None else '—'}</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TRADES TAB -->
-    <div id="tab-trades" class="tab-content">
-        <div class="section">
-            <h3>Trade Log</h3>
-            <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Run</th>
-                        <th>Symbol</th>
-                        <th>Side</th>
-                        <th>Qty</th>
-                        <th>Price</th>
-                        <th>Type</th>
-                        <th>Layer</th>
-                        <th>Thesis</th>
-                        <th>Status</th>
-                        <th>Reason</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {trade_rows_html}
-                </tbody>
-            </table>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>Closed Trades</h3>
-            <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>Entry</th>
-                        <th>Exit</th>
-                        <th>Days</th>
-                        <th>Entry Price</th>
-                        <th>Exit Price</th>
-                        <th>P&L</th>
-                        <th>P&L %</th>
-                        <th>Layer</th>
-                        <th>Close Reason</th>
-                        <th>Bear Case Hit</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {closed_rows_html}
-                </tbody>
-            </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- IMPROVEMENTS TAB -->
-    <div id="tab-improvements" class="tab-content">
-        {_build_improvements_tab(improvement_report, amendments)}
-    </div>
-</div>
-
-<script>
-function switchTab(tab) {{
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
-    document.getElementById('tab-' + tab).classList.add('active');
-    event.target.classList.add('active');
-}}
-
-// Portfolio value chart
-const ctx = document.getElementById('valueChart');
-if (ctx) {{
-    const labels = {json.dumps(chart_labels)};
-    const values = {json.dumps(chart_values)};
-
-    if (labels.length > 0) {{
-        new Chart(ctx, {{
-            type: 'line',
-            data: {{
-                labels: labels,
-                datasets: [{{
-                    label: 'Portfolio Value',
-                    data: values,
-                    borderColor: '#6c8cff',
-                    backgroundColor: 'rgba(108, 140, 255, 0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: labels.length > 20 ? 0 : 3,
-                    borderWidth: 2,
-                }}]
-            }},
-            options: {{
-                responsive: true,
-                plugins: {{
-                    legend: {{ display: false }},
-                    tooltip: {{
-                        callbacks: {{
-                            label: function(context) {{
-                                return '$' + context.parsed.y.toLocaleString(undefined, {{minimumFractionDigits: 2}});
-                            }}
-                        }}
-                    }}
-                }},
-                scales: {{
-                    x: {{
-                        ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }},
-                        grid: {{ color: 'rgba(46, 50, 70, 0.5)' }}
-                    }},
-                    y: {{
-                        ticks: {{
-                            color: '#8b8fa3',
-                            callback: function(value) {{ return '$' + value.toLocaleString(); }}
-                        }},
-                        grid: {{ color: 'rgba(46, 50, 70, 0.5)' }}
-                    }}
-                }}
-            }}
-        }});
-    }} else {{
-        ctx.parentElement.innerHTML += '<p style="color: #8b8fa3; text-align: center; padding: 40px 0;">No snapshot data available yet. Portfolio value chart will appear after the first trading run.</p>';
-    }}
-}}
-</script>
-</body>
-</html>"""
+    # Render improvements tab HTML (reuse existing builder)
+    improvements_html = _build_improvements_tab(improvement_report, amendments)
+
+    html = template.render(
+        generated=now,
+        css_variables=CSS_VARIABLES,
+        font_data_uri=font_data_uri,
+        chart_js=chart_js,
+        # Drawdown alert
+        drawdown_alert=current_dd_raw >= 7.0,
+        current_drawdown=f"{current_dd_raw:.1f}",
+        # Metrics strip
+        portfolio_value=fmt_money(portfolio_value_raw),
+        total_pl=fmt_money(total_pl_raw),
+        total_pl_raw=total_pl_raw,
+        total_return=fmt_pct(total_return_raw),
+        total_return_raw=total_return_raw,
+        sharpe=f"{sharpe_raw:.2f}" if sharpe_raw else "—",
+        win_rate=f"{wr_rate_raw:.1f}%" if wr_rate_raw is not None else "—",
+        win_rate_raw=wr_rate_raw,
+        max_drawdown=fmt_pct(-max_dd_raw) if max_dd_raw else "—",
+        # Sparklines (pre-rendered SVG)
+        sparkline_portfolio=sparkline_portfolio,
+        sparkline_pl=sparkline_pl,
+        sparkline_winrate=sparkline_winrate,
+        # Chart data
+        chart_labels=bool(chart_labels),
+        chart_labels_json=json.dumps(chart_labels),
+        chart_values_json=json.dumps(chart_values),
+        # Attribution
+        attr_layer=attribution.get("trade_count_by_layer", {}),
+        # Win rate summary
+        wr_total=int(wr_total),
+        avg_win=fmt_money(win_rate_data.get("avg_win")),
+        avg_loss=fmt_money(win_rate_data.get("avg_loss")),
+        profit_factor=f"{win_rate_data['profit_factor']:.2f}" if win_rate_data.get("profit_factor") is not None else "—",
+        # Trade tables
+        trade_log=trade_log,
+        closed_trades=closed_trades,
+        # Improvements
+        improvements_html=improvements_html,
+        proposal_count=len(improvement_report.get("proposals", [])),
+    )
+
+    # Inject Chart.js inline (replace CDN reference pattern — template uses inline script)
+    # The template's <script> block references Chart directly; we inject it before </head>
+    if chart_js and chart_js != "/* Chart.js not available */":
+        html = html.replace("</style>\n</head>",
+                           f"</style>\n<script>{chart_js}</script>\n</head>")
 
     # Save
     os.makedirs(output_dir, exist_ok=True)
@@ -1133,12 +681,12 @@ if (ctx) {{
     latest_path = os.path.join(output_dir, "latest-dashboard.html")
 
     with open(dated_path, "w") as f:
-        f.write(dashboard_html)
+        f.write(html)
     with open(latest_path, "w") as f:
-        f.write(dashboard_html)
+        f.write(html)
 
     print(f"Dashboard saved to {dated_path}")
-    return dated_path
+    return html
 
 
 def main():

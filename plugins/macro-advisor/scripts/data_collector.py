@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -164,7 +165,19 @@ def fetch_fred_data(api_key, lookback_days=182):
         try:
             # Use extended start for YoY calculation
             fetch_start = yoy_start if freq in ("monthly", "quarterly") else start_date
-            data = fred.get_series(series_id, observation_start=fetch_start, observation_end=end_date)
+            # Retry with backoff on rate limit (FRED: 120 req/min)
+            data = None
+            for attempt in range(3):
+                try:
+                    data = fred.get_series(series_id, observation_start=fetch_start, observation_end=end_date)
+                    break
+                except Exception as e:
+                    if "429" in str(e) or "rate" in str(e).lower() or "limit" in str(e).lower():
+                        wait = 2 ** attempt  # 1s, 2s, 4s
+                        print(f"    Rate limited on {series_id}, retrying in {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        raise
             if data is not None and len(data) > 0:
                 data = data.dropna()
                 if len(data) > 0:
@@ -556,6 +569,10 @@ def main():
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument("--mode", choices=["weekly", "historical"], default="weekly",
                        help="weekly = 26-week lookback (default), historical = 5-year lookback")
+    parser.add_argument("--series", default=None,
+                       help="Comma-separated FRED series IDs for targeted pull (e.g., 'FYFSD,FGEXPND,A091RC1Q027SBEA'). "
+                            "When specified, only these series are fetched (no Yahoo, no derived metrics). "
+                            "Used by Skill 11 for on-demand research data.")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -564,6 +581,70 @@ def main():
     lookback = 182 if args.mode == "weekly" else 1825  # 26 weeks or 5 years
     today = datetime.now().strftime("%Y-%m-%d")
     week = datetime.now().strftime("%Y-W%V")
+
+    # Targeted series pull (used by Skill 11 for on-demand research)
+    if args.series:
+        series_ids = [s.strip() for s in args.series.split(",") if s.strip()]
+        print(f"=== Targeted FRED Pull — {today} ({len(series_ids)} series, lookback: {lookback} days) ===\n")
+
+        try:
+            from fredapi import Fred
+        except ImportError:
+            print("ERROR: fredapi not installed. Run: pip install fredapi")
+            return 1
+
+        fred = Fred(args.fred_key)
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=lookback)
+
+        results = {}
+        errors = []
+        for sid in series_ids:
+            for attempt in range(3):
+                try:
+                    data = fred.get_series(sid, observation_start=start_date, observation_end=end_date)
+                    if data is not None and len(data.dropna()) > 0:
+                        data = data.dropna()
+                        history = [{"date": ts.strftime("%Y-%m-%d"), "value": round(float(val), 4)}
+                                   for ts, val in data.items()]
+                        results[sid] = {
+                            "series_id": sid,
+                            "latest_value": round(float(data.iloc[-1]), 4),
+                            "latest_date": data.index[-1].strftime("%Y-%m-%d"),
+                            "observation_count": len(data),
+                            "history": history,
+                        }
+                    else:
+                        errors.append(f"{sid}: empty or no data")
+                    break
+                except Exception as e:
+                    if ("429" in str(e) or "rate" in str(e).lower() or "limit" in str(e).lower()) and attempt < 2:
+                        wait = 2 ** attempt
+                        print(f"  Rate limited on {sid}, retrying in {wait}s...")
+                        time.sleep(wait)
+                    else:
+                        errors.append(f"{sid}: {str(e)[:100]}")
+                        break
+
+        output = {
+            "collection_date": today,
+            "mode": "targeted",
+            "series_requested": series_ids,
+            "lookback_days": lookback,
+            "data": results,
+            "errors": errors,
+        }
+
+        out_path = output_dir / f"research-{today}-targeted.json"
+        with open(out_path, "w") as f:
+            json.dump(output, f, indent=2, default=str)
+
+        print(f"Fetched: {len(results)}/{len(series_ids)} series")
+        if errors:
+            for err in errors:
+                print(f"  Error: {err}")
+        print(f"Saved to: {out_path.name}")
+        return 0 if results else 1
 
     print(f"=== Macro Advisor Data Collection — {today} (mode: {args.mode}, lookback: {lookback} days) ===\n")
 

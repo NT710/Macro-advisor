@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Engine — {{ generated }}</title>
+<style>
+{% if font_data_uri %}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('{{ font_data_uri }}') format('woff2');
+}
+{% endif %}
+{{ css_variables }}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-feature-settings: 'tnum';
+}
+
+.container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: var(--space-6);
+}
+
+/* --- Header --- */
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+}
+
+header .timestamp {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+/* --- Tabs (flat underline style) --- */
+.tabs {
+    display: flex;
+    gap: var(--space-6);
+    margin-bottom: var(--space-6);
+    border-bottom: 1px solid var(--border);
+}
+
+.tab {
+    padding: var(--space-3) 0;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: var(--text-base);
+    font-weight: 500;
+    font-family: inherit;
+    transition: color 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+
+.tab:hover {
+    color: var(--text);
+}
+
+.tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.tab.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* --- Metrics strip (no card borders, flex row) --- */
+.metrics-strip {
+    display: flex;
+    gap: var(--space-6);
+    margin-bottom: var(--space-6);
+    padding: var(--space-4) 0;
+    flex-wrap: wrap;
+}
+
+.metric-item {
+    flex: 1;
+    min-width: 140px;
+    padding-right: var(--space-6);
+    border-right: 1px solid var(--border);
+}
+
+.metric-item:last-child {
+    border-right: none;
+    padding-right: 0;
+}
+
+.metric-item .label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-1);
+}
+
+.metric-item .value {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.metric-item .sparkline-container {
+    margin-top: var(--space-1);
+    height: 20px;
+}
+
+/* --- Alert --- */
+.alert {
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-6);
+    font-weight: 500;
+    font-size: var(--text-sm);
+    border-left: 3px solid var(--red);
+    background: rgba(248, 113, 113, 0.08);
+    color: var(--red);
+}
+
+/* --- Sections --- */
+.section {
+    margin-bottom: var(--space-6);
+}
+
+.section h3 {
+    font-size: var(--text-lg);
+    font-weight: 600;
+    margin-bottom: var(--space-4);
+    color: var(--text);
+}
+
+hr.divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-6) 0;
+}
+
+/* --- Chart container --- */
+.chart-container {
+    margin-bottom: var(--space-6);
+}
+
+.chart-container h3 {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-bottom: var(--space-3);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* --- Tables --- */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+}
+
+th {
+    text-align: left;
+    padding: var(--space-2) var(--space-3);
+    color: var(--text-muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--text-xs);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+tr:hover {
+    background: var(--surface);
+}
+
+/* --- Sort headers --- */
+th button.sort-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+th button.sort-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+th button.sort-btn .sort-indicator {
+    color: var(--text-muted);
+    font-size: var(--text-xs);
+}
+
+th button.sort-btn .sort-indicator.active {
+    color: var(--accent);
+}
+
+/* --- Trade filter --- */
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+}
+
+.filter-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: var(--space-3);
+    font-size: var(--text-sm);
+    font-family: inherit;
+    outline: none;
+}
+
+.filter-input::placeholder {
+    color: var(--text-muted);
+}
+
+.filter-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.trade-count {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* --- Value colors --- */
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+.buy-cell { color: var(--green); font-weight: 600; }
+.sell-cell { color: var(--red); font-weight: 600; }
+.reason-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty-state { text-align: center; color: var(--text-muted); padding: var(--space-8) !important; }
+
+/* --- Two column layout --- */
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+/* --- Improvements tab --- */
+.proposal-card {
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    border-left: 3px solid var(--yellow);
+    background: var(--surface);
+}
+
+.proposal-card.implemented {
+    border-left-color: var(--green);
+}
+
+.proposal-card.reverted {
+    border-left-color: var(--red);
+}
+
+.proposal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-3);
+}
+
+.proposal-header h4 {
+    font-size: var(--text-base);
+    font-weight: 600;
+}
+
+.proposal-status {
+    font-size: var(--text-xs);
+    padding: 2px var(--space-2);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+}
+
+.status-pending { color: var(--yellow); }
+.status-implemented, .status-effective { color: var(--green); }
+.status-ineffective { color: var(--red); }
+.status-inconclusive { color: var(--text-muted); }
+
+.proposal-detail {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-bottom: var(--space-1);
+}
+
+.proposal-detail strong {
+    color: var(--text);
+}
+
+.proposal-diff {
+    margin: var(--space-3) 0;
+    padding: var(--space-3);
+    background: var(--bg);
+    font-size: var(--text-sm);
+    font-family: var(--font-mono);
+}
+
+.diff-remove {
+    color: var(--red);
+    text-decoration: line-through;
+    opacity: 0.7;
+}
+
+.diff-add {
+    color: var(--green);
+}
+
+.recommendation-card {
+    background: var(--surface);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-2);
+    font-size: var(--text-sm);
+    border-left: 3px solid var(--accent);
+}
+
+.health-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: var(--space-2);
+}
+
+.health-improving { background: var(--green); }
+.health-stable { background: var(--accent); }
+.health-degrading { background: var(--red); }
+
+.action-hint {
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
+    background: rgba(96, 165, 250, 0.08);
+    border-left: 3px solid var(--accent);
+    font-size: var(--text-sm);
+    color: var(--accent);
+}
+
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.metric-card {
+    padding: var(--space-4);
+}
+
+.metric-card .label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-1);
+}
+
+.metric-card .value {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+@media (max-width: 768px) {
+    .two-col { grid-template-columns: 1fr; }
+    .metrics-strip { flex-direction: column; }
+    .metric-item { border-right: none; border-bottom: 1px solid var(--border); padding-right: 0; padding-bottom: var(--space-3); }
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>TRADING ENGINE</h1>
+        <span class="timestamp">Generated {{ generated }}</span>
+    </header>
+
+    {% if drawdown_alert %}
+    <div class="alert">
+        &#9888; DRAWDOWN ALERT: Portfolio is {{ current_drawdown }}% below high water mark.
+        Circuit breaker triggers at 10%.
+    </div>
+    {% endif %}
+
+    <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" data-tab="pnl" id="tab-btn-pnl" aria-controls="tab-pnl">P&L</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="trades" id="tab-btn-trades" aria-controls="tab-trades">Trades</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="improvements" id="tab-btn-improvements" aria-controls="tab-improvements">Improvements{% if proposal_count %} ({{ proposal_count }}){% endif %}</button>
+    </div>
+
+    {# ============================================================ #}
+    {# P&L TAB                                                      #}
+    {# ============================================================ #}
+    <div id="tab-pnl" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-pnl">
+        <div class="metrics-strip">
+            <div class="metric-item">
+                <div class="label">Portfolio Value</div>
+                <div class="value">{{ portfolio_value }}</div>
+                {% if sparkline_portfolio %}<div class="sparkline-container">{{ sparkline_portfolio }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Total P&L</div>
+                <div class="value {{ 'positive' if total_pl_raw > 0 else 'negative' if total_pl_raw < 0 else '' }}">{{ total_pl }}</div>
+                {% if sparkline_pl %}<div class="sparkline-container">{{ sparkline_pl }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Return</div>
+                <div class="value {{ 'positive' if total_return_raw > 0 else 'negative' if total_return_raw < 0 else '' }}">{{ total_return }}</div>
+            </div>
+            <div class="metric-item">
+                <div class="label">Sharpe</div>
+                <div class="value">{{ sharpe }}</div>
+            </div>
+            <div class="metric-item">
+                <div class="label">Win Rate</div>
+                <div class="value {{ 'positive' if win_rate_raw and win_rate_raw > 50 else '' }}">{{ win_rate }}</div>
+                {% if sparkline_winrate %}<div class="sparkline-container">{{ sparkline_winrate }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Max Drawdown</div>
+                <div class="value negative">{{ max_drawdown }}</div>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        {% if chart_labels %}
+        <div class="chart-container">
+            <h3>Portfolio Value</h3>
+            <canvas id="valueChart" height="80"></canvas>
+        </div>
+        {% else %}
+        <div class="chart-container">
+            <h3>Portfolio Value</h3>
+            <p class="empty-state">No portfolio snapshots yet. Run the trading engine to start tracking.</p>
+        </div>
+        {% endif %}
+
+        <hr class="divider">
+
+        <div class="two-col">
+            <div class="section">
+                <h3>Attribution by Layer</h3>
+                <table>
+                    <thead><tr><th>Layer</th><th>Trades</th></tr></thead>
+                    <tbody>
+                    {% if attr_layer %}
+                        {% for layer, count in attr_layer.items() %}
+                        <tr><td>{{ layer }}</td><td>{{ count }}</td></tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="2" class="empty-state">No trade attribution data yet</td></tr>
+                    {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="section">
+                <h3>Win Rate Summary</h3>
+                {% if wr_total > 0 %}
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <div class="label">Closed Trades</div>
+                        <div class="value">{{ wr_total }}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">Win Rate</div>
+                        <div class="value {{ 'positive' if win_rate_raw and win_rate_raw > 50 else '' }}">{{ win_rate }}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">Avg Win</div>
+                        <div class="value positive">{{ avg_win }}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">Avg Loss</div>
+                        <div class="value negative">{{ avg_loss }}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="label">Profit Factor</div>
+                        <div class="value">{{ profit_factor }}</div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="empty-state">No closed trades — win rate calculates after your first round-trip</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {# ============================================================ #}
+    {# TRADES TAB                                                   #}
+    {# ============================================================ #}
+    <div id="tab-trades" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-trades">
+
+        <div class="filter-bar">
+            <input type="text" class="filter-input" id="tradeFilter" placeholder="Filter by ticker or side..." aria-label="Filter trades">
+            <span class="trade-count" id="tradeCount">{{ trade_log | length }} trades</span>
+        </div>
+
+        <hr class="divider">
+
+        <div class="section">
+            <h3>Active Trades</h3>
+            <div style="overflow-x: auto;">
+            <table id="activeTradesTable">
+                <thead>
+                    <tr>
+                        <th><button class="sort-btn" data-col="0" data-type="date" aria-sort="descending">Date <span class="sort-indicator active">▼</span></button></th>
+                        <th>Run</th>
+                        <th><button class="sort-btn" data-col="2" data-type="text" aria-sort="none">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="3" data-type="text" aria-sort="none">Side <span class="sort-indicator">⇅</span></button></th>
+                        <th>Qty</th>
+                        <th>Price</th>
+                        <th>Type</th>
+                        <th>Layer</th>
+                        <th>Thesis</th>
+                        <th>Status</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if trade_log %}
+                    {% for t in trade_log %}
+                    <tr data-ticker="{{ t.symbol | default('', true) }}" data-side="{{ t.side | default('', true) }}">
+                        <td>{{ t.date[:10] if t.date else '' }}</td>
+                        <td>{{ t.run_type | default('', true) }}</td>
+                        <td><strong>{{ t.symbol | default('', true) }}</strong></td>
+                        <td class="{{ 'buy-cell' if t.side == 'buy' else 'sell-cell' }}">{{ (t.side | default('', true)) | upper }}</td>
+                        <td>{{ t.qty | default('', true) }}</td>
+                        <td>{{ t.fill_price | fmt_money }}</td>
+                        <td>{{ t.order_type | default('', true) }}</td>
+                        <td>{{ t.layer | default('', true) }}</td>
+                        <td>{{ t.thesis | default('—', true) }}</td>
+                        <td>{{ t.status | default('', true) }}</td>
+                        <td class="reason-cell">{{ (t.reason | default('', true))[:80] }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="11" class="empty-state">No trades recorded yet. Run the trading engine to see trades here.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        <div class="section">
+            <h3>Closed Trades</h3>
+            <div style="overflow-x: auto;">
+            <table id="closedTradesTable">
+                <thead>
+                    <tr>
+                        <th><button class="sort-btn" data-col="0" data-type="text" aria-sort="none">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th><button class="sort-btn" data-col="3" data-type="num" aria-sort="none">Days <span class="sort-indicator">⇅</span></button></th>
+                        <th>Entry Price</th>
+                        <th>Exit Price</th>
+                        <th><button class="sort-btn" data-col="6" data-type="num" aria-sort="none">P&L <span class="sort-indicator">⇅</span></button></th>
+                        <th>P&L %</th>
+                        <th>Layer</th>
+                        <th>Close Reason</th>
+                        <th>Bear Case Hit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% if closed_trades %}
+                    {% for ct in closed_trades %}
+                    {% set pl = ct.realized_pl | default(0, true) | float %}
+                    {% set pl_pct = ct.realized_pl_pct | default(0, true) | float %}
+                    <tr data-ticker="{{ ct.symbol | default('', true) }}" data-side="">
+                        <td><strong>{{ ct.symbol | default('', true) }}</strong></td>
+                        <td>{{ ct.entry_date | default('', true) }}</td>
+                        <td>{{ ct.exit_date | default('', true) }}</td>
+                        <td>{{ ct.holding_days | default('—', true) }}</td>
+                        <td>{{ ct.entry_price | fmt_money }}</td>
+                        <td>{{ ct.exit_price | fmt_money }}</td>
+                        <td class="{{ 'positive' if pl > 0 else 'negative' if pl < 0 else '' }}">{{ pl | fmt_money }}</td>
+                        <td class="{{ 'positive' if pl_pct > 0 else 'negative' if pl_pct < 0 else '' }}">{{ pl_pct | fmt_pct }}</td>
+                        <td>{{ ct.layer | default('', true) }}</td>
+                        <td>{{ ct.close_reason | default('', true) }}</td>
+                        <td>{% if ct.bear_case_realized == true %}&#10004;{% elif ct.bear_case_realized == false %}&#10008;{% else %}—{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="11" class="empty-state">No closed trades yet. Positions close when stop-loss or take-profit triggers.</td></tr>
+                {% endif %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+    </div>
+
+    {# ============================================================ #}
+    {# IMPROVEMENTS TAB                                             #}
+    {# ============================================================ #}
+    <div id="tab-improvements" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-improvements">
+        {{ improvements_html }}
+    </div>
+</div>
+
+<script>
+/* --- Tab switching --- */
+document.querySelectorAll('.tab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var tab = this.getAttribute('data-tab');
+        document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+        document.querySelectorAll('.tab').forEach(function(el) {
+            el.classList.remove('active');
+            el.setAttribute('aria-selected', 'false');
+        });
+        document.getElementById('tab-' + tab).classList.add('active');
+        this.classList.add('active');
+        this.setAttribute('aria-selected', 'true');
+    });
+    btn.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); }
+    });
+});
+
+/* --- Trade filter --- */
+(function() {
+    var filterInput = document.getElementById('tradeFilter');
+    var countEl = document.getElementById('tradeCount');
+    if (!filterInput) return;
+
+    var activeRows = document.querySelectorAll('#activeTradesTable tbody tr[data-ticker]');
+    var closedRows = document.querySelectorAll('#closedTradesTable tbody tr[data-ticker]');
+    var allRows = Array.prototype.slice.call(activeRows).concat(Array.prototype.slice.call(closedRows));
+    var totalCount = allRows.length;
+
+    filterInput.addEventListener('input', function() {
+        var q = this.value.toLowerCase().trim();
+        var shown = 0;
+        allRows.forEach(function(row) {
+            var ticker = (row.getAttribute('data-ticker') || '').toLowerCase();
+            var side = (row.getAttribute('data-side') || '').toLowerCase();
+            var match = !q || ticker.indexOf(q) !== -1 || side.indexOf(q) !== -1;
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        if (q && shown < totalCount) {
+            countEl.textContent = shown + ' of ' + totalCount + ' trades';
+        } else {
+            countEl.textContent = totalCount + ' trades';
+        }
+    });
+})();
+
+/* --- Column sorting --- */
+(function() {
+    document.querySelectorAll('.sort-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var table = this.closest('table');
+            var tbody = table.querySelector('tbody');
+            var colIdx = parseInt(this.getAttribute('data-col'));
+            var type = this.getAttribute('data-type');
+            var currentSort = this.getAttribute('aria-sort');
+            var newSort = currentSort === 'ascending' ? 'descending' : 'ascending';
+
+            // Reset all sort indicators in this table
+            table.querySelectorAll('.sort-btn').forEach(function(b) {
+                b.setAttribute('aria-sort', 'none');
+                b.querySelector('.sort-indicator').textContent = '⇅';
+                b.querySelector('.sort-indicator').classList.remove('active');
+            });
+
+            this.setAttribute('aria-sort', newSort);
+            var indicator = this.querySelector('.sort-indicator');
+            indicator.textContent = newSort === 'ascending' ? '▲' : '▼';
+            indicator.classList.add('active');
+
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-ticker]'));
+            rows.sort(function(a, b) {
+                var aVal = a.children[colIdx] ? a.children[colIdx].textContent.trim() : '';
+                var bVal = b.children[colIdx] ? b.children[colIdx].textContent.trim() : '';
+                if (type === 'num') {
+                    aVal = parseFloat(aVal.replace(/[$,%+]/g, '')) || 0;
+                    bVal = parseFloat(bVal.replace(/[$,%+]/g, '')) || 0;
+                } else if (type === 'date') {
+                    aVal = aVal || '0';
+                    bVal = bVal || '0';
+                }
+                var cmp;
+                if (type === 'num') {
+                    cmp = aVal - bVal;
+                } else {
+                    cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                }
+                return newSort === 'ascending' ? cmp : -cmp;
+            });
+            rows.forEach(function(row) { tbody.appendChild(row); });
+        });
+    });
+})();
+
+/* --- Portfolio value chart (Chart.js) --- */
+(function() {
+    var ctx = document.getElementById('valueChart');
+    if (!ctx) return;
+    var labels = {{ chart_labels_json }};
+    var values = {{ chart_values_json }};
+    if (labels.length === 0) return;
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Portfolio Value',
+                data: values,
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: labels.length > 20 ? 0 : 3,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return '$' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#8b8fa3', maxTicksLimit: 10 },
+                    grid: { color: 'rgba(46, 51, 69, 0.5)' }
+                },
+                y: {
+                    ticks: {
+                        color: '#8b8fa3',
+                        callback: function(value) { return '$' + value.toLocaleString(); }
+                    },
+                    grid: { color: 'rgba(46, 51, 69, 0.5)' }
+                }
+            }
+        }
+    });
+})();
+</script>
+</body>
+</html>

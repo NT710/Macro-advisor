@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Macro Advisor — {{ week }}</title>
+<style>
+{% if font_data_uri %}
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('{{ font_data_uri }}') format('woff2');
+}
+{% endif %}
+:root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3345;
+    --text: #e4e4e7;
+    --text-muted: #8b8fa3;
+    --accent: #60a5fa;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --orange: #fb923c;
+    --regime-goldilocks: #34d399;
+    --regime-overheating: #fbbf24;
+    --regime-stagflation: #f87171;
+    --regime-disinflation: #60a5fa;
+    --regime-goldilocks-bg: #34d39915;
+    --regime-overheating-bg: #fbbf2415;
+    --regime-stagflation-bg: #f8717115;
+    --regime-disinflation-bg: #60a5fa15;
+    --text-xs: 11px;
+    --text-sm: 13px;
+    --text-base: 15px;
+    --text-lg: 18px;
+    --text-xl: 24px;
+    --text-2xl: 36px;
+    --font-mono: 'SF Mono', 'Fira Code', monospace;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-12: 48px;
+    --space-16: 64px;
+    --shadow-1: 0 1px 3px rgba(0,0,0,.3);
+    --shadow-2: 0 4px 12px rgba(0,0,0,.4);
+    --shadow-3: 0 8px 24px rgba(0,0,0,.5);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-feature-settings: 'tnum';
+}
+
+/* --- Layout: Sidebar + Main --- */
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+.sidebar {
+    width: 200px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: var(--space-6) 0;
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+}
+.sidebar-header {
+    padding: 0 var(--space-6);
+    margin-bottom: var(--space-6);
+}
+.sidebar-title {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+}
+.sidebar-week {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+.sidebar-nav {
+    flex: 1;
+    list-style: none;
+}
+.sidebar-nav a {
+    display: block;
+    padding: var(--space-2) var(--space-6);
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    font-weight: 500;
+    border-left: 3px solid transparent;
+    transition: all 0.15s;
+}
+.sidebar-nav a:hover {
+    color: var(--text);
+}
+.sidebar-nav a.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+}
+.sidebar-regime {
+    padding: var(--space-4) var(--space-6);
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+}
+.sidebar-regime-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: var(--space-2);
+}
+.sidebar-regime-name {
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+.sidebar-regime-meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.main-content {
+    margin-left: 200px;
+    flex: 1;
+    padding: var(--space-8) var(--space-12);
+    max-width: 1100px;
+}
+
+/* --- Focus / Accessibility --- */
+*:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* --- Section Styling --- */
+.section {
+    margin-bottom: var(--space-16);
+}
+.section-title {
+    font-size: var(--text-xl);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-6);
+}
+.section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: var(--space-8) 0;
+}
+
+/* --- Hero Section --- */
+.hero {
+    display: flex;
+    gap: var(--space-8);
+    align-items: flex-start;
+    margin-bottom: var(--space-8);
+}
+.hero-map {
+    flex-shrink: 0;
+}
+.hero-info {
+    flex: 1;
+    min-width: 0;
+}
+.hero-regime-name {
+    font-size: var(--text-2xl);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+}
+.hero-confidence {
+    display: inline-block;
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+}
+.hero-direction {
+    font-size: var(--text-base);
+    color: var(--text-muted);
+    margin-top: var(--space-3);
+}
+.hero-weeks {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: var(--space-2);
+}
+.hero-forecasts {
+    margin-top: var(--space-6);
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+.hero-forecasts strong {
+    color: var(--text);
+}
+
+/* --- Metrics Strip --- */
+.metrics-strip {
+    display: flex;
+    gap: var(--space-6);
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    margin-top: var(--space-6);
+    flex-wrap: wrap;
+}
+.metric-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.metric-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.metric-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+}
+.metric-delta {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+}
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+.delta-flat { color: var(--text-muted); }
+
+/* --- What Changed --- */
+.change-card {
+    padding: var(--space-4) 0;
+    border-bottom: 1px solid var(--border);
+}
+.change-card:last-child { border-bottom: none; }
+.change-headline {
+    font-size: var(--text-base);
+    font-weight: 600;
+}
+.change-explanation {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+}
+.change-impact {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: var(--space-2);
+}
+.impact-bullish { color: var(--green); }
+.impact-bearish { color: var(--red); }
+.impact-neutral { color: var(--text-muted); }
+
+/* --- Mini Chart Grid --- */
+.mini-chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+.mini-chart-cell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: var(--space-4);
+}
+
+/* --- Timeline --- */
+.timeline-container {
+    overflow-x: auto;
+    padding: var(--space-4) 0;
+}
+.timeline-popover {
+    display: none;
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: var(--space-4);
+    max-width: 280px;
+    font-size: var(--text-sm);
+    box-shadow: var(--shadow-3);
+    z-index: 50;
+    color: var(--text);
+}
+.timeline-popover.visible { display: block; }
+.timeline-popover-week {
+    font-weight: 600;
+    font-size: var(--text-xs);
+    color: var(--accent);
+    margin-bottom: var(--space-2);
+}
+.regime-duration-bar {
+    height: 4px;
+    background: var(--surface2);
+    border-radius: 2px;
+    margin-top: var(--space-4);
+    overflow: hidden;
+}
+.regime-duration-fill {
+    height: 100%;
+    border-radius: 2px;
+}
+
+/* --- Thesis Index --- */
+.thesis-row {
+    border-bottom: 1px solid var(--border);
+}
+.thesis-summary {
+    padding: var(--space-4) 0;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.thesis-summary::-webkit-details-marker { display: none; }
+.thesis-summary::before {
+    content: '▸';
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    transition: transform 0.15s;
+}
+details[open] > .thesis-summary::before {
+    transform: rotate(90deg);
+}
+.thesis-name {
+    font-size: var(--text-base);
+    font-weight: 600;
+}
+.thesis-type-label {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.thesis-weeks {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+.thesis-conviction-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.conviction-track {
+    display: inline-block;
+    width: 64px;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.conviction-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+}
+.conviction-value {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+}
+.thesis-assumptions {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    margin-top: var(--space-1);
+    padding-left: 20px;
+}
+.thesis-detail {
+    padding: var(--space-6) 0;
+    padding-left: 20px;
+}
+.thesis-status-badge {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.status-active { color: var(--green); }
+.status-draft { color: var(--yellow); }
+
+/* --- Cross-Asset Heatmap --- */
+.heatmap-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--text-sm);
+}
+.heatmap-table th {
+    text-align: left;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}
+.heatmap-table td {
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--border);
+}
+.heatmap-favor { background: rgba(52, 211, 153, 0.08); }
+.heatmap-reduce { background: rgba(248, 113, 113, 0.08); }
+.direction-up { color: var(--green); }
+.direction-down { color: var(--red); }
+.direction-flat { color: var(--text-muted); }
+
+/* --- System Health --- */
+.skill-accordion summary {
+    padding: var(--space-3) 0;
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-sm);
+    border-bottom: 1px solid var(--border);
+}
+.skill-accordion summary::-webkit-details-marker { display: none; }
+.skill-accordion .skill-body {
+    padding: var(--space-4) 0;
+    font-size: var(--text-sm);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* --- Content Typography --- */
+h1 { font-size: var(--text-xl); font-weight: 700; margin: var(--space-8) 0 var(--space-4); letter-spacing: -0.02em; }
+h2 { font-size: var(--text-lg); font-weight: 600; margin: var(--space-6) 0 var(--space-3); color: var(--accent); }
+h3 { font-size: 16px; font-weight: 600; margin: var(--space-6) 0 var(--space-2); }
+h4 { font-size: 14px; font-weight: 600; margin: var(--space-4) 0 var(--space-2); }
+p { margin: var(--space-2) 0; }
+ul { margin: var(--space-2) 0 var(--space-2) var(--space-6); }
+li { margin: var(--space-1) 0; }
+hr { border: none; border-top: 1px solid var(--border); margin: var(--space-6) 0; }
+strong { color: #fff; }
+code { background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: var(--text-sm); font-family: var(--font-mono); }
+a { color: var(--accent); text-decoration: none; }
+.table-wrapper { overflow-x: auto; margin: var(--space-4) 0; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th { background: var(--surface2); padding: 10px 14px; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+tr:hover td { background: var(--surface2); }
+.code-block { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: var(--space-4); margin: var(--space-3) 0; overflow-x: auto; }
+.code-block pre { font-family: var(--font-mono); font-size: var(--text-sm); line-height: 1.5; }
+
+/* --- Empty State --- */
+.empty-state {
+    padding: var(--space-12) var(--space-8);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+}
+.empty-state-icon {
+    font-size: 32px;
+    margin-bottom: var(--space-4);
+    opacity: 0.3;
+}
+
+/* --- Chart Container (for Chart.js thesis charts) --- */
+.chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+}
+.chart-container h3 {
+    font-size: var(--text-sm);
+    font-weight: 600;
+    margin-bottom: var(--space-4);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+canvas { max-height: 400px; }
+
+/* --- Generated timestamp --- */
+.generated-meta {
+    font-size: var(--text-xs);
+    color: var(--text-muted);
+    padding: var(--space-6) 0;
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-16);
+}
+</style>
+</head>
+<body>
+
+<div class="layout">
+    <!-- Sidebar Navigation -->
+    <nav class="sidebar" aria-label="Dashboard navigation">
+        <div class="sidebar-header">
+            <div class="sidebar-title">Macro Advisor</div>
+            <div class="sidebar-week">Week {{ week }}</div>
+        </div>
+        <ul class="sidebar-nav" id="sidebarNav">
+            <li><a href="#overview" class="active">Overview</a></li>
+            <li><a href="#what-changed">What Changed</a></li>
+            <li><a href="#economy">Economy</a></li>
+            <li><a href="#timeline">Timeline</a></li>
+            <li><a href="#theses">Theses</a></li>
+            <li><a href="#assets">Assets</a></li>
+            <li><a href="#health">Health</a></li>
+        </ul>
+        <div class="sidebar-regime">
+            <span class="sidebar-regime-dot" style="background:{{ regime_color }}"></span>
+            <span class="sidebar-regime-name" style="color:{{ regime_color }}">{{ regime_data.regime }}</span>
+            <div class="sidebar-regime-meta">{{ regime_data.confidence }} · {{ regime_data.direction }}</div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- HERO SECTION -->
+        <section class="section" id="overview">
+            {% if regime_data.regime == "Unknown" and not metrics %}
+            <div class="empty-state">
+                <div class="empty-state-icon">◇</div>
+                <p>No snapshot data available — run /run-weekly first</p>
+            </div>
+            {% else %}
+            <div class="hero">
+                <div class="hero-map">
+                    {{ regime_map_svg }}
+                </div>
+                <div class="hero-info">
+                    <div class="hero-regime-name" style="color:{{ regime_color }}">{{ regime_data.regime }}</div>
+                    <div class="hero-confidence">Confidence: {{ regime_data.confidence }}</div>
+                    <div class="hero-direction">Direction: <strong>{{ regime_data.direction }}</strong></div>
+                    {% if weeks_unchanged > 0 %}
+                    <div class="hero-weeks">Unchanged for {{ weeks_unchanged }} week{{ 's' if weeks_unchanged != 1 else '' }}</div>
+                    {% endif %}
+                    <div class="hero-forecasts">
+                        {% if regime_data.forecast_6m != "Unknown" %}
+                        <div>6M forecast: <strong>{{ regime_data.forecast_6m }}</strong></div>
+                        {% endif %}
+                        {% if regime_data.forecast_12m != "Unknown" %}
+                        <div>12M forecast: <strong>{{ regime_data.forecast_12m }}</strong></div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {% if metrics %}
+            <div class="metrics-strip">
+                {% for m in metrics %}
+                <div class="metric-item">
+                    <span class="metric-label">{{ m.label }}</span>
+                    <span class="metric-value">{{ m.value }}</span>
+                    {% if m.change is not none %}
+                    <span class="metric-delta {% if m.change > 0 %}delta-up{% elif m.change < 0 %}delta-down{% else %}delta-flat{% endif %}">
+                        {{ '▲' if m.change > 0 else ('▼' if m.change < 0 else '─') }}{{ "%.1f"|format(m.change|abs) }}%
+                    </span>
+                    {% endif %}
+                    {% if m.sparkline %}
+                    <span class="metric-sparkline">{{ m.sparkline }}</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- WHAT CHANGED THIS WEEK -->
+        <section class="section" id="what-changed">
+            <h2 class="section-title">What Changed This Week</h2>
+            {% if key_changes %}
+            {% for change in key_changes %}
+            <div class="change-card">
+                <div class="change-headline">{{ change.headline }}</div>
+                {% if change.explanation %}
+                <div class="change-explanation">{{ change.explanation }}</div>
+                {% endif %}
+                <div class="change-impact impact-{{ change.impact }}">{{ change.impact }}</div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📋</div>
+                <p>No briefing available yet</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- ECONOMIC DASHBOARD -->
+        <section class="section" id="economy">
+            <h2 class="section-title">Economic Dashboard</h2>
+            {% if mini_charts and mini_charts|selectattr("svg")|list %}
+            <div class="mini-chart-grid">
+                {% for mc in mini_charts %}
+                {% if mc.svg %}
+                <div class="mini-chart-cell">
+                    {{ mc.svg }}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📊</div>
+                <p>Check back after your first weekly run</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- REGIME EVOLUTION TIMELINE -->
+        <section class="section" id="timeline">
+            <h2 class="section-title">Regime Evolution</h2>
+            {% if timeline_svg %}
+            <div class="timeline-container" style="position:relative">
+                {{ timeline_svg }}
+                <div class="timeline-popover" id="timelinePopover">
+                    <div class="timeline-popover-week" id="popoverWeek"></div>
+                    <div id="popoverSummary"></div>
+                </div>
+            </div>
+            {% if regime_history %}
+            <div class="regime-duration-bar">
+                <div class="regime-duration-fill" style="width:{{ (weeks_unchanged / (regime_history|length)) * 100 if regime_history|length > 0 else 0 }}%; background:{{ regime_color }}"></div>
+            </div>
+            <div style="font-size:var(--text-xs); color:var(--text-muted); margin-top:var(--space-2)">
+                {{ regime_data.regime }} for {{ weeks_unchanged }} of {{ regime_history|length }} tracked weeks
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">⏱</div>
+                <p>No history yet — regime tracking starts after your first run</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- THESES -->
+        <section class="section" id="theses">
+            <h2 class="section-title">Theses</h2>
+            {% if theses %}
+            {% for t in theses %}
+            <details class="thesis-row">
+                <summary class="thesis-summary" tabindex="0">
+                    <span class="thesis-name">{{ t.name }}</span>
+                    <span class="thesis-type-label">{{ t.thesis_type }}</span>
+                    <span class="thesis-status-badge {% if t.status == 'ACTIVE' %}status-active{% else %}status-draft{% endif %}">{{ t.status }}</span>
+                    {% if t.weeks_active %}
+                    <span class="thesis-weeks">{{ t.weeks_active }}</span>
+                    {% endif %}
+                    <span class="thesis-conviction-bar">
+                        <span class="conviction-track">
+                            <span class="conviction-fill" style="width:{{ t.conviction }}%; background:{{ regime_color }}"></span>
+                        </span>
+                        <span class="conviction-value">{{ t.conviction }}%</span>
+                    </span>
+                </summary>
+                {% if t.assumptions_total > 0 %}
+                <div class="thesis-assumptions">
+                    Assumptions: {{ t.assumptions_intact }}/{{ t.assumptions_total }} intact
+                    {% if t.assumptions_total - t.assumptions_intact > 0 %}
+                    · {{ t.assumptions_total - t.assumptions_intact }} under pressure
+                    {% endif %}
+                </div>
+                {% endif %}
+                <div class="thesis-detail">
+                    {% if t.has_chart %}
+                    <div class="chart-container">
+                        <h3>Thesis Chart</h3>
+                        <canvas id="thesis-chart-{{ t.chart_index }}" data-thesis-key="{{ t.thesis_key }}"></canvas>
+                    </div>
+                    {% endif %}
+                    {{ t.content_html }}
+                </div>
+            </details>
+            {% endfor %}
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">📈</div>
+                <p>No active theses — run /run-weekly to generate thesis candidates</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- CROSS-ASSET HEATMAP -->
+        <section class="section" id="assets">
+            <h2 class="section-title">Cross-Asset View</h2>
+            {% if cross_asset %}
+            <table class="heatmap-table">
+                <thead>
+                    <tr>
+                        <th>Asset</th>
+                        <th>Direction</th>
+                        <th>Conviction</th>
+                        <th>Δ Week</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in cross_asset %}
+                    {% set dir_lower = (row.direction|default('')).lower() %}
+                    {% set row_class = 'heatmap-favor' if 'favor' in dir_lower or 'long' in dir_lower or 'buy' in dir_lower else ('heatmap-reduce' if 'reduce' in dir_lower or 'short' in dir_lower or 'sell' in dir_lower else '') %}
+                    <tr class="{{ row_class }}">
+                        <td><strong>{{ row.asset }}</strong></td>
+                        <td>
+                            {% if 'favor' in dir_lower or 'long' in dir_lower or 'buy' in dir_lower %}
+                            <span class="direction-up">▲</span>
+                            {% elif 'reduce' in dir_lower or 'short' in dir_lower or 'sell' in dir_lower %}
+                            <span class="direction-down">▼</span>
+                            {% else %}
+                            <span class="direction-flat">─</span>
+                            {% endif %}
+                            {{ row.direction|default('') }}
+                        </td>
+                        <td>{{ row.conviction|default('') }}</td>
+                        <td>{{ row.change|default('─') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <div class="empty-state-icon">🔲</div>
+                <p>No cross-asset data available</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <hr class="section-divider">
+
+        <!-- SYSTEM HEALTH -->
+        <section class="section" id="health">
+            <h2 class="section-title">System Health</h2>
+
+            {% if improvement_html %}
+            <details class="skill-accordion">
+                <summary><strong>Improvement Report</strong></summary>
+                <div class="skill-body">{{ improvement_html }}</div>
+            </details>
+            {% endif %}
+
+            {% if skills %}
+            <h3 style="margin-top:var(--space-6)">Skills ({{ skills|length }})</h3>
+            {% for skill in skills %}
+            <details class="skill-accordion">
+                <summary>
+                    <strong>{{ skill.name }}</strong>
+                    <span style="color:var(--text-muted); font-size:var(--text-xs); margin-left:var(--space-3)">{{ skill.description }}...</span>
+                </summary>
+                <div class="skill-body">{{ skill.content_html }}</div>
+            </details>
+            {% endfor %}
+            {% endif %}
+
+            {% if methodology_html %}
+            <details class="skill-accordion" style="margin-top:var(--space-6)">
+                <summary><strong>Methodology</strong></summary>
+                <div class="skill-body">{{ methodology_html }}</div>
+            </details>
+            {% endif %}
+
+            {% if not improvement_html and not skills and not methodology_html %}
+            <div class="empty-state">
+                <div class="empty-state-icon">⚙</div>
+                <p>No system data available</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Generated timestamp -->
+        <div class="generated-meta">
+            Generated {{ generated }} · Macro Advisor {{ week }}
+        </div>
+
+    </main>
+</div>
+
+<!-- Chart.js (for thesis charts only) -->
+<script>
+{{ chart_js }}
+</script>
+
+<script>
+// --- Scroll-spy for sidebar navigation ---
+(function() {
+    const sections = document.querySelectorAll('.section[id]');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+    if (!sections.length || !navLinks.length) return;
+
+    const observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                navLinks.forEach(function(link) { link.classList.remove('active'); });
+                const activeLink = document.querySelector('.sidebar-nav a[href="#' + entry.target.id + '"]');
+                if (activeLink) activeLink.classList.add('active');
+            }
+        });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+
+    sections.forEach(function(section) { observer.observe(section); });
+})();
+
+// --- Timeline popover ---
+(function() {
+    var popover = document.getElementById('timelinePopover');
+    var popoverWeek = document.getElementById('popoverWeek');
+    var popoverSummary = document.getElementById('popoverSummary');
+    if (!popover) return;
+
+    function showPopover(dot) {
+        var week = dot.getAttribute('data-week') || '';
+        var summary = dot.getAttribute('data-summary') || 'No summary available';
+        popoverWeek.textContent = week;
+        popoverSummary.textContent = summary;
+
+        var rect = dot.getBoundingClientRect();
+        var container = dot.closest('.timeline-container');
+        if (!container) return;
+        var containerRect = container.getBoundingClientRect();
+
+        popover.style.left = Math.max(0, rect.left - containerRect.left - 60) + 'px';
+        popover.style.top = (rect.bottom - containerRect.top + 8) + 'px';
+        popover.classList.add('visible');
+    }
+
+    function hidePopover() {
+        popover.classList.remove('visible');
+    }
+
+    document.querySelectorAll('.timeline-dot').forEach(function(dot) {
+        dot.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (popover.classList.contains('visible') && popoverWeek.textContent === dot.getAttribute('data-week')) {
+                hidePopover();
+            } else {
+                showPopover(dot);
+            }
+        });
+        dot.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (popover.classList.contains('visible') && popoverWeek.textContent === dot.getAttribute('data-week')) {
+                    hidePopover();
+                } else {
+                    showPopover(dot);
+                }
+            }
+        });
+    });
+
+    document.addEventListener('click', function() { hidePopover(); });
+})();
+
+// --- Thesis Chart.js rendering ---
+(function() {
+    var thesisChartSpecs = {{ thesis_chart_specs_json|default('{}') }};
+
+    Object.keys(thesisChartSpecs).forEach(function(key) {
+        var spec = thesisChartSpecs[key];
+        var canvas = document.querySelector('canvas[data-thesis-key="' + key + '"]');
+        if (!canvas || canvas._chartRendered) return;
+
+        if (spec.data && spec.data.datasets) {
+            // Format A: native Chart.js config
+            var chartConfig = {
+                type: spec.type || 'line',
+                data: spec.data,
+                options: spec.options || {
+                    responsive: true, maintainAspectRatio: true, aspectRatio: 2.5,
+                    scales: {
+                        x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8fa3', maxTicksLimit: 10 } },
+                        y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8fa3' } }
+                    },
+                    plugins: { legend: { labels: { color: '#8b8fa3' } } }
+                }
+            };
+            if (spec.options) {
+                var s = chartConfig.options.scales = chartConfig.options.scales || {};
+                ['x','y','y1'].forEach(function(axis) {
+                    if (s[axis]) {
+                        s[axis].grid = s[axis].grid || {};
+                        s[axis].grid.color = s[axis].grid.color || 'rgba(255,255,255,0.06)';
+                        s[axis].ticks = s[axis].ticks || {};
+                        s[axis].ticks.color = s[axis].ticks.color || '#8b8fa3';
+                    }
+                });
+                var p = chartConfig.options.plugins = chartConfig.options.plugins || {};
+                p.legend = p.legend || {};
+                p.legend.labels = p.legend.labels || {};
+                p.legend.labels.color = p.legend.labels.color || '#8b8fa3';
+            }
+            if (typeof Chart !== 'undefined') {
+                new Chart(canvas.getContext('2d'), chartConfig);
+            }
+            canvas._chartRendered = true;
+        } else if (spec.datasets) {
+            // Format B: internal format
+            var datasets = spec.datasets.map(function(ds, idx) {
+                return {
+                    label: ds.label || 'Series',
+                    data: ds.data || [],
+                    borderColor: ds.color || ['#60a5fa', '#34d399', '#f87171', '#fbbf24'][idx % 4],
+                    backgroundColor: 'transparent',
+                    borderWidth: 2, pointRadius: 0, tension: 0.3
+                };
+            });
+            if (typeof Chart !== 'undefined' && datasets.length > 0 && datasets[0].data.length > 0) {
+                new Chart(canvas.getContext('2d'), {
+                    type: spec.chart_type || 'line',
+                    data: {
+                        labels: datasets[0].data.map(function(d) { return d.x || d.date || ''; }),
+                        datasets: datasets.map(function(ds) {
+                            return Object.assign({}, ds, {
+                                data: ds.data.map(function(d) { return d.y || d.value || d; })
+                            });
+                        })
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: true, aspectRatio: 2.5,
+                        scales: {
+                            x: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8fa3', maxTicksLimit: 10 } },
+                            y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#8b8fa3' } }
+                        },
+                        plugins: { legend: { labels: { color: '#8b8fa3' } } }
+                    }
+                });
+                canvas._chartRendered = true;
+            }
+        }
+    });
+
+    // Hide raw Chart.js JSON spec code blocks
+    document.querySelectorAll('.thesis-detail .code-block').forEach(function(block) {
+        var text = block.textContent || '';
+        if (text.indexOf('"type"') !== -1 && text.indexOf('"datasets"') !== -1 &&
+            (text.indexOf('"borderColor"') !== -1 || text.indexOf('"chart_type"') !== -1)) {
+            block.style.display = 'none';
+        }
+    });
+    document.querySelectorAll('.thesis-detail h3, .thesis-detail h4').forEach(function(header) {
+        var text = (header.textContent || '').toLowerCase();
+        if (text.indexOf('chart specification') !== -1 || text.indexOf('chart spec') !== -1) {
+            var next = header.nextElementSibling;
+            if (next && next.style.display === 'none') {
+                header.style.display = 'none';
+            }
+        }
+    });
+})();
+</script>
+
+</body>
+</html>

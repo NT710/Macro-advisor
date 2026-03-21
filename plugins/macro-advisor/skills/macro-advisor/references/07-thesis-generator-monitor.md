@@ -38,7 +38,9 @@ When genuinely uncertain, classify as tactical but include a note: "Flagged for 
 
 ## Function A: Generate Thesis Candidates
 
-### What to Look For
+Thesis candidates come from two sources: data patterns (primary) and external analyst frameworks (secondary). Both feed into the same classification and template system.
+
+### Source 1: Data Patterns
 
 Read the weekly synthesis output. These are common pattern categories, not an exhaustive list:
 
@@ -49,6 +51,34 @@ Read the weekly synthesis output. These are common pattern categories, not an ex
 5. **Positioning extremes aligned with macro catalysts** — crowded positions meeting an incoming catalyst for reversal
 6. **Anything else that looks anomalous.** The categories above are common patterns, not a closed set. If something in the data strikes you as unusual, investigate it even if it doesn't fit these five boxes. The best theses often come from noticing something no framework predicted.
 
+### Source 2: Analyst-Sourced Investigation Candidates
+
+Read the current week's analyst monitor output (`outputs/collection/YYYY-Www-analyst-monitor.md`). Look for structural views, novel frameworks, or macro arguments that meet ALL of these criteria:
+
+1. **Not already captured by an existing thesis.** Check `outputs/theses/active/` — if we already have a thesis covering this theme, the analyst view belongs in Function B's cross-referencing, not here.
+2. **Not already being pursued as a thesis candidate from data patterns.** If Source 1 already flagged this theme for thesis generation this week, the analyst view belongs as supporting evidence, not a separate investigation. However: if the analyst offers a *different mechanism* or *different time horizon* than what the synthesis identified, that IS worth investigating separately — same theme, different thesis.
+3. **Contains a testable mechanism.** "Markets will crash" is an opinion. "Japan's YCC exit will force a repricing of global duration because Japanese institutional investors hold $X trillion in foreign bonds and will repatriate as domestic yields rise" is a mechanism. Only the second is worth investigating.
+
+When a candidate passes all three criteria, flag it for Skill 11 investigation:
+
+```
+ANALYST-SOURCED INVESTIGATION CANDIDATE
+Source analyst: [name]
+Original insight: [what they said, dated, with reasoning — not just conclusion]
+Source file: outputs/collection/YYYY-Www-analyst-monitor.md
+Why this is novel: [what does this see that our data/synthesis doesn't?]
+Proposed investigation: [what would Skill 11 need to research to validate or invalidate this?]
+Classification: [likely tactical / likely structural — based on the three classification questions above]
+```
+
+This automatically triggers Skill 11 to investigate. No human approval gate — the quality filter is Skill 11's research standards. If Skill 11 can't find quantified structural evidence, the thesis either doesn't get generated (research brief concludes "not viable") or lands as a low-conviction DRAFT. The provenance tag ensures the user can always see where the idea originated.
+
+**Guardrails against analyst-dependency:**
+- An analyst saying something doesn't make it true. The investigation must produce independent evidence.
+- If Skill 11 research relies primarily on the analyst's own data/claims rather than independent sources, flag it: "Evidence base is thin — primarily sourced from originating analyst."
+- Do not generate more than 2 analyst-sourced investigation candidates per week. If the analyst monitor surfaces 5 interesting ideas, pick the 2 with the clearest testable mechanisms. The rest can be noted in the monitor output for future weeks.
+- Track analyst-sourced vs. data-sourced thesis origins in the meta block. If analyst-sourced theses consistently outnumber data-sourced ones, the system is drifting from data-driven to opinion-driven — Skill 8 should flag this.
+
 ### Tactical Thesis Template
 
 For tactical theses (the default), produce:
@@ -57,7 +87,8 @@ For tactical theses (the default), produce:
 ### THESIS CANDIDATE: [Short descriptive name]
 **Status:** DRAFT — Pending review
 **Generated:** [Date]
-**Source:** Weekly Synthesis [Week reference]
+**Source:** Weekly Synthesis [Week reference] OR Analyst-sourced: [analyst name] via [Week reference] analyst monitor
+**Provenance:** [data-pattern / analyst-sourced]
 
 **Plain English Summary:**
 [One paragraph for a smart non-specialist. What are we betting on, why, what ETFs would we use, and what would make us exit? No jargon. If your non-finance friend couldn't understand this paragraph, rewrite it.]
@@ -93,6 +124,9 @@ The non-obvious second/third-order plays are often the better risk/reward becaus
 **Kill switch:** [What specific, measurable outcome invalidates this thesis? This is the most important field. If this condition is met, the thesis is dead. No negotiating. Include the plain English meaning: "If oil goes above $100 (meaning the geopolitical situation is getting worse, not better), exit the trade."]
 
 **Time horizon:** [When should this thesis be re-evaluated if neither trigger nor kill switch fires? The horizon should follow from the mechanism, not from a default. A thesis driven by a single policy meeting might resolve in weeks. A thesis about a credit cycle turning might play out over 12-18 months. A structural shift in energy policy could be multi-year. Don't force a short horizon on a long thesis or vice versa. Examples: "Reassess after June Fed meeting", "12 months from generation — credit cycles are slow", "Reassess when US election outcome is known."]
+
+## Analyst Cross-References
+[Initially empty. Populated by Function B monitoring step 7 when external analyst insight is relevant to this thesis.]
 ```
 
 ### Generation Standards
@@ -114,7 +148,8 @@ For structural theses (requires Skill 11 research brief as input), produce:
 **Status:** DRAFT — Pending review
 **Classification:** Structural
 **Generated:** [Date]
-**Source:** Structural Research Brief [reference] + Weekly Synthesis [Week reference]
+**Source:** Structural Research Brief [reference] + Weekly Synthesis [Week reference] OR Analyst-sourced: [analyst name] via [Week reference] analyst monitor
+**Provenance:** [data-pattern / analyst-sourced]
 **Research Brief:** `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
 **Plain English Summary:**
@@ -185,6 +220,9 @@ For structural theses (requires Skill 11 research brief as input), produce:
 **Safety net:** If a structural thesis has been ACTIVE for 6+ months with no trigger firing, run a full review anyway. This is a calendar-based backstop — it catches slow-moving changes that don't cross weekly thresholds individually but may have shifted the picture cumulatively. Be honest about what it is: a hedge against monitoring blind spots, not a data signal.
 
 If a full review reveals material changes to the structural picture, flag for Skill 11 research update.
+
+## Analyst Cross-References
+[Initially empty. Populated by Function B monitoring step 7 when external analyst insight is relevant to this thesis.]
 ```
 
 ### Additional Generation Standards for Structural Theses
@@ -205,7 +243,8 @@ All standards from the tactical template apply, plus:
 Read ALL of the following before monitoring:
 - Active thesis files from `outputs/theses/active/`
 - Weekly synthesis output (Skill 6) — for regime assessment and cross-asset view
-- Analyst monitor output (Skill 10, `outputs/collection/YYYY-Www-analyst-monitor.md`) — for external frameworks and insights that may be relevant to thesis assumptions or parameters
+- Analyst themes index (`outputs/collection/analyst-themes.md`) — scan for themes relevant to active theses. If a theme overlaps with a thesis (e.g., analyst focused on "credit complacency" and you have a credit spread thesis), follow the `Detail` link to read the full weekly analyst monitor output for that week's substance. Only read the full weekly file when a theme is relevant — don't read every historical analyst file every week.
+- Current week analyst monitor output (Skill 10, `outputs/collection/YYYY-Www-analyst-monitor.md`) — always read the current week's full output for fresh insights.
 - Data snapshot — for hard numbers to check assumptions against
 
 ### Monitoring Process
@@ -227,6 +266,23 @@ For each active thesis, check:
    Recommendation: [review/adjust/no change — with reasoning]
    ```
    This is not about adopting external views uncritically. It's about ensuring the system doesn't ignore relevant information just because it arrived through a different skill.
+
+   **Write the finding to the thesis file.** When a Parameter Review is generated, append it to the relevant thesis file in `outputs/theses/active/`. Add it under an `## Analyst Cross-References` section at the bottom of the file. If the section doesn't exist yet, create it. Each entry is timestamped and attributed:
+
+   ```markdown
+   ## Analyst Cross-References
+
+   ### [Date] — [Analyst name]
+   **Parameter reviewed:** [which assumption, kill switch, or mechanism element]
+   **External insight:** [what the analyst said — the substance, not a summary of the summary]
+   **Source:** [link to weekly analyst monitor file, e.g., outputs/collection/YYYY-Www-analyst-monitor.md]
+   **Recommendation at time of review:** [review/adjust/no change — with reasoning]
+   **Action taken:** [Pending user review / Parameter adjusted / No change]
+   ```
+
+   This ensures the analyst insight travels with the thesis it informed. When a thesis is later reviewed (by Skill 12 for presentation, by the user for decision-making, or by this skill in future weeks), the cross-reference history is right there — not buried in a weekly analyst file from three weeks ago. It also creates a record of how external views influenced (or didn't influence) thesis parameters over time.
+
+   Keep the entries chronological. Don't remove old entries even if the parameter was later adjusted — the history of what was considered and why matters for the self-improvement loop.
 
 ### Status Table
 
@@ -297,11 +353,15 @@ CLOSED → Final status. Record outcome in thesis log.
 ---
 meta:
   skill: thesis-generator-monitor
-  skill_version: "1.3"
+  skill_version: "1.5"
   run_date: "[ISO date]"
   function: [generate/monitor/both]
   theses_monitored: [number]
   theses_generated: [number]
+  theses_generated_data_sourced: [number]
+  theses_generated_analyst_sourced: [number]
+  analyst_investigation_candidates_flagged: [number]
+  analyst_investigations_triggered: [number]
   theses_invalidated: [number]
   theses_strengthened: [number]
   theses_weakened: [number]

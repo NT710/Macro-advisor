@@ -5,6 +5,16 @@ allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 
 Run the first-time setup for the Macro Advisor system. Execute each step sequentially. Do not skip steps. Do not proceed until each step is confirmed working.
 
+## Step 0: Verify Workspace Folder
+
+Before anything else, check that the user has selected a workspace folder in Cowork. The workspace folder is where all outputs, config, and data persist between sessions. Without it, everything is written to a temporary directory that vanishes.
+
+Check if the current working directory is inside a Cowork workspace (i.e., under `/sessions/*/mnt/` with a user-selected folder mounted). If the path looks like a temporary session directory with no mounted folder, stop and tell the user:
+
+"You need to select a workspace folder before running setup. Click the folder icon in Cowork and choose a folder on your computer — this is where all macro advisor outputs, config, and data will be saved. Once selected, run `/macro-advisor:setup` again."
+
+Do not proceed past this step without a workspace folder.
+
 ## Step 1: Install Python Dependencies
 
 ```bash
@@ -150,4 +160,16 @@ Run a quick validation:
 
 Report results. If everything passes, tell the user:
 
-"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with /run-weekly."
+"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with `/run-weekly`."
+
+## Step 11: Trading Engine Introduction
+
+After setup is complete, introduce the Trading Engine:
+
+"Your Macro Advisor is ready. One more thing worth knowing about:
+
+**The Trading Engine** is a companion plugin in this marketplace that can paper-trade your macro theses automatically on Alpaca. It reads the regime assessments and investment theses your Macro Advisor produces, translates them into portfolio positions with mandatory devil's advocate reasoning for every trade, executes on Alpaca paper trading, and tracks P&L. Nothing trades with real money — it's a paper trading sandbox for testing whether the macro framework's thesis calls actually make money over time.
+
+If you'd like to try it, run `/trading-engine:setup` — it takes about 5 minutes (you'll need a free Alpaca paper trading account). The Trading Engine is scheduled to run 2 hours after the Macro Advisor so it always has fresh data to work with."
+
+This step is informational only — do not block setup completion on it. If the user wants to set up the trading engine, they can do so at any time.

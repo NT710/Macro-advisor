@@ -6,12 +6,43 @@ Run first-principles research on structural macro themes before they become thes
 
 ## When to Invoke
 
-This skill fires in two ways:
+This skill fires in three ways:
 
-1. **Flagged by Skill 7.** During thesis generation, if a pattern involves physical constraints, supply-side bottlenecks, multi-year cycles, or structural market dislocations, Skill 7 flags it: "This pattern warrants structural research before thesis generation. Invoke Skill 11."
-2. **Manual invocation.** The user identifies a structural theme worth investigating. No weekly chain dependency required.
+1. **Flagged by Skill 7 from data patterns.** During thesis generation, if a pattern involves physical constraints, supply-side bottlenecks, multi-year cycles, or structural market dislocations, Skill 7 flags it: "This pattern warrants structural research before thesis generation. Invoke Skill 11."
+2. **Flagged by Skill 7 from analyst-sourced candidates.** When Skill 7 Function A identifies an external analyst framework or structural view that isn't captured by an existing thesis or the weekly synthesis, it flags an investigation candidate that auto-triggers this skill. The analyst's view is the starting point for research, not the conclusion — this skill independently validates or invalidates the analyst's framework.
+3. **Manual invocation.** The user identifies a structural theme worth investigating. No weekly chain dependency required.
 
 This skill does NOT run weekly. Most weeks produce zero structural research briefs. That's correct — structural themes emerge infrequently.
+
+---
+
+## Data Access
+
+Skill 11 has access to three data sources, checked in this order:
+
+### 1. Existing data snapshot (read first)
+Read `outputs/data/latest-snapshot.json` and `outputs/data/latest-data-full.json`. The weekly snapshot contains 5 years of FRED and Yahoo Finance data for the system's core series. Check here first — the data you need may already exist.
+
+### 2. On-demand FRED pulls (if snapshot doesn't cover it)
+If the investigation requires a FRED series not in the weekly snapshot, pull it directly using the data collector's targeted mode:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/research-temp/ --series "SERIES1,SERIES2" --mode historical
+```
+Read the FRED API key from `config/user-config.json`. The `--series` flag accepts comma-separated FRED series IDs (e.g., `"FYFSD,FGEXPND,A091RC1Q027SBEA"` for fiscal deficit, federal expenditure, interest payments). It pulls only those series (no Yahoo, no derived metrics) and saves to the specified output directory. Rate limiting is handled automatically with retry and backoff.
+
+On-demand pulls are saved to `outputs/data/research-temp/` — NOT to the main snapshot. The weekly snapshot stays Skill 0's domain. Output files are named `research-YYYY-MM-DD-targeted.json`.
+
+**Log every additional series pulled** in the research brief's meta block under `additional_series_pulled`. If the same series gets pulled across multiple investigations, that's a signal to Skill 8 that it should be added to the permanent weekly collection.
+
+### 3. On-demand Yahoo Finance / ETF price data
+Use the ETF lookup script for price-based historical research:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/etf_lookup.py --theme "[keywords]"
+```
+For specific ticker history not covered by the lookup script, use web search to find price data from Yahoo Finance or other market data sources.
+
+### 4. Web search (for everything else)
+Industry reports, government publications, analyst research, company filings, geological surveys, engineering assessments — whatever the investigation requires. This is unchanged from the current approach but is now explicitly the fourth source, not the first.
 
 ---
 
@@ -183,6 +214,7 @@ Compile the research into a brief with the following sections. This is the input
 **Is this ready for Skill 7 thesis generation?** [Yes / No / Needs more research on X]
 **Conviction level:** [High / Medium / Low — based on strength of quantified evidence vs. contrarian case]
 **Bull-bear balance check:** [Bull claims: N, Bear claims: N. If bull claims exceed bear claims by more than 3:1, explain why the contrarian case is genuinely weaker — or reduce conviction. Lopsided evidence is a flag, not a feature.]
+**Evidence independence:** [High / Medium / Low — for analyst-sourced investigations: how much of the evidence comes from independent sources vs. the originating analyst's own claims? Low independence = the research is essentially parroting the analyst. This should reduce conviction regardless of how compelling the argument sounds.]
 **Recommended thesis type:** [Directional / Relative value / Hedged]
 **Recommended time horizon:** [Derived from the binding constraints, not from convention]
 ```
@@ -205,6 +237,7 @@ Compile the research into a brief with the following sections. This is the input
 - The "What We Have To Believe" assumptions are not independently testable
 - The brief relies on historical correlation without explaining the causal mechanism
 - The brief reads like it's arguing for a predetermined conclusion rather than testing a hypothesis
+- [Analyst-sourced investigations] The evidence base relies primarily on the originating analyst's own data, charts, or claims without independent verification from separate sources. The analyst's framework is a hypothesis to test, not evidence to cite.
 
 ---
 
@@ -231,14 +264,22 @@ Compile the research into a brief with the following sections. This is the input
 ---
 meta:
   skill: structural-research
-  skill_version: "1.0"
+  skill_version: "1.1"
   run_date: "[ISO date]"
   theme: "[theme name]"
+  trigger: [skill-7-data-pattern / skill-7-analyst-sourced / manual / investigate-theme-command]
+  analyst_source: "[analyst name, if analyst-sourced — otherwise null]"
   research_passes_completed: [1-6]
   quantified_claims: [number]
   contrarian_strength: [weak/moderate/strong]
   thesis_ready: [yes/no/needs-more-research]
   conviction: [high/medium/low]
+  data_access:
+    snapshot_used: [true/false]
+    additional_series_pulled: ["SERIES1", "SERIES2"]
+    etf_lookup_used: [true/false]
+    web_searches_conducted: [number]
+  evidence_independence: [high/medium/low — "low" if evidence base relies primarily on originating analyst's own data]
   quality:
     self_score: [0.0-1.0]
     confidence: [high/medium/low]
