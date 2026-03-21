@@ -6,7 +6,7 @@ A Claude Cowork plugin marketplace for autonomous macro research and paper tradi
 
 ### Macro Advisor `v0.4.0`
 
-Autonomous macro research system. Pulls 62+ economic data series from FRED and Yahoo Finance, identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) using the Alpine Macro liquidity-first framework, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
+Autonomous macro research system. Pulls 74+ economic data series from FRED, Yahoo Finance, and CFTC COT (via CFTC SODA API — free, no key needed), identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) using the Alpine Macro liquidity-first framework, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
 **Commands:**
 
