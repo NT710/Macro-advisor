@@ -1,6 +1,6 @@
 {
   "name": "macro-advisor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Autonomous macro research system using the Alpine Macro framework. Collects economic data, monitors central banks, tracks liquidity conditions, scans geopolitical risks, synthesizes macro regimes, generates investment theses with ETF implementation, and delivers weekly HTML dashboards.",
   "author": {
     "name": "Macro Advisor Contributors"
