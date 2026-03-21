@@ -1,6 +1,6 @@
 {
   "name": "trading-engine",
-  "version": "0.1.3-beta",
+  "version": "0.1.4-beta",
   "description": "Autonomous paper trading system for Alpaca. Reads macro regime assessments and investment theses from the Macro Advisor, translates them into portfolio positions with risk management, devil's advocate reasoning, P&L-blind trade decisions, and a self-improvement loop. Delivers an HTML dashboard with P&L, trades, and improvement tracking.",
   "author": {
     "name": "Macro Advisor Contributors"
