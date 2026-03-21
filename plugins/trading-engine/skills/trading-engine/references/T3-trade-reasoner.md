@@ -23,6 +23,7 @@ For each urgent exit:
 ```json
 {
   "symbol": "XLE",
+  "name": "Energy Select Sector SPDR",
   "action": "SELL",
   "qty": "all",
   "type": "market",
@@ -54,16 +55,24 @@ If the signal parser reports a regime change:
 
 For each new thesis signal that doesn't have a current position:
 
-**Before creating any order, the devil's advocate step is mandatory:**
+**Before creating any order, the devil's advocate step is mandatory — per position, not per thesis:**
+
+Every position gets its own DA entry in the trade plan. This is non-negotiable because T7 matches bear cases against individual position outcomes. A regime-level DA cannot be attributed to a specific loss.
+
+For positions sharing a macro thesis (e.g., multiple regime-driven entries), use a shared base bear case plus a mandatory position-specific addendum:
 
 ```
-DEVIL'S ADVOCATE — [Thesis Name]
-Bear case: [1 paragraph articulating the specific scenario where this trade loses money.
-Not generic risk. What specific, plausible development would cause this position to move
-against us? What are we assuming that might be wrong?]
-Bear case probability: [Low / Medium / High — honest assessment]
+DEVIL'S ADVOCATE — [Thesis Name] — [Symbol] ([Full ETF Name])
+Base bear case: [1 paragraph articulating the shared macro scenario where the thesis is wrong.
+What specific, plausible development would invalidate the regime call or thesis logic?]
+Position-specific risk: [1-2 sentences on what could go wrong for THIS specific ETF beyond
+the shared macro thesis. E.g., sector-specific headwinds, concentration risk, liquidity,
+regulatory exposure. Every ETF has at least one idiosyncratic risk — name it.]
+Bear case probability: [Low / Medium / High — honest assessment for this position]
 Proceed: [Yes — bear case acknowledged but conviction holds / No — bear case is too strong, skip this trade]
 ```
+
+The base bear case text may be identical across positions sharing a thesis. The position-specific risk must be unique to the ETF. "Same as above" is not acceptable — if you cannot articulate a position-specific risk, that is itself a signal worth examining.
 
 If "Proceed: No" — skip the trade and log the decision. The improvement loop will track whether skipped trades would have been profitable or not.
 
@@ -118,6 +127,7 @@ Produce two files:
   "orders": [
     {
       "symbol": "SPY",
+      "name": "SPDR S&P 500 ETF Trust",
       "action": "buy|sell",
       "qty": 10,
       "type": "market|limit",
@@ -128,13 +138,14 @@ Produce two files:
       "layer": "regime",
       "mechanism_type": "",
       "priority": "NORMAL",
-      "devil_advocate": "Bear case: if tariff escalation continues, Goldilocks assessment may be premature. Growth could decelerate Q2. Probability: Medium. Proceed: Yes — liquidity picture still supportive.",
+      "devil_advocate": "Base bear case: if tariff escalation continues, Goldilocks assessment may be premature. Growth could decelerate Q2. Position-specific risk: SPY has elevated mega-cap tech concentration — a sector rotation away from growth would hit SPY harder than equal-weight alternatives. Probability: Medium. Proceed: Yes — liquidity picture still supportive.",
       "scaling_state": "1_of_2"
     }
   ],
   "skipped": [
     {
       "symbol": "OIH",
+      "name": "VanEck Oil Services ETF",
       "reason": "Third-order expression for oil thesis — no concrete edge articulated. SKIP.",
       "delta_pct": 0.75
     }
@@ -166,11 +177,13 @@ A readable markdown document explaining every decision:
 [None / list with explanation]
 
 ### New Positions
-#### [Symbol] — [Layer] — [Thesis if applicable]
+#### [Symbol] ([Full ETF Name]) — [Layer] — [Thesis if applicable]
 - Target: [X]% of portfolio
 - This run: [Y]% (scaling [N of M])
 - Reason: [from reconciliation]
-- Devil's advocate: [bear case]
+- Devil's advocate (base): [shared macro bear case]
+- Devil's advocate (position-specific): [risk unique to this ETF]
+- Bear case probability: [Low/Medium/High]
 - Order: [type] [qty] shares at [price/market]
 
 ### Adjustments
@@ -181,7 +194,7 @@ A readable markdown document explaining every decision:
 
 ### Risk State After Execution
 - Estimated cash: [X]%
-- Largest position: [symbol] at [X]%
+- Largest position: [symbol] ([full name]) at [X]%
 - Thesis overlay: [X]%
 - Drawdown from HWM: [X]%
 ```
@@ -200,7 +213,7 @@ The Wednesday check is defense only. Offense happens on Sunday.
 ## Quality Standards
 
 - Every order must have a non-empty `reason` field
-- Every new position must have a `devil_advocate` entry
+- Every new position must have a `devil_advocate` entry with both a base bear case and a position-specific risk. The position-specific risk must be unique to the ETF — not a copy of the base.
 - Kill switch exits must be processed before any other orders
 - The reasoning log must be human-readable — it's the primary audit trail
 - Skipped trades are as important as executed trades in the log

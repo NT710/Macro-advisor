@@ -44,6 +44,7 @@ For each symbol in the target allocation or current portfolio:
 ```json
 {
   "symbol": "SPY",
+  "name": "SPDR S&P 500 ETF Trust",
   "current_pct": 12.5,
   "current_shares": 50,
   "current_value": 25000,
@@ -90,11 +91,11 @@ Save to `outputs/portfolio/latest-reconciliation.json`:
   "regime": "current regime from T1",
   "portfolio_value": 100000,
   "target_allocation": {
-    "SPY": {"pct": 15.0, "layer": "regime", "source": "regime template"},
-    "XLE": {"pct": 4.0, "layer": "thesis_tactical", "source": "ACTIVE-oil-thesis"}
+    "SPY": {"name": "SPDR S&P 500 ETF Trust", "pct": 15.0, "layer": "regime", "source": "regime template"},
+    "XLE": {"name": "Energy Select Sector SPDR", "pct": 4.0, "layer": "thesis_tactical", "source": "ACTIVE-oil-thesis"}
   },
   "current_allocation": {
-    "SPY": {"pct": 12.5, "shares": 50, "value": 25000},
+    "SPY": {"name": "SPDR S&P 500 ETF Trust", "pct": 12.5, "shares": 50, "value": 25000},
     "cash": {"pct": 45.0, "value": 45000}
   },
   "deltas": [ ... ],
@@ -107,10 +108,10 @@ Save to `outputs/portfolio/latest-reconciliation.json`:
     "violations_corrected": []
   },
   "urgent_exits": [
-    {"symbol": "...", "reason": "kill switch triggered for [thesis]"}
+    {"symbol": "...", "name": "full ETF name", "reason": "kill switch triggered for [thesis]"}
   ],
   "orphaned_positions": [
-    {"symbol": "...", "reason": "no matching target — from closed thesis?"}
+    {"symbol": "...", "name": "full ETF name", "reason": "no matching target — from closed thesis?"}
   ]
 }
 ```

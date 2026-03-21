@@ -1,6 +1,6 @@
 # Macro Investment Advisor — Methodology & System Reference
 
-**Version:** 2.4
+**Version:** 2.5
 **Last Updated:** 2026-03-21
 **Framework:** Alpine Macro methodology
 
@@ -61,12 +61,12 @@ Order: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9. Singl
 
 ### Data Foundation
 
-**Skill 0 (data_collector.py)** runs before every analysis cycle, pulling 62+ series from two free institutional-quality sources. Every subsequent skill reads this structured data first. Web search is used only for qualitative context not available in structured form.
+**Skill 0 (data_collector.py)** runs before every analysis cycle, pulling 84+ series from five free institutional-quality sources. Every subsequent skill reads this structured data first. Web search is used only for qualitative context not available in structured form.
 
-Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run. A third mode — targeted pulls via `--series` flag — fetches specific FRED series on demand for Skill 11 research investigations. All FRED fetches use retry with exponential backoff on rate limit (429) errors.
+Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run. A third mode — targeted pulls via `--series` flag — fetches specific FRED series on demand for Skill 11 research investigations. All API fetches (FRED, CFTC) use retry with exponential backoff on rate limit (429) errors.
 
 #### Source 1: FRED (Federal Reserve Economic Data)
-Free API (key required). 42+ series covering:
+Free API (key required). 49+ series covering:
 
 **Money Supply:**
 - US M2 Money Stock (weekly: WM2NS, monthly: M2SL)
@@ -120,19 +120,76 @@ Free API (key required). 42+ series covering:
 - Existing Home Sales (EXHOSLUSM495S)
 - Case-Shiller Home Price Index (CSUSHPISA)
 
+**Regional Fed Manufacturing Surveys (PMI Proxies):**
+- NY Empire State Mfg Survey (GACDISA066MSFRBNY) — monthly, diffusion index, >0 = expansion. Releases mid-month before ISM.
+- Philadelphia Fed Mfg Survey (GACDFSA066MSFRBPHI) — monthly, diffusion index, >0 = expansion. Releases mid-month before ISM.
+- Dallas Fed Mfg Survey (BACTSAMFRBDAL) — monthly, diffusion index, >0 = expansion.
+
+*These three together provide a structured composite PMI proxy for regime identification. ISM headline is proprietary and not on FRED — web search is still used for the market-moving ISM number and surprise direction, but the regional Feds ensure regime detection doesn't depend on web search succeeding.*
+
+**Broad Activity Index:**
+- Chicago Fed National Activity Index, 3-month MA (CFNAIMA3) — monthly. Weighted average of 85 indicators. >0 = above-trend, <0 = below-trend.
+
 **Leading Indicators:**
-- Conference Board LEI (USSLIND)
+- Conference Board LEI — removed from FRED config (USSLIND discontinued 2020). Skill 3 falls back to web search for the current TCB LEI release.
+
+**Money Markets:**
+- Retail Money Market Funds (WRMFNS) — weekly, billions USD, cash on sidelines indicator
+
+**Credit Conditions (Private Credit Proxies):**
+- Senior Loan Officer Survey — Tightening C&I Loans, Large/Mid firms (DRTSCILM) — quarterly. The strongest leading indicator for bank lending appetite. When banks tighten, private credit borrowers face equivalent or worse conditions.
+- Commercial & Industrial Loans Outstanding (BUSLOANS) — weekly. Total bank C&I lending volume. YoY contraction signals credit withdrawal.
+
+*These are proxies for private credit conditions, not direct observations. Private credit has no public mark-to-market. See Skill 5 for interpretation guardrails.*
 
 #### Source 2: Yahoo Finance
-Free, no API key required. 20+ tickers covering:
+Free, no API key required. 22+ tickers covering:
 
 **Equity Indices:** S&P 500 (^GSPC), Nasdaq 100 (^NDX), Russell 2000 (^RUT), Euro Stoxx 50 (^STOXX50E)
-**Volatility:** VIX (^VIX)
+**Volatility & Sentiment:** VIX (^VIX), CBOE Skew Index (^SKEW)
 **Bond ETFs:** TLT (20+ Year Treasury), HYG (High Yield), LQD (Investment Grade)
 **Commodities:** Gold (GC=F), Crude Oil WTI (CL=F), Copper (HG=F)
 **Currencies:** EUR/USD, USD/JPY, USD/CHF, GBP/USD, USD/CNY, DXY (DX-Y.NYB)
 **Regional ETFs:** EEM (Emerging Markets), EFA (EAFE)
 **Money Markets:** SHV (Short Treasury)
+**Leveraged Loans:** BKLN (Invesco Senior Loan ETF) — price proxy for leveraged loan market, which shares borrower universe with private credit
+
+#### Source 3: CFTC SODA API (COT Positioning Data)
+Free, no API key required. Pulls directly from `publicreporting.cftc.gov`. Two datasets, 9 contracts:
+
+**TFF (Traders in Financial Futures) — dataset `gpe5-46if`:**
+- **Equities (Asset Manager positions):** S&P 500 E-mini (13874A), Nasdaq-100 (20974+)
+- **Rates (Leveraged Money positions):** 10-Year Treasury Note (043602), 2-Year Treasury Note (042601)
+- **FX (Leveraged Money positions):** EUR/USD (099741), JPY/USD (097741)
+
+**Disaggregated Futures Only — dataset `72hh-3qpy`:**
+- **Commodities (Money Manager positions):** Gold (088691), Crude Oil WTI (067651), Copper (085692)
+
+For each contract, the collector computes: net speculative position (long minus short), weekly change, 52-week historical percentile, extreme detection (≥90th or ≤10th percentile), and direction of change (building/unwinding long/short). Data is released weekly (Friday, for Tuesday positions). The snapshot stores all COT data under `snapshot.positioning.*`, directly consumable by Skill 5.
+
+Asset Manager and Money Manager positions reflect speculative positioning in equities and commodities. Leveraged Money positions reflect speculative positioning in rates and FX. These are the trader categories whose crowded trades create the violent unwinds that the positioning analysis is designed to detect.
+
+Zero configuration required — the CFTC publishes this data as a public Socrata dataset with no authentication.
+
+#### Source 4: ECB Statistical Data Warehouse (SDW)
+Free REST API, no authentication required. 2 series:
+
+**Monetary Aggregates:**
+- Eurozone M3 Outstanding Amounts (monthly, EUR millions) — 13-month history for YoY computation
+
+**Balance Sheet:**
+- ECB Consolidated Total Assets (weekly, EUR millions) — 26-week history with WoW change
+
+Available in snapshot under `snapshot.eurozone.m3`, `snapshot.eurozone.m3_yoy`, and `snapshot.eurozone.ecb_balance_sheet`. These replace web searches that were previously used by Skill 2 (Liquidity & Credit Monitor) for Eurozone M3 and ECB balance sheet data.
+
+#### Source 5: Eurostat
+Free JSON API, no authentication required. 2 series:
+
+**Inflation:**
+- HICP All Items — Euro Area (monthly, annual rate of change %) — headline Eurozone inflation
+- HICP Core ex Energy & Food — Euro Area (monthly, annual rate of change %) — core Eurozone inflation
+
+Available in snapshot under `snapshot.eurozone.hicp_headline` and `snapshot.eurozone.hicp_core`. These replace web searches that were previously used by Skill 3 (Macro Data Tracker) for Eurozone HICP data.
 
 #### Derived Signals (computed automatically)
 The data collector computes higher-level signals from raw data:
@@ -145,6 +202,7 @@ The data collector computes higher-level signals from raw data:
 - **M2 Growth Regime:** expanding / moderate / stagnant / contracting
 - **Financial Conditions:** NFCI with consecutive weeks in loose/tight state
 - **USD Trend:** DXY direction over week/month
+- **Private Credit Stress Proxy:** Composite of SLOOS tightening, C&I loan growth, leveraged loan ETF price, and HY OAS cross-reference. Requires majority convergence to signal stress or benign — mixed signals produce "inconclusive," which is an honest finding, not a failure. See `snapshot.credit.private_credit_proxy`.
 - **Equity Regime:** S&P 500 trend over week/month/3-month
 - **Inflation Expectations:** 5Y and 10Y breakevens, anchored vs. drifting assessment
 
@@ -152,12 +210,14 @@ Every series includes a **percentile rank** vs. the full history fetched — "wh
 
 #### What Structured Data Does NOT Cover (web search fills these gaps)
 - Central bank policy statements, forward guidance, press conferences (qualitative)
-- CFTC Commitments of Traders / COT positioning data (no free structured API)
-- Sentiment surveys: AAII, CNN Fear & Greed, BofA Fund Manager Survey (no free API)
+- Sentiment surveys: AAII, CNN Fear & Greed, BofA Fund Manager Survey (no free API — BofA is proprietary, web search for headlines only)
 - Geopolitical and policy developments (inherently qualitative)
-- PMI releases: ISM, Eurozone, China Caixin (not on FRED in timely fashion)
-- Eurozone M3 and China Total Social Financing (ECB API had issues, accepted as web search + fallback)
-- Analyst views and research (Chrome-based browsing via Skill 10)
+- PMI releases: ISM headline (proprietary), Eurozone Composite PMI, China Caixin PMI. NOTE: Regional Fed surveys (Empire State, Philly Fed, Dallas Fed) now provide a structured PMI proxy in the snapshot for regime identification. ISM web search is still used for the market-moving headline number and surprise direction.
+- China Total Social Financing (PBoC, no free API)
+- Analyst views and research (Chrome-based browsing + WebFetch via Skill 10)
+- COT data for contracts not in the 9-contract coverage (Russell 2000, 5Y/30Y Treasury, GBP, CHF, AUD — web search fallback)
+
+Note: VIX, CBOE Skew, Put/Call ratio, money market fund assets, and CFTC COT positioning (9 key contracts) are now in the structured data snapshot. These were previously web-search-only gaps.
 
 #### Dynamic ETF Discovery
 `etf_lookup.py` searches a curated universe of ~100 liquid ETFs on Yahoo Finance, verifies real price data, and returns ticker + AUM + performance. Used by the thesis generator when it needs a thematic ETF not in the static reference table. Only verified ETFs are recommended — never guessed.
@@ -347,14 +407,14 @@ Macro Advisor/
 │           ├── 02-liquidity-credit-monitor.md (v1.1)
 │           ├── 03-macro-data-tracker.md    (v1.1)
 │           ├── 04-geopolitical-policy-scanner.md (v1.1)
-│           ├── 05-market-positioning-sentiment.md
+│           ├── 05-market-positioning-sentiment.md (v1.2 — COT from snapshot, graceful degradation)
 │           ├── 06-weekly-macro-synthesis.md
 │           ├── 07-thesis-generator-monitor.md (v1.5)
 │           ├── 08-self-improvement-loop.md
 │           ├── 09-monday-briefing.md
 │           ├── 10-analyst-monitor.md       (v2.0 — 8 analysts, analyst-sourced thesis candidates)
 │           ├── 11-structural-research.md   (v1.1 — on-demand FRED, evidence independence)
-│           └── 12-thesis-presentation.md   (v1.0 — visual reports + briefing cards)
+│           └── 12-thesis-presentation.md   (v1.1 — visual reports + briefing cards, resolved chart data)
 ├── hooks/
 │   └── hooks.json                  (session start hook — reads user config)
 ├── scripts/
@@ -362,7 +422,7 @@ Macro Advisor/
 │   │   ├── chart.min.js            (bundled Chart.js for offline dashboards)
 │   │   └── inter-latin.woff2       (bundled Inter font for offline dashboards)
 │   ├── dashboard-template.html     (Jinja2 HTML template for dashboard rendering)
-│   ├── data_collector.py           (FRED + Yahoo Finance data pull, --series for targeted pulls)
+│   ├── data_collector.py           (FRED + Yahoo Finance + CFTC COT data pull via SODA API, --series for targeted pulls)
 │   ├── etf_lookup.py               (dynamic ETF discovery + verification)
 │   ├── generate_dashboard.py       (HTML dashboard generator — reads template + assets)
 │   ├── regime_backtest.py          (historical regime backtest — Layer 1 + Layer 2 liquidity)
@@ -387,6 +447,7 @@ Macro Advisor/
 │   ├── update-etfs.md              (refresh ETF mapping)
 │   └── implement-improvements.md   (review self-improvement amendments)
 └── config/
+    ├── config-schema.json          (expected config fields — drives upgrade notices in pre-flight)
     └── user-config.json            (API keys, preferences — created during setup, gitignored)
 ```
 
@@ -400,7 +461,7 @@ Macro Advisor/
 ## Honest Limitations
 
 ### What this system does well
-- Structured data collection from institutional-quality free APIs (62+ FRED/Yahoo series, 95%+ success rate) with four-tier quality classification and date-stamped sourcing
+- Structured data collection from institutional-quality free APIs (74+ FRED/Yahoo/COT series, 95%+ success rate) with four-tier quality classification and date-stamped sourcing
 - Interprets policy — reads central bank decisions, analyst views, and geopolitical developments and takes positions ("Fed is dovish despite inflation revision"). The user can override any interpretation; the thesis review process is the governance mechanism.
 - Forces weekly regime identification with explicit reasoning
 - Thesis accountability through testable assumptions and absolute kill switches

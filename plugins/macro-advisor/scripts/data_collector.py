@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Macro Advisor — Skill 0: Data Collection Script
-Pulls structured data from FRED and Yahoo Finance.
+Pulls structured data from FRED, Yahoo Finance, CFTC COT (via CFTC SODA API),
+ECB Statistical Data Warehouse, and Eurostat.
 Saves current readings + trailing history as JSON.
 
 Modes:
@@ -78,10 +79,17 @@ FRED_SERIES = {
     "RSAFS": ("Retail Sales", "growth", "monthly"),
     "UMCSENT": ("U of Michigan Consumer Sentiment", "growth", "monthly"),
 
-    # PMIs (ISM)
-    "MANEMP": ("ISM Manufacturing Employment", "pmi", "monthly"),
-    "NAPMNOI": ("ISM Manufacturing New Orders", "pmi", "monthly"),
-    "NAPMPI": ("ISM Manufacturing Prices", "pmi", "monthly"),
+    # Manufacturing Employment (BLS, not ISM — ISM diffusion sub-indices are not on FRED)
+    "MANEMP": ("All Employees: Manufacturing (thousands)", "employment", "monthly"),
+
+    # Regional Fed Manufacturing Surveys (PMI proxies — diffusion indices, free on FRED)
+    # These release mid-month BEFORE ISM, making them leading indicators for regime detection
+    "GACDISA066MSFRBNY": ("NY Empire State Mfg Survey (Current General Business Conditions)", "regional_fed_mfg", "monthly"),
+    "GACDFSA066MSFRBPHI": ("Philadelphia Fed Mfg Survey (Current Business Outlook)", "regional_fed_mfg", "monthly"),
+    "BACTSAMFRBDAL": ("Dallas Fed Mfg Survey (Current General Business Activity)", "regional_fed_mfg", "monthly"),
+
+    # Broad Activity Index
+    "CFNAIMA3": ("Chicago Fed National Activity Index (3-month MA)", "activity_index", "monthly"),
 
     # Housing
     "HOUST": ("Housing Starts", "housing", "monthly"),
@@ -90,7 +98,15 @@ FRED_SERIES = {
     "CSUSHPISA": ("Case-Shiller Home Price Index", "housing", "monthly"),
 
     # Leading Indicators
-    "USSLIND": ("Conference Board LEI", "leading", "monthly"),
+    # NOTE: Conference Board LEI (USSLIND) removed — FRED series discontinued 2020, always returns empty.
+    # Skill 3 falls back to web search for current TCB LEI release. CFNAI partially fills the role.
+
+    # Money Markets
+    "WRMFNS": ("Retail Money Market Funds (weekly, billions USD)", "money_markets", "weekly"),
+
+    # Credit Conditions (private credit proxies)
+    "DRTSCILM": ("Senior Loan Officer Survey - Tightening C&I Loans (Large/Mid)", "credit_conditions", "quarterly"),
+    "BUSLOANS": ("Commercial & Industrial Loans Outstanding", "credit_conditions", "monthly"),
 }
 
 # ---------------------------------------------------------------------------
@@ -103,8 +119,11 @@ YAHOO_TICKERS = {
     "^RUT": ("Russell 2000", "equities"),
     "^STOXX50E": ("Euro Stoxx 50", "equities"),
 
-    # Volatility
+    # Volatility & Sentiment
     "^VIX": ("VIX", "volatility"),
+    "^SKEW": ("CBOE Skew Index", "volatility"),
+    # NOTE: ^CPCE (CBOE Equity Put/Call Ratio) removed — delisted on Yahoo, no alternative found.
+    # VIX and CBOE Skew cover sentiment. Skill 5 uses these for sentiment assessment.
 
     # Bond ETFs
     "TLT": ("iShares 20+ Year Treasury", "bonds"),
@@ -130,6 +149,46 @@ YAHOO_TICKERS = {
 
     # Money Markets
     "SHV": ("iShares Short Treasury", "money_market"),
+
+    # Leveraged Loan / Private Credit Proxy
+    "BKLN": ("Invesco Senior Loan ETF", "leveraged_loans"),
+}
+
+# ---------------------------------------------------------------------------
+# CFTC COT CONTRACTS (via CFTC SODA API — free, no API key)
+# ---------------------------------------------------------------------------
+# Two datasets on publicreporting.cftc.gov:
+#   TFF (Traders in Financial Futures): gpe5-46if — equities, rates, FX
+#   Disaggregated Futures Only: 72hh-3qpy — commodities
+#
+# TFF trader categories: asset_mgr (Asset Manager), lev_money (Leveraged Money)
+# Disaggregated trader category: m_money (Money Manager)
+# Net speculative = Long positions - Short positions
+#
+# Format: (name, category, dataset_id, contract_market_code, long_col, short_col)
+COT_CONTRACTS = {
+    # Equities — Asset Manager positions (TFF)
+    "sp500": ("S&P 500 E-mini", "equities", "gpe5-46if", "13874A",
+              "asset_mgr_positions_long", "asset_mgr_positions_short"),
+    "nasdaq100": ("Nasdaq-100", "equities", "gpe5-46if", "20974+",
+                  "asset_mgr_positions_long", "asset_mgr_positions_short"),
+    # Rates — Leveraged Money positions (TFF)
+    "10y_treasury": ("10-Year Treasury Note", "rates", "gpe5-46if", "043602",
+                     "lev_money_positions_long", "lev_money_positions_short"),
+    "2y_treasury": ("2-Year Treasury Note", "rates", "gpe5-46if", "042601",
+                    "lev_money_positions_long", "lev_money_positions_short"),
+    # FX — Leveraged Money positions (TFF)
+    "eur_usd": ("EUR/USD", "fx", "gpe5-46if", "099741",
+                "lev_money_positions_long", "lev_money_positions_short"),
+    "jpy_usd": ("JPY/USD", "fx", "gpe5-46if", "097741",
+                "lev_money_positions_long", "lev_money_positions_short"),
+    # Commodities — Money Manager positions (Disaggregated)
+    "gold": ("Gold", "commodities", "72hh-3qpy", "088691",
+             "m_money_positions_long_all", "m_money_positions_short_all"),
+    "crude_oil_wti": ("Crude Oil WTI", "commodities", "72hh-3qpy", "067651",
+                      "m_money_positions_long_all", "m_money_positions_short_all"),
+    "copper": ("Copper", "commodities", "72hh-3qpy", "085692",
+               "m_money_positions_long_all", "m_money_positions_short_all"),
 }
 
 
@@ -341,6 +400,340 @@ def fetch_yahoo_data(lookback_days=182):
     return {"data": results, "errors": errors}
 
 
+def fetch_cot_data(lookback_weeks=52):
+    """Fetch CFTC Commitments of Traders data via CFTC SODA API (free, no key).
+
+    Two datasets:
+      - TFF (Traders in Financial Futures) for equities, rates, FX
+      - Disaggregated Futures Only for commodities
+    Extracts net speculative positions and computes historical percentiles.
+    """
+    import urllib.request
+    import urllib.parse
+    import urllib.error
+
+    cftc_base = "https://publicreporting.cftc.gov/resource"
+    results = {}
+    errors = []
+
+    for key, (name, category, dataset_id, contract_code, long_col, short_col) in COT_CONTRACTS.items():
+        url_base = f"{cftc_base}/{dataset_id}.json"
+        params = urllib.parse.urlencode({
+            "$limit": lookback_weeks,
+            "$order": "report_date_as_yyyy_mm_dd DESC",
+            "$where": f"cftc_contract_market_code='{contract_code}'"
+        })
+        url = f"{url_base}?{params}"
+
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "MacroAdvisor/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    data_rows = json.loads(resp.read().decode("utf-8"))
+
+                if not data_rows:
+                    errors.append(f"{name} ({contract_code}): no data returned")
+                    break
+
+                # Compute net speculative for each week (data is newest-first)
+                net_positions = []
+                history = []
+                for row in data_rows:
+                    try:
+                        long_val = float(row.get(long_col, 0))
+                        short_val = float(row.get(short_col, 0))
+                        net = long_val - short_val
+                        date_str = row.get("report_date_as_yyyy_mm_dd", "")[:10]
+                        net_positions.append(net)
+                        history.append({
+                            "date": date_str,
+                            "net_speculative": round(net, 0),
+                            "long": round(long_val, 0),
+                            "short": round(short_val, 0),
+                        })
+                    except (TypeError, ValueError):
+                        continue
+
+                if not net_positions:
+                    errors.append(f"{name} ({contract_code}): could not parse position data")
+                    break
+
+                latest_net = net_positions[0]
+                latest_date = history[0]["date"]
+
+                # Prior week
+                prior_net = net_positions[1] if len(net_positions) > 1 else None
+                weekly_change = round(latest_net - prior_net, 0) if prior_net is not None else None
+
+                # Historical percentile
+                percentile = None
+                if len(net_positions) >= 10:
+                    below = sum(1 for n in net_positions if n < latest_net)
+                    percentile = round(below / len(net_positions) * 100, 1)
+
+                # Extreme detection
+                extreme = None
+                if percentile is not None:
+                    if percentile >= 90:
+                        extreme = "extreme long"
+                    elif percentile <= 10:
+                        extreme = "extreme short"
+                    elif percentile >= 80:
+                        extreme = "crowded long"
+                    elif percentile <= 20:
+                        extreme = "crowded short"
+
+                # Direction of change
+                direction = None
+                if weekly_change is not None:
+                    if latest_net > 0 and weekly_change > 0:
+                        direction = "building long"
+                    elif latest_net > 0 and weekly_change < 0:
+                        direction = "unwinding long"
+                    elif latest_net < 0 and weekly_change < 0:
+                        direction = "building short"
+                    elif latest_net < 0 and weekly_change > 0:
+                        direction = "unwinding short"
+                    else:
+                        direction = "flat"
+
+                # Determine trader type label from column name
+                if "asset_mgr" in long_col:
+                    trader_type = "Asset Manager"
+                elif "lev_money" in long_col:
+                    trader_type = "Leveraged Money"
+                else:
+                    trader_type = "Money Manager"
+
+                results[key] = {
+                    "name": name,
+                    "category": category,
+                    "trader_type": trader_type,
+                    "latest_date": latest_date,
+                    "net_speculative": round(latest_net, 0),
+                    "prior_net": round(prior_net, 0) if prior_net is not None else None,
+                    "weekly_change": weekly_change,
+                    "percentile_52w": percentile,
+                    "extreme": extreme,
+                    "direction": direction,
+                    "weeks_of_data": len(net_positions),
+                    "history": history[:52],
+                }
+                break  # success
+
+            except urllib.error.HTTPError as e:
+                if e.code == 429 and attempt < 2:
+                    wait = 2 ** attempt
+                    print(f"    Rate limited on {name}, retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    errors.append(f"{name} ({contract_code}): HTTP {e.code} — {str(e)[:80]}")
+                    break
+            except Exception as e:
+                if attempt < 2:
+                    wait = 2 ** attempt
+                    print(f"    Error on {name}, retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    errors.append(f"{name} ({contract_code}): {str(e)[:100]}")
+                    break
+
+    return {"data": results, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# ECB STATISTICAL DATA WAREHOUSE (SDW) — Free, no API key
+# ---------------------------------------------------------------------------
+
+ECB_SERIES = {
+    # Eurozone M3 outstanding amounts (EUR millions, monthly)
+    "m3_outstanding": {
+        "key": "BSI/M.U2.Y.V.M30.X.1.U2.2300.Z01.E",
+        "name": "Eurozone M3 Outstanding Amounts",
+        "frequency": "monthly",
+        "observations": 13,  # 13 months for YoY
+    },
+    # ECB Total Assets (weekly, EUR millions)
+    "ecb_total_assets": {
+        "key": "ILM/W.U2.C.T000000.Z5.Z01",
+        "name": "ECB Consolidated Balance Sheet — Total Assets",
+        "frequency": "weekly",
+        "observations": 26,  # ~6 months
+    },
+}
+
+
+def fetch_ecb_data():
+    """Fetch data from ECB Statistical Data Warehouse (free, no key)."""
+    import requests
+
+    results = {}
+    errors = []
+    base_url = "https://data-api.ecb.europa.eu/service/data"
+
+    for series_id, config in ECB_SERIES.items():
+        try:
+            url = f"{base_url}/{config['key']}"
+            r = requests.get(
+                url,
+                headers={"Accept": "application/json"},
+                params={"lastNObservations": config["observations"]},
+                timeout=15,
+            )
+
+            if r.status_code != 200:
+                errors.append(f"{series_id}: HTTP {r.status_code}")
+                continue
+
+            data = r.json()
+            datasets = data.get("dataSets", [])
+            if not datasets or not datasets[0].get("series"):
+                errors.append(f"{series_id}: no data in response")
+                continue
+
+            # Extract time dimension
+            dims = data.get("structure", {}).get("dimensions", {}).get("observation", [])
+            time_dim = None
+            for d in dims:
+                if d.get("id") == "TIME_PERIOD":
+                    time_dim = d.get("values", [])
+
+            # Extract observations
+            series_data = list(datasets[0]["series"].values())[0]
+            obs = series_data.get("observations", {})
+
+            history = []
+            for obs_key, obs_val in sorted(obs.items(), key=lambda x: int(x[0])):
+                idx = int(obs_key)
+                period = time_dim[idx]["id"] if time_dim and idx < len(time_dim) else obs_key
+                value = obs_val[0]
+                if value is not None:
+                    history.append({"date": period, "value": round(float(value), 2)})
+
+            if not history:
+                errors.append(f"{series_id}: all observations null")
+                continue
+
+            latest = history[-1]
+
+            # Compute YoY for monthly series
+            yoy = None
+            if config["frequency"] == "monthly" and len(history) >= 13:
+                current = latest["value"]
+                year_ago = history[-13]["value"]
+                if year_ago and year_ago != 0:
+                    yoy = round(((current - year_ago) / year_ago) * 100, 2)
+
+            # Compute WoW change for weekly series
+            wow_change = None
+            if config["frequency"] == "weekly" and len(history) >= 2:
+                wow_change = round(history[-1]["value"] - history[-2]["value"], 2)
+
+            results[series_id] = {
+                "name": config["name"],
+                "frequency": config["frequency"],
+                "latest_value": latest["value"],
+                "latest_date": latest["date"],
+                "yoy_pct": yoy,
+                "wow_change": wow_change,
+                "observation_count": len(history),
+                "history": history,
+            }
+
+        except Exception as e:
+            errors.append(f"{series_id}: {str(e)[:100]}")
+
+    return {"data": results, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# EUROSTAT — Free, no API key
+# ---------------------------------------------------------------------------
+
+EUROSTAT_SERIES = {
+    # HICP headline (annual rate of change, Euro Area, all items)
+    "hicp_headline": {
+        "dataset": "prc_hicp_manr",
+        "params": {"geo": "EA", "coicop": "CP00", "freq": "M"},
+        "name": "Eurozone HICP — All Items (YoY %)",
+        "last_periods": 6,
+    },
+    # HICP core (ex energy, food, alcohol, tobacco)
+    "hicp_core": {
+        "dataset": "prc_hicp_manr",
+        "params": {"geo": "EA", "coicop": "TOT_X_NRG_FOOD", "freq": "M"},
+        "name": "Eurozone HICP — Core ex Energy & Food (YoY %)",
+        "last_periods": 6,
+    },
+}
+
+
+def fetch_eurostat_data():
+    """Fetch data from Eurostat API (free, no key)."""
+    import requests
+
+    results = {}
+    errors = []
+    base_url = "https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data"
+
+    for series_id, config in EUROSTAT_SERIES.items():
+        try:
+            url = f"{base_url}/{config['dataset']}"
+            params = dict(config["params"])
+            params["lastTimePeriod"] = config["last_periods"]
+
+            r = requests.get(url, params=params, timeout=15)
+
+            if r.status_code != 200:
+                errors.append(f"{series_id}: HTTP {r.status_code}")
+                continue
+
+            data = r.json()
+            vals = data.get("value", {})
+            dims = data.get("dimension", {})
+            time_dim = dims.get("time", {}).get("category", {}).get("index", {})
+
+            # Build time-sorted history
+            history = []
+            for period, idx in sorted(time_dim.items(), key=lambda x: x[1]):
+                val = vals.get(str(idx))
+                if val is not None:
+                    history.append({"date": period, "value": round(float(val), 2)})
+
+            if not history:
+                errors.append(f"{series_id}: no data points")
+                continue
+
+            latest = history[-1]
+
+            # Compute direction (is inflation rising or falling?)
+            direction = None
+            if len(history) >= 2:
+                prev = history[-2]["value"]
+                curr = latest["value"]
+                if curr > prev:
+                    direction = "rising"
+                elif curr < prev:
+                    direction = "falling"
+                else:
+                    direction = "stable"
+
+            results[series_id] = {
+                "name": config["name"],
+                "latest_value": latest["value"],
+                "latest_date": latest["date"],
+                "direction": direction,
+                "prior_value": history[-2]["value"] if len(history) >= 2 else None,
+                "observation_count": len(history),
+                "history": history,
+            }
+
+        except Exception as e:
+            errors.append(f"{series_id}: {str(e)[:100]}")
+
+    return {"data": results, "errors": errors}
+
+
 def compute_derived_metrics(fred_data, yahoo_data):
     """Compute higher-level derived metrics from raw data."""
     derived = {}
@@ -459,6 +852,121 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "signal": "strengthening" if (dxy.get("month_change_pct") or 0) > 1 else "weakening" if (dxy.get("month_change_pct") or 0) < -1 else "range-bound"
         }
 
+    # Private credit stress proxy cluster
+    # These are PROXIES — they observe adjacent markets, not private credit directly.
+    # The $1.7T private credit market has no public mark-to-market. These series
+    # capture credit conditions that overlap with private credit borrower profiles.
+    # Interpretation must always acknowledge the proxy gap.
+    pc_proxy = {}
+    if "DRTSCILM" in fd:
+        # Senior Loan Officer Survey: % of banks tightening C&I loan standards
+        # Positive = tightening, Negative = easing. Quarterly, so often stale.
+        sloos_val = fd["DRTSCILM"]["latest_value"]
+        pc_proxy["sloos_tightening_pct"] = sloos_val
+        pc_proxy["sloos_date"] = fd["DRTSCILM"]["latest_date"]
+        pc_proxy["sloos_signal"] = (
+            "severe tightening" if sloos_val > 40 else
+            "tightening" if sloos_val > 10 else
+            "neutral" if sloos_val > -10 else
+            "easing" if sloos_val > -30 else
+            "strong easing"
+        )
+    if "BUSLOANS" in fd:
+        # C&I loans outstanding — growth/contraction indicates bank lending appetite
+        ci_yoy = fd["BUSLOANS"].get("yoy_change_percent")
+        pc_proxy["ci_loans_level_B"] = round(fd["BUSLOANS"]["latest_value"] / 1000, 1) if fd["BUSLOANS"]["latest_value"] else None
+        pc_proxy["ci_loans_yoy_pct"] = ci_yoy
+        pc_proxy["ci_loans_date"] = fd["BUSLOANS"]["latest_date"]
+        if ci_yoy is not None:
+            # Thresholds calibrated symmetrically around nominal GDP growth (~4-5%).
+            # Contraction is unambiguous stress. Low growth may be normal in a slow economy.
+            pc_proxy["ci_loans_signal"] = (
+                "contracting" if ci_yoy < -0.5 else
+                "flat" if ci_yoy < 1.5 else
+                "moderate growth" if ci_yoy < 5 else
+                "rapid growth"
+            )
+    if "BKLN" in yd:
+        # Leveraged loan ETF — price declines signal stress in the leveraged loan market,
+        # which shares the same borrower universe as private credit
+        bkln = yd["BKLN"]
+        pc_proxy["leveraged_loan_etf"] = bkln["latest_value"]
+        pc_proxy["leveraged_loan_week_chg"] = bkln.get("week_change_pct")
+        pc_proxy["leveraged_loan_month_chg"] = bkln.get("month_change_pct")
+        pc_proxy["leveraged_loan_date"] = bkln["latest_date"]
+        month_chg = bkln.get("month_change_pct") or 0
+        # Symmetric thresholds: same sensitivity for stress and easing
+        pc_proxy["leveraged_loan_signal"] = (
+            "stress" if month_chg < -1.5 else
+            "softening" if month_chg < -0.5 else
+            "stable" if abs(month_chg) <= 0.5 else
+            "firming" if month_chg < 1.5 else
+            "risk-on"
+        )
+    # HY OAS from the existing credit spreads (cross-reference, not double count)
+    if "BAMLH0A0HYM2" in fd:
+        pc_proxy["hy_oas_cross_ref"] = fd["BAMLH0A0HYM2"]["latest_value"]
+
+    if pc_proxy:
+        # Composite assessment — require convergence, not any single indicator
+        stress_signals = 0
+        easing_signals = 0
+        total_signals = 0
+        if "sloos_signal" in pc_proxy:
+            total_signals += 1
+            if pc_proxy["sloos_signal"] in ("tightening", "severe tightening"):
+                stress_signals += 1
+            elif pc_proxy["sloos_signal"] in ("easing", "strong easing"):
+                easing_signals += 1
+        if "ci_loans_signal" in pc_proxy:
+            total_signals += 1
+            if pc_proxy["ci_loans_signal"] == "contracting":
+                stress_signals += 1
+            elif pc_proxy["ci_loans_signal"] in ("moderate growth", "rapid growth"):
+                easing_signals += 1
+            # "flat" is neutral — contributes to total but doesn't vote either way
+        if "leveraged_loan_signal" in pc_proxy:
+            total_signals += 1
+            if pc_proxy["leveraged_loan_signal"] == "stress":
+                stress_signals += 1
+            elif pc_proxy["leveraged_loan_signal"] in ("firming", "risk-on"):
+                easing_signals += 1
+            # "stable" and "softening" are neutral — contribute to total but don't vote
+        if "hy_oas_cross_ref" in pc_proxy:
+            total_signals += 1
+            hy = pc_proxy["hy_oas_cross_ref"]
+            if hy > 5.0:
+                stress_signals += 1
+            elif hy < 3.5:
+                easing_signals += 1
+
+        # Require at least 2 agreeing proxies AND no opposing majority.
+        # "Inconclusive" means proxies actively disagree, not that some are silent.
+        # If 2+ proxies agree and 0 disagree, that's a valid directional call.
+        if stress_signals >= 2 and stress_signals > easing_signals:
+            composite = "stress — majority of proxies converging"
+        elif easing_signals >= 2 and easing_signals > stress_signals:
+            composite = "benign — majority of proxies converging"
+        elif total_signals <= 1:
+            composite = "insufficient data — need at least 2 proxies for directional call"
+        elif stress_signals > 0 and easing_signals > 0 and stress_signals == easing_signals:
+            composite = "inconclusive — proxies actively diverging (stress and easing signals present)"
+        else:
+            composite = "inconclusive — no clear signal"
+
+        pc_proxy["composite_signal"] = composite
+        pc_proxy["stress_count"] = stress_signals
+        pc_proxy["easing_count"] = easing_signals
+        pc_proxy["total_proxies"] = total_signals
+        pc_proxy["_disclaimer"] = (
+            "These are PROXIES for private credit conditions, not direct observations. "
+            "Private credit has no public mark-to-market. Bank lending surveys, C&I loan "
+            "volumes, and leveraged loan ETF prices capture adjacent markets that share "
+            "borrower profiles with private credit — but they can diverge. Treat convergence "
+            "as informative and divergence as genuinely uncertain, not as a sign one proxy is 'right'."
+        )
+        derived["credit_stress_private_proxy"] = pc_proxy
+
     # Equity market regime
     if "^GSPC" in yd:
         sp = yd["^GSPC"]
@@ -485,10 +993,14 @@ def compute_derived_metrics(fred_data, yahoo_data):
     return derived
 
 
-def build_summary_snapshot(fred_data, yahoo_data, derived):
+def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_data=None, eurostat_data=None):
     """Build a concise summary for skill consumption."""
     fd = fred_data.get("data", {}) if fred_data else {}
     yd = yahoo_data.get("data", {}) if yahoo_data else {}
+    cd = cot_data.get("data", {}) if cot_data else {}
+
+    ed = ecb_data.get("data", {}) if ecb_data else {}
+    esd = eurostat_data.get("data", {}) if eurostat_data else {}
 
     snapshot = {
         "generated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
@@ -498,6 +1010,9 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
         "growth": {},
         "inflation": {},
         "markets": {},
+        "positioning": {},
+        "regional_fed_mfg": {},
+        "eurozone": {},
         "derived_signals": {},
     }
 
@@ -511,6 +1026,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
     for key in ["credit_spreads"]:
         if key in derived:
             snapshot["credit"] = derived[key]
+    if "credit_stress_private_proxy" in derived:
+        snapshot["credit"]["private_credit_proxy"] = derived["credit_stress_private_proxy"]
 
     # Liquidity
     for key in ["m2_growth", "liquidity_plumbing", "financial_conditions"]:
@@ -522,7 +1039,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
 
     # Growth
     for sid, key in [("UNRATE", "unemployment"), ("ICSA", "initial_claims"), ("CCSA", "continuing_claims"),
-                     ("UMCSENT", "consumer_sentiment"), ("USSLIND", "lei"), ("PAYEMS", "nonfarm_payrolls"),
+                     ("UMCSENT", "consumer_sentiment"), ("PAYEMS", "nonfarm_payrolls"),
+                     ("MANEMP", "manufacturing_employment"),
                      ("INDPRO", "industrial_production"), ("RSAFS", "retail_sales")]:
         if sid in fd:
             snapshot["growth"][key] = {
@@ -530,6 +1048,63 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
                 "change": fd[sid].get("change_absolute"), "yoy": fd[sid].get("yoy_change_percent"),
                 "mom": fd[sid].get("mom_change_percent"), "percentile": fd[sid].get("percentile_rank")
             }
+
+    # Regional Fed Manufacturing Surveys (PMI proxies)
+    # Diffusion indices: >0 = expansion, <0 = contraction, 0 = neutral (analogous to ISM >50 / <50)
+    for sid, key in [("GACDISA066MSFRBNY", "empire_state"), ("GACDFSA066MSFRBPHI", "philly_fed"),
+                     ("BACTSAMFRBDAL", "dallas_fed")]:
+        if sid in fd:
+            val = fd[sid]["latest_value"]
+            signal = "expansion" if val > 0 else ("contraction" if val < 0 else "neutral")
+            snapshot["regional_fed_mfg"][key] = {
+                "value": val, "date": fd[sid]["latest_date"],
+                "change": fd[sid].get("change_absolute"), "mom": fd[sid].get("mom_change_percent"),
+                "signal": signal,
+            }
+
+    # Composite: count + average for magnitude awareness
+    fed_surveys = {k: v for k, v in snapshot["regional_fed_mfg"].items() if k != "composite"}
+    if fed_surveys:
+        values = [v["value"] for v in fed_surveys.values()]
+        expanding = sum(1 for v in values if v > 0)
+        contracting = sum(1 for v in values if v < 0)
+        total = len(fed_surveys)
+        avg = round(sum(values) / total, 2)
+
+        # Consensus from vote count
+        if expanding > contracting:
+            consensus = "expansion"
+        elif contracting > expanding:
+            consensus = "contraction"
+        else:
+            consensus = "mixed"
+
+        # Conviction: is the average far from zero, or marginal?
+        # Thresholds based on historical regional Fed ranges (~-30 to +40)
+        if abs(avg) < 2:
+            conviction = "marginal"
+        elif abs(avg) < 10:
+            conviction = "moderate"
+        else:
+            conviction = "strong"
+
+        snapshot["regional_fed_mfg"]["composite"] = {
+            "expanding_count": expanding,
+            "contracting_count": contracting,
+            "total_count": total,
+            "average": avg,
+            "consensus": consensus,
+            "conviction": conviction,
+        }
+
+    # Chicago Fed National Activity Index
+    if "CFNAIMA3" in fd:
+        cfnai_val = fd["CFNAIMA3"]["latest_value"]
+        cfnai_signal = "above_trend" if cfnai_val > 0 else ("below_trend" if cfnai_val < 0 else "at_trend")
+        snapshot["growth"]["cfnai_3mo"] = {
+            "value": cfnai_val, "date": fd["CFNAIMA3"]["latest_date"],
+            "signal": cfnai_signal,
+        }
 
     # Inflation
     for sid, key in [("CPIAUCSL", "cpi"), ("CPILFESL", "core_cpi"), ("PCEPI", "pce"), ("PCEPILFE", "core_pce"), ("MICH", "michigan_expectations")]:
@@ -546,7 +1121,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
                          ("^VIX", "vix"), ("GC=F", "gold"), ("CL=F", "oil_wti"), ("HG=F", "copper"),
                          ("EURUSD=X", "eurusd"), ("DX-Y.NYB", "dxy"), ("TLT", "tlt_20y_treasury"),
                          ("HYG", "hyg"), ("LQD", "lqd"), ("EEM", "eem"), ("EFA", "efa"),
-                         ("JPY=X", "usdjpy"), ("CHF=X", "usdchf"), ("CNY=X", "usdcny")]:
+                         ("JPY=X", "usdjpy"), ("CHF=X", "usdchf"), ("CNY=X", "usdcny"),
+                         ("BKLN", "bkln_leveraged_loans")]:
         if ticker in yd:
             snapshot["markets"][key] = {
                 "value": yd[ticker]["latest_value"],
@@ -556,6 +1132,59 @@ def build_summary_snapshot(fred_data, yahoo_data, derived):
                 "month_chg": yd[ticker].get("month_change_pct"),
                 "three_month_chg": yd[ticker].get("three_month_change_pct"),
             }
+
+    # COT Positioning (from CFTC SODA API)
+    if cd:
+        for key, contract in cd.items():
+            snapshot["positioning"][key] = {
+                "name": contract["name"],
+                "category": contract["category"],
+                "trader_type": contract["trader_type"],
+                "net_speculative": contract["net_speculative"],
+                "prior_net": contract.get("prior_net"),
+                "weekly_change": contract.get("weekly_change"),
+                "percentile_52w": contract.get("percentile_52w"),
+                "extreme": contract.get("extreme"),
+                "direction": contract.get("direction"),
+                "date": contract["latest_date"],
+            }
+
+    # Eurozone data (ECB SDW + Eurostat — no API key required)
+    if "m3_outstanding" in ed:
+        m3 = ed["m3_outstanding"]
+        snapshot["eurozone"]["m3"] = {
+            "value_eur_millions": m3["latest_value"],
+            "date": m3["latest_date"],
+            "yoy_pct": m3.get("yoy_pct"),
+        }
+        if m3.get("yoy_pct") is not None:
+            snapshot["eurozone"]["m3_yoy"] = m3["yoy_pct"]
+
+    if "ecb_total_assets" in ed:
+        ecb = ed["ecb_total_assets"]
+        snapshot["eurozone"]["ecb_balance_sheet"] = {
+            "total_assets_eur_millions": ecb["latest_value"],
+            "date": ecb["latest_date"],
+            "wow_change_eur_millions": ecb.get("wow_change"),
+        }
+
+    if "hicp_headline" in esd:
+        hicp = esd["hicp_headline"]
+        snapshot["eurozone"]["hicp_headline"] = {
+            "value": hicp["latest_value"],
+            "date": hicp["latest_date"],
+            "direction": hicp.get("direction"),
+            "prior_value": hicp.get("prior_value"),
+        }
+
+    if "hicp_core" in esd:
+        core = esd["hicp_core"]
+        snapshot["eurozone"]["hicp_core"] = {
+            "value": core["latest_value"],
+            "date": core["latest_date"],
+            "direction": core.get("direction"),
+            "prior_value": core.get("prior_value"),
+        }
 
     # Derived signals (the most useful section for skills)
     snapshot["derived_signals"] = derived
@@ -672,16 +1301,50 @@ def main():
             for err in yahoo_data["errors"][:5]:
                 print(f"    - {err}")
 
-    # 3. Derived metrics
+    # 3. CFTC COT (via CFTC SODA API — free, no key needed)
+    cot_weeks = 52 if args.mode == "weekly" else 260  # 1 year or 5 years
+    print("Fetching CFTC COT data (publicreporting.cftc.gov)...")
+    cot_data = fetch_cot_data(cot_weeks)
+    if cot_data:
+        n = len(cot_data["data"])
+        e = len(cot_data["errors"])
+        print(f"  COT: {n} contracts fetched, {e} errors")
+        if cot_data["errors"]:
+            for err in cot_data["errors"][:5]:
+                print(f"    - {err}")
+
+    # 4. ECB Statistical Data Warehouse (free, no key)
+    print("Fetching ECB data (data-api.ecb.europa.eu)...")
+    ecb_data = fetch_ecb_data()
+    if ecb_data:
+        n = len(ecb_data["data"])
+        e = len(ecb_data["errors"])
+        print(f"  ECB: {n} series fetched, {e} errors")
+        if ecb_data["errors"]:
+            for err in ecb_data["errors"]:
+                print(f"    - {err}")
+
+    # 5. Eurostat (free, no key)
+    print("Fetching Eurostat data (ec.europa.eu/eurostat)...")
+    eurostat_data = fetch_eurostat_data()
+    if eurostat_data:
+        n = len(eurostat_data["data"])
+        e = len(eurostat_data["errors"])
+        print(f"  Eurostat: {n} series fetched, {e} errors")
+        if eurostat_data["errors"]:
+            for err in eurostat_data["errors"]:
+                print(f"    - {err}")
+
+    # 6. Derived metrics
     print("Computing derived metrics...")
     derived = compute_derived_metrics(fred_data, yahoo_data)
     print(f"  Derived: {len(derived)} metrics computed")
 
-    # 4. Snapshot
+    # 7. Snapshot
     print("Building summary snapshot...")
-    snapshot = build_summary_snapshot(fred_data, yahoo_data, derived)
+    snapshot = build_summary_snapshot(fred_data, yahoo_data, derived, cot_data, ecb_data, eurostat_data)
 
-    # 5. Save
+    # 6. Save
     full_output = {
         "collection_date": today,
         "collection_week": week,
@@ -689,6 +1352,9 @@ def main():
         "lookback_days": lookback,
         "fred": fred_data,
         "yahoo": yahoo_data,
+        "cot": cot_data,
+        "ecb": ecb_data,
+        "eurostat": eurostat_data,
         "derived": derived,
         "snapshot": snapshot,
     }
@@ -704,11 +1370,16 @@ def main():
             json.dump(data, f, indent=2, default=str)
 
     # Stats
-    total = (len(fred_data["data"]) if fred_data else 0) + (len(yahoo_data["data"]) if yahoo_data else 0)
-    total_err = (len(fred_data["errors"]) if fred_data else 0) + (len(yahoo_data["errors"]) if yahoo_data else 0)
+    total_fred = len(fred_data["data"]) if fred_data else 0
+    total_yahoo = len(yahoo_data["data"]) if yahoo_data else 0
+    total_cot = len(cot_data["data"]) if cot_data else 0
+    total_ecb = len(ecb_data["data"]) if ecb_data else 0
+    total_eurostat = len(eurostat_data["data"]) if eurostat_data else 0
+    total = total_fred + total_yahoo + total_cot + total_ecb + total_eurostat
+    total_err = sum(len(d.get("errors", [])) for d in [fred_data, yahoo_data, cot_data, ecb_data, eurostat_data] if d)
 
     print(f"\n=== Collection Complete ===")
-    print(f"Series fetched: {total}")
+    print(f"Series fetched: {total} (FRED: {total_fred}, Yahoo: {total_yahoo}, COT: {total_cot}, ECB: {total_ecb}, Eurostat: {total_eurostat})")
     print(f"Errors: {total_err}")
     print(f"Derived metrics: {len(derived)}")
     print(f"Success rate: {total / max(total + total_err, 1) * 100:.1f}%")

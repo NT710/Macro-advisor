@@ -104,6 +104,23 @@ For tactical theses (the default), produce:
 
 **Consensus view:** [What does the market currently believe? Where is the specific mispricing? Reference positioning data if available.]
 
+**Conviction:** [High / Medium / Low]
+Conviction is an honest assessment of how much evidence supports this thesis RIGHT NOW — not how exciting the thesis is or how large the potential payoff. Score it on two primary dimensions and one veto gate:
+
+**Primary dimensions (both must score well for High):**
+1. **Mechanism clarity:** Is the causal chain specific and testable? "Specific" means each link names a measurable indicator, a threshold, and an expected direction. "Inflation expectations rise above 3%" is specific. "Inflation worries grow" is not. If you can't point to the data series that would confirm or deny each link, mechanism clarity is Low.
+2. **Data support:** How many of the stated assumptions are currently supported by observable data? Count them. If ≥75% of assumptions are currently intact, data support is Strong. If 50-75%, Moderate. Below 50%, Weak. Forward-looking assumptions count as unsupported until their trigger fires.
+
+**Veto gate:**
+3. **Consensus check:** Is this thesis already the market consensus? If the consensus view section reveals broad agreement with this thesis, conviction is **capped at Medium** regardless of mechanism and data scores. A consensus position can be correct, but the edge is priced in — calling it High conviction overstates the information advantage. This is a ceiling, not a positive scoring dimension.
+
+**Scoring:**
+- **High** = Mechanism clarity is specific AND data support is Strong AND not capped by consensus veto.
+- **Medium** = Mechanism is specific but data support is only Moderate, OR conviction is capped by consensus veto, OR mechanism has one weak link.
+- **Low** = Data support is Weak, OR mechanism relies on narrative rather than measurable links, OR kill switch is already within 20% of firing threshold.
+
+If you find yourself wanting to call something High because the narrative is compelling despite Moderate data support, that's Medium. The narrative is not evidence.
+
 **ETF Expression:** Trace the causal chain from the thesis to specific ETFs. Every thesis has first, second, and third-order effects — name the ETF for each.
 
 - **First-order** (obvious, direct exposure): [ETF ticker(s)] — [tilt size] — [why this is the direct play]
@@ -299,8 +316,9 @@ For each active thesis, check:
 For each active thesis, produce a paragraph with:
 - Specific data references supporting the status assessment
 - Each assumption checked individually (INTACT / UNDER PRESSURE / BROKEN)
-- Kill switch proximity (how close are we to trigger?)
+- Kill switch proximity (how close are we to trigger? If within 20% of the firing threshold, flag this explicitly and downgrade conviction to Low if not already)
 - Any new information that changes the probability weighting
+- Conviction re-assessment: has conviction changed since generation? If data support has weakened or consensus has shifted, state the new conviction level explicitly. Conviction is not set-and-forget — it updates with the data.
 
 ### Thesis Lifecycle States
 
@@ -353,7 +371,7 @@ CLOSED → Final status. Record outcome in thesis log.
 ---
 meta:
   skill: thesis-generator-monitor
-  skill_version: "1.5"
+  skill_version: "1.6"
   run_date: "[ISO date]"
   function: [generate/monitor/both]
   theses_monitored: [number]

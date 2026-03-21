@@ -79,9 +79,24 @@ Read the actual files in `outputs/theses/active/`. Files prefixed with ACTIVE- a
 | [name from ACTIVE- file] | [plain English: what changed this week] | [hold/add/reduce/close] |
 
 **Draft candidates (awaiting your decision):**
-| Thesis | One-Line Summary | Recommendation |
-|--------|-----------------|---------------|
-| [name from DRAFT- file] | [what's the bet, in one sentence a friend would understand] | [activate/watch/discard] |
+| Thesis | Conviction | One-Line Summary | Recommendation | Why |
+|--------|-----------|-----------------|---------------|-----|
+| [name from DRAFT- file] | [H/M/L] | [what's the bet, in one sentence a friend would understand] | [activate/watch/discard] | [one sentence explaining the recommendation] |
+
+**Recommendation criteria (applied consistently — do not override based on narrative appeal):**
+
+- **Activate** — Conviction is High AND at least one trigger-to-add condition has been met (not "near" — met). The same rigor applied to kill switches applies here: triggers must fire to count, not just approach. If all conditions are true, recommend activation.
+- **Watch** — Conviction is Medium, OR conviction is High but the trigger hasn't fired yet. The thesis is plausible but either the timing isn't right or the data support is incomplete. Worth monitoring — but subject to the staleness rule below.
+- **Discard** — Conviction is Low, OR the kill switch is within 20% of firing threshold, OR the consensus view reveals the thesis is fully priced in with no remaining edge. Don't keep weak theses alive out of attachment to the narrative. A discard is a quality signal, not a failure.
+
+**Watch staleness rule:** If a thesis has been in "Watch" (recommended but not activated) for 3 consecutive weeks without its trigger firing, it must be re-evaluated with only two options: **activate** (if you'd bet on it now despite the trigger not firing, own that decision explicitly) or **discard** (if three weeks of data haven't produced the trigger, the timing thesis may be wrong). "Watch for another week" is not available after 3 weeks. This prevents weak-but-narratively-appealing theses from living indefinitely in a parking lot.
+
+**Anti-confirmation-bias rules for recommendations:**
+1. **Never recommend "activate" primarily because the thesis is exciting.** Conviction comes from data support and mechanism clarity, not from how dramatic the potential payoff is.
+2. **"Watch" is not a hedge against making a call.** If the honest assessment is "discard," say discard. Recommending "watch" on a weak thesis to avoid the discomfort of killing it is bias, not caution. Check: would you still recommend "watch" if the thesis narrative were boring? If the answer is no, the narrative is doing the work, not the data.
+3. **Count the ratio.** If more than half of draft theses are recommended "activate" in a given week, step back and ask whether the bar was applied consistently. High-conviction opportunities don't arrive in bulk every week. Similarly, if zero theses are recommended "discard" over a 4-week stretch, the discard bar may be too high.
+4. **A thesis can have High conviction and still be "watch."** If the trigger hasn't fired, the timing isn't there yet. Conviction measures the quality of the idea. Activation measures readiness to act.
+5. **The 3-week staleness rule is not optional.** After 3 weeks in Watch without a trigger firing, the only options are activate or discard. Do not reset the counter by minor rewording of the thesis or by redefining the trigger.
 
 ---
 

@@ -34,7 +34,7 @@ For each order:
 
 ```bash
 # Write order spec to temp file
-echo '{"symbol": "SPY", "side": "buy", "qty": 10, "type": "limit", "limit_price": 525.50, "time_in_force": "day"}' > /tmp/order.json
+echo '{"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust", "side": "buy", "qty": 10, "type": "limit", "limit_price": 525.50, "time_in_force": "day"}' > /tmp/order.json
 
 # Submit via trade executor
 python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py \
@@ -91,6 +91,7 @@ Save execution results to `outputs/trades/YYYY-MM-DD-HHMM-execution.json`:
   "results": [
     {
       "symbol": "SPY",
+      "name": "SPDR S&P 500 ETF Trust",
       "side": "buy",
       "qty_requested": 10,
       "qty_filled": 10,

@@ -63,9 +63,9 @@ consistently outperform, the thesis generation is the edge.
 
 ### Closed Trades This Week
 
-| Symbol | Entry | Exit | P&L | P&L % | Days Held | Close Reason | Bear Case Hit? |
-|--------|-------|------|-----|-------|-----------|-------------|----------------|
-| [sym] | $[X] | $[X] | $[X] | [X]% | [N] | [reason] | [yes/no] |
+| Symbol | Name | Entry | Exit | P&L | P&L % | Days Held | Close Reason | Bear Case Hit? |
+|--------|------|-------|------|-----|-------|-----------|-------------|----------------|
+| [sym] | [full ETF name] | $[X] | $[X] | $[X] | [X]% | [N] | [reason] | [yes/no] |
 
 ### Cumulative Win Rate
 
@@ -102,7 +102,7 @@ A high unarticulated loss rate means the bear case step is not rigorous enough.
 
 ### Risk Metrics
 - VaR (95%, 1-week, historical): $[X] ([X]% of portfolio)
-- Current concentration: largest position [symbol] at [X]%
+- Current concentration: largest position [symbol] ([full name]) at [X]%
 - Sector concentration: [sector] at [X]%
 - Thesis overlay: [X]% (limit: 25%)
 - Drawdown breach events: [N] (all-time)
@@ -122,7 +122,7 @@ If current drawdown exceeds 7% (approaching the 10% circuit breaker), produce a 
 ```markdown
 ⚠️ DRAWDOWN ALERT: Portfolio is [X]% below high water mark.
 Circuit breaker triggers at 10%. Current trajectory: [improving/worsening].
-Largest contributors to drawdown: [top 3 losing positions with P&L].
+Largest contributors to drawdown: [top 3 losing positions with symbol, full name, and P&L].
 ```
 
 ## Quality Standards

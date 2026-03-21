@@ -275,6 +275,7 @@ th button.sort-btn .sort-indicator.active {
 .negative { color: var(--red); }
 .buy-cell { color: var(--green); font-weight: 600; }
 .sell-cell { color: var(--red); font-weight: 600; }
+.name-cell { font-size: 0.85em; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reason-cell { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty-state { text-align: center; color: var(--text-muted); padding: var(--space-8) !important; }
 
@@ -555,7 +556,8 @@ th button.sort-btn .sort-indicator.active {
                         <th><button class="sort-btn" data-col="0" data-type="date" aria-sort="descending">Date <span class="sort-indicator active">▼</span></button></th>
                         <th>Run</th>
                         <th><button class="sort-btn" data-col="2" data-type="text" aria-sort="none">Ticker <span class="sort-indicator">⇅</span></button></th>
-                        <th><button class="sort-btn" data-col="3" data-type="text" aria-sort="none">Side <span class="sort-indicator">⇅</span></button></th>
+                        <th>Name</th>
+                        <th><button class="sort-btn" data-col="4" data-type="text" aria-sort="none">Side <span class="sort-indicator">⇅</span></button></th>
                         <th>Qty</th>
                         <th>Price</th>
                         <th>Type</th>
@@ -572,6 +574,7 @@ th button.sort-btn .sort-indicator.active {
                         <td>{{ t.date[:10] if t.date else '' }}</td>
                         <td>{{ t.run_type | default('', true) }}</td>
                         <td><strong>{{ t.symbol | default('', true) }}</strong></td>
+                        <td class="name-cell">{{ t.name | default('', true) }}</td>
                         <td class="{{ 'buy-cell' if t.side == 'buy' else 'sell-cell' }}">{{ (t.side | default('', true)) | upper }}</td>
                         <td>{{ t.qty | default('', true) }}</td>
                         <td>{{ t.fill_price | fmt_money }}</td>
@@ -583,7 +586,7 @@ th button.sort-btn .sort-indicator.active {
                     </tr>
                     {% endfor %}
                 {% else %}
-                    <tr><td colspan="11" class="empty-state">No trades recorded yet. Run the trading engine to see trades here.</td></tr>
+                    <tr><td colspan="12" class="empty-state">No trades recorded yet. Run the trading engine to see trades here.</td></tr>
                 {% endif %}
                 </tbody>
             </table>
@@ -599,12 +602,13 @@ th button.sort-btn .sort-indicator.active {
                 <thead>
                     <tr>
                         <th><button class="sort-btn" data-col="0" data-type="text" aria-sort="none">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th>Name</th>
                         <th>Entry</th>
                         <th>Exit</th>
-                        <th><button class="sort-btn" data-col="3" data-type="num" aria-sort="none">Days <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="4" data-type="num" aria-sort="none">Days <span class="sort-indicator">⇅</span></button></th>
                         <th>Entry Price</th>
                         <th>Exit Price</th>
-                        <th><button class="sort-btn" data-col="6" data-type="num" aria-sort="none">P&L <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="7" data-type="num" aria-sort="none">P&L <span class="sort-indicator">⇅</span></button></th>
                         <th>P&L %</th>
                         <th>Layer</th>
                         <th>Close Reason</th>
@@ -618,6 +622,7 @@ th button.sort-btn .sort-indicator.active {
                     {% set pl_pct = ct.realized_pl_pct | default(0, true) | float %}
                     <tr data-ticker="{{ ct.symbol | default('', true) }}" data-side="">
                         <td><strong>{{ ct.symbol | default('', true) }}</strong></td>
+                        <td class="name-cell">{{ ct.name | default('', true) }}</td>
                         <td>{{ ct.entry_date | default('', true) }}</td>
                         <td>{{ ct.exit_date | default('', true) }}</td>
                         <td>{{ ct.holding_days | default('—', true) }}</td>
@@ -631,7 +636,7 @@ th button.sort-btn .sort-indicator.active {
                     </tr>
                     {% endfor %}
                 {% else %}
-                    <tr><td colspan="11" class="empty-state">No closed trades yet. Positions close when stop-loss or take-profit triggers.</td></tr>
+                    <tr><td colspan="12" class="empty-state">No closed trades yet. Positions close when stop-loss or take-profit triggers.</td></tr>
                 {% endif %}
                 </tbody>
             </table>

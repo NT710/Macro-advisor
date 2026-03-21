@@ -11,16 +11,19 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 ## Data Targets
 
 ### Money Supply
-- **US M2** — monthly official, but track weekly proxies via commercial bank deposits (H.8 report)
-- **Eurozone M3** — ECB monthly release
-- **China Total Social Financing** — PBoC monthly release, the broadest credit measure
-- **China Aggregate Credit** — new yuan loans, shadow banking flows
+- **US M2** — monthly official, but track weekly proxies via commercial bank deposits (H.8 report). Available in snapshot: `snapshot.liquidity.*` (M2 level and growth regime)
+- **Eurozone M3** — **available in snapshot:** `snapshot.eurozone.m3` (outstanding amounts in EUR millions, date) and `snapshot.eurozone.m3_yoy` (YoY growth %). Pulled from ECB SDW API (free, no key). Read from snapshot first — no web search needed.
+- **China Total Social Financing** — PBoC monthly release, the broadest credit measure. Web search only (no free API).
+- **China Aggregate Credit** — new yuan loans, shadow banking flows. Web search only.
 
 ### Credit Conditions
 - **US high-yield credit spreads** — ICE BofA HY OAS (current level + direction)
 - **US investment-grade spreads** — ICE BofA IG OAS
 - **European credit spreads** — iTraxx Crossover, iTraxx Main
-- **Bank lending surveys** — Fed SLOOS (quarterly), ECB Bank Lending Survey (quarterly). Between releases, track commentary and analyst summaries.
+- **Bank lending surveys** — Fed SLOOS (quarterly), ECB Bank Lending Survey (quarterly). Between releases, track commentary and analyst summaries. SLOOS tightening data available in snapshot: `snapshot.credit.private_credit_proxy.sloos_tightening_pct`.
+- **C&I loan volumes** — Commercial & Industrial Loans Outstanding (weekly). Available in snapshot: `snapshot.credit.private_credit_proxy.ci_loans_yoy_pct`. YoY contraction = credit withdrawal.
+- **Leveraged loan market** — BKLN ETF price as proxy for leveraged loan conditions. Available in snapshot: `snapshot.markets.bkln_leveraged_loans` and `snapshot.credit.private_credit_proxy.leveraged_loan_etf`.
+- **Private credit proxy composite** — Available at `snapshot.credit.private_credit_proxy.composite_signal`. This is a convergence-based composite. When it reads "inconclusive," report the divergence rather than picking the most alarming proxy.
 
 ### Financial Conditions Indices
 - **Chicago Fed National Financial Conditions Index (NFCI)** — weekly release
@@ -28,37 +31,46 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 - **Bloomberg Financial Conditions Index** — alternative cross-check
 
 ### Central Bank Balance Sheets & Plumbing
-- **Fed balance sheet** — weekly H.4.1 release (total assets, reserve balances)
+- **Fed balance sheet** — weekly H.4.1 release (total assets, reserve balances). Available in snapshot: `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`
 - **QT pace** — actual vs. scheduled reduction
-- **TGA balance** — Treasury General Account at the Fed (affects reserve levels)
-- **Reverse repo facility (RRP)** — usage level and trend (draining = liquidity injection)
-- **ECB balance sheet** — weekly release
+- **TGA balance** — Treasury General Account at the Fed (affects reserve levels). Available in snapshot via FRED WTREGEN.
+- **Reverse repo facility (RRP)** — usage level and trend (draining = liquidity injection). Available in snapshot via FRED RRPONTSYD.
+- **ECB balance sheet** — **available in snapshot:** `snapshot.eurozone.ecb_balance_sheet` (total assets in EUR millions, date, WoW change). Pulled from ECB SDW API (free, no key). Read from snapshot first — no web search needed.
 
 ## Execution Steps
 
-1. Search for latest M2/M3 data for US, Eurozone, China
-2. Search for credit spread levels — HY OAS, IG OAS, iTraxx
-3. Search for NFCI and financial conditions index readings
-4. Search for Fed balance sheet weekly data (H.4.1)
-5. Search for TGA balance and RRP facility usage
-6. Search for ECB balance sheet data
-7. Search for China Total Social Financing latest release
-8. Synthesize into regime assessment
+1. **Read the data snapshot first.** Extract all structured data from `outputs/data/latest-snapshot.json`. If any snapshot section is empty or its date is >2 months old, treat that data point as missing and fall back to web search for the latest reading.
+   - **US M2:** `snapshot.liquidity.*` (level, growth regime, M2 growth metrics)
+   - **Eurozone M3:** `snapshot.eurozone.m3` (EUR millions, date), `snapshot.eurozone.m3_yoy` (YoY %)
+   - **Credit spreads:** `snapshot.credit.*` (HY OAS, IG OAS — from FRED)
+   - **Financial conditions:** `snapshot.liquidity.financial_conditions` (NFCI — from FRED)
+   - **Fed balance sheet:** `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`
+   - **TGA / RRP:** via FRED data in snapshot
+   - **ECB balance sheet:** `snapshot.eurozone.ecb_balance_sheet` (total assets, WoW change)
+   - **Private credit proxy:** `snapshot.credit.private_credit_proxy` (composite + components)
+2. **Web search only for data NOT in snapshot:**
+   - China Total Social Financing (PBoC monthly — no free API)
+   - Goldman Sachs FCI (proprietary, headlines only)
+   - QT pace commentary (qualitative)
+   - Any qualitative credit conditions commentary
+3. Synthesize into regime assessment
 
 ## Search Strategy
 
-- "US M2 money supply [month] [YEAR]"
-- "commercial bank deposits H.8 [YEAR]"
-- "eurozone M3 money supply [month] [YEAR]"
+Only search for data NOT available in the snapshot. The snapshot covers: US M2, NFCI, Fed balance sheet, TGA, RRP, HY/IG OAS, SLOOS, C&I loans, BKLN, Eurozone M3, ECB balance sheet.
+
+**Search for these (not in snapshot):**
 - "China total social financing [month] [YEAR]"
-- "high yield credit spread OAS [month] [YEAR]"
-- "investment grade credit spread [YEAR]"
-- "NFCI financial conditions index latest [YEAR]"
 - "Goldman Sachs financial conditions index [YEAR]"
-- "Federal Reserve balance sheet H.4.1 [YEAR]"
-- "Treasury general account TGA balance [YEAR]"
-- "reverse repo facility RRP usage [YEAR]"
-- "ECB balance sheet [month] [YEAR]"
+- "commercial bank deposits H.8 [YEAR]" (weekly proxy for M2, if more granularity needed)
+
+**Do NOT search for (available in snapshot — unless section is empty or date is >2 months stale):**
+- US M2 → `snapshot.liquidity.*`
+- HY/IG credit spreads → `snapshot.credit.*`
+- NFCI → `snapshot.liquidity.financial_conditions`
+- Fed balance sheet, TGA, RRP → `snapshot.liquidity.*`
+- Eurozone M3 → `snapshot.eurozone.m3`
+- ECB balance sheet → `snapshot.eurozone.ecb_balance_sheet`
 
 ### Rate-limit prone — use fallback strategy
 

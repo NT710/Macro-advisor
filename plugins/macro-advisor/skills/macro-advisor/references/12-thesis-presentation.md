@@ -79,7 +79,9 @@ The deep-read document. When someone clicks into a thesis from the briefing, thi
 
 ---
 
-## Expression
+## Conviction & Expression
+
+**Conviction:** [High/Medium/Low] — [one sentence from the thesis file explaining why. This comes directly from Skill 7's conviction assessment — do not override or editorialize.]
 
 **CRITICAL: Preserve the First / Second / Third / Avoid order labels from the Skill 7 thesis file.** These signal the causal hierarchy of the trade — first-order is the obvious direct play, second-order is less obvious and slower to price in, third-order is the contrarian or defensive angle. Do not flatten these into a generic table. The order label IS the insight.
 
@@ -181,7 +183,9 @@ For each thesis, identify the 1-2 most relevant data series from the snapshot:
 
 ### Chart Data Format
 
-For each thesis that gets a chart, produce a JSON block that `generate_dashboard.py` can consume:
+For each thesis that gets a chart, produce a JSON block that `generate_dashboard.py` can consume. **The chart spec must be self-contained** — the dashboard generator is a dumb renderer that plots whatever data it receives. It does not resolve references or look up data series.
+
+**CRITICAL: Resolve all data series into actual `{x, y}` arrays before writing the chart spec.** Read the data from `outputs/data/latest-data-full.json` (for time series history) or `outputs/data/latest-snapshot.json` (for current values). The `data` field in each dataset must contain an array of `{x: "YYYY-MM-DD", y: number}` objects — not a reference string like `"snapshot.markets.oil_wti"`. If you write a reference string instead of resolved data, the chart canvas will render empty.
 
 ```json
 {
@@ -190,20 +194,27 @@ For each thesis that gets a chart, produce a JSON block that `generate_dashboard
   "title": "string",
   "datasets": [
     {
-      "label": "string",
-      "data_series": "snapshot.path.to.series",
-      "color": "#hex"
+      "label": "WTI Crude Oil",
+      "data": [
+        {"x": "2025-09-15", "y": 72.3},
+        {"x": "2025-09-22", "y": 74.1},
+        {"x": "2025-09-29", "y": 76.8}
+      ],
+      "color": "#f87171",
+      "source": "markets.oil_wti"
     }
   ],
   "annotations": [
     {
       "type": "line",
-      "value": "number or date",
-      "label": "string"
+      "value": "2026-01-15",
+      "label": "Thesis generated"
     }
   ]
 }
 ```
+
+The `source` field is metadata for provenance — it records which data series was used, but the `data` array is what gets plotted. If a data series is not found in the snapshot or full data file, write an empty `data: []` array and add a note to the `annotations`: `{"type": "note", "label": "Data series [name] not available in snapshot"}`.
 
 Save chart specifications as **separate JSON files** alongside the thesis presentation files: `outputs/theses/presentations/[thesis-name]-charts.json`. The dashboard generator reads these files to render the charts as interactive Chart.js canvases.
 
@@ -254,7 +265,7 @@ This skill renders what Skill 7 and Skill 11 produced. It does not add analytica
 ---
 meta:
   skill: thesis-presentation
-  skill_version: "1.0"
+  skill_version: "1.2"
   run_date: "[ISO date]"
   theses_rendered: [number]
   tactical_reports: [number]

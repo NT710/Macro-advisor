@@ -1,0 +1,62 @@
+{
+  "_comment": "Schema for user-config.json. The pre-flight check in run-weekly.md reads this file and compares against the user's config. Any field with an 'upgrade_notice' that is missing entirely from user-config.json triggers a non-blocking notice to the user. When adding new config fields, add them here — the upgrade notice system picks them up automatically.",
+  "fields": {
+    "workspace_path": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "Absolute path to the workspace folder"
+    },
+    "fred_api_key": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "FRED API key for economic data",
+      "setup_step": "Step 2"
+    },
+    "preferred_currency": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "User's preferred currency for ETF investments (CHF, EUR, USD, GBP)",
+      "setup_step": "Step 4"
+    },
+    "browser_access": {
+      "type": "boolean",
+      "required": true,
+      "since": "0.1.0",
+      "description": "Whether Chrome browser tools are available for analyst monitoring",
+      "setup_step": "Step 3"
+    },
+    "schedule_day": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "Day of week for scheduled run"
+    },
+    "schedule_time": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "Time for scheduled run (HH:MM)"
+    },
+    "timezone": {
+      "type": "string",
+      "required": true,
+      "since": "0.1.0",
+      "description": "User's timezone"
+    },
+    "etf_mapping_last_updated": {
+      "type": "string",
+      "required": false,
+      "since": "0.1.0",
+      "description": "Date of last ETF mapping refresh"
+    },
+    "setup_completed": {
+      "type": "boolean",
+      "required": true,
+      "since": "0.1.0",
+      "description": "Whether setup has been completed"
+    }
+  }
+}

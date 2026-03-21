@@ -1,0 +1,607 @@
+{
+  "generated": "2026-03-21T21:44:28",
+  "rates": {
+    "fed_funds": {
+      "value": 3.64,
+      "date": "2026-03-19",
+      "change": 0.0,
+      "percentile": 0.0
+    },
+    "us_2y": {
+      "value": 3.79,
+      "date": "2026-03-19",
+      "change": 0.03,
+      "percentile": 99.2
+    },
+    "us_5y": {
+      "value": 3.88,
+      "date": "2026-03-19",
+      "change": 0.01,
+      "percentile": 98.4
+    },
+    "us_10y": {
+      "value": 4.25,
+      "date": "2026-03-19",
+      "change": -0.01,
+      "percentile": 90.2
+    },
+    "us_30y": {
+      "value": 4.83,
+      "date": "2026-03-19",
+      "change": -0.05,
+      "percentile": 73.0
+    }
+  },
+  "credit": {
+    "hy_oas_bps": 327.0,
+    "ig_oas_bps": 90.0,
+    "hy_ig_diff_bps": 237.0,
+    "hy_signal": "normal",
+    "hy_direction": "widening",
+    "hy_percentile": 97.7,
+    "date": "2026-03-19",
+    "private_credit_proxy": {
+      "sloos_tightening_pct": 5.3,
+      "sloos_date": "2026-01-01",
+      "sloos_signal": "neutral",
+      "ci_loans_level_B": 2.8,
+      "ci_loans_yoy_pct": 4.44,
+      "ci_loans_date": "2026-02-01",
+      "ci_loans_signal": "moderate growth",
+      "leveraged_loan_etf": 20.49,
+      "leveraged_loan_week_chg": 0.15,
+      "leveraged_loan_month_chg": -0.24,
+      "leveraged_loan_date": "2026-03-20",
+      "leveraged_loan_signal": "stable",
+      "hy_oas_cross_ref": 3.27,
+      "composite_signal": "benign \u2014 majority of proxies converging",
+      "stress_count": 0,
+      "easing_count": 2,
+      "total_proxies": 4,
+      "_disclaimer": "These are PROXIES for private credit conditions, not direct observations. Private credit has no public mark-to-market. Bank lending surveys, C&I loan volumes, and leveraged loan ETF prices capture adjacent markets that share borrower profiles with private credit \u2014 but they can diverge. Treat convergence as informative and divergence as genuinely uncertain, not as a sign one proxy is 'right'."
+    }
+  },
+  "liquidity": {
+    "liquidity_plumbing": {
+      "tga_balance_B": 853.1,
+      "tga_change": 14866.0,
+      "rrp_usage_B": 0.8,
+      "rrp_change": 0.185,
+      "signal": "double drain"
+    },
+    "financial_conditions": {
+      "nfci": -0.4857,
+      "signal": "loose",
+      "consecutive_weeks_loose": 25,
+      "percentile": 96.0,
+      "date": "2026-03-13"
+    },
+    "fed_total_assets_T": 6.66,
+    "fed_assets_change": 9595.0
+  },
+  "growth": {
+    "unemployment": {
+      "value": 4.4,
+      "date": "2026-02-01",
+      "change": 0.1,
+      "yoy": 4.76,
+      "mom": 2.3256,
+      "percentile": 66.7
+    },
+    "initial_claims": {
+      "value": 205000.0,
+      "date": "2026-03-14",
+      "change": -8000.0,
+      "yoy": null,
+      "mom": null,
+      "percentile": 7.7
+    },
+    "continuing_claims": {
+      "value": 1857000.0,
+      "date": "2026-03-07",
+      "change": 10000.0,
+      "yoy": null,
+      "mom": null,
+      "percentile": 16.0
+    },
+    "consumer_sentiment": {
+      "value": 56.4,
+      "date": "2026-01-01",
+      "change": 3.5,
+      "yoy": null,
+      "mom": 6.6163,
+      "percentile": 50.0
+    },
+    "nonfarm_payrolls": {
+      "value": 158466.0,
+      "date": "2026-02-01",
+      "change": -92.0,
+      "yoy": 0.1,
+      "mom": -0.058,
+      "percentile": 38.5
+    },
+    "manufacturing_employment": {
+      "value": 12573.0,
+      "date": "2026-02-01",
+      "change": -12.0,
+      "yoy": -0.77,
+      "mom": -0.0954,
+      "percentile": 0.0
+    },
+    "industrial_production": {
+      "value": 102.551,
+      "date": "2026-02-01",
+      "change": 0.1547,
+      "yoy": 1.44,
+      "mom": 0.1511,
+      "percentile": 92.3
+    },
+    "retail_sales": {
+      "value": 733537.0,
+      "date": "2026-01-01",
+      "change": -1148.0,
+      "yoy": null,
+      "mom": -0.1563,
+      "percentile": 75.0
+    },
+    "cfnai_3mo": {
+      "value": -0.06,
+      "date": "2026-01-01",
+      "signal": "below_trend"
+    }
+  },
+  "inflation": {
+    "cpi": {
+      "value": 327.46,
+      "date": "2026-02-01",
+      "yoy": 2.43,
+      "mom": 0.267
+    },
+    "core_cpi": {
+      "value": 333.512,
+      "date": "2026-02-01",
+      "yoy": 2.47,
+      "mom": 0.2161
+    },
+    "pce": {
+      "value": 128.969,
+      "date": "2026-01-01",
+      "yoy": null,
+      "mom": 0.2752
+    },
+    "core_pce": {
+      "value": 128.394,
+      "date": "2026-01-01",
+      "yoy": null,
+      "mom": 0.3635
+    },
+    "michigan_expectations": {
+      "value": 4.0,
+      "date": "2026-01-01",
+      "yoy": null,
+      "mom": -4.7619
+    },
+    "expectations": {
+      "breakeven_5y": 2.63,
+      "breakeven_10y": 2.38,
+      "anchored": true,
+      "signal": "drifting higher",
+      "date": "2026-03-20"
+    }
+  },
+  "markets": {
+    "sp500": {
+      "value": 6506.48,
+      "date": "2026-03-20",
+      "day_chg": -1.51,
+      "week_chg": -1.9,
+      "month_chg": -5.18,
+      "three_month_chg": -4.55
+    },
+    "nasdaq100": {
+      "value": 23898.1543,
+      "date": "2026-03-20",
+      "day_chg": -1.88,
+      "week_chg": -1.98,
+      "month_chg": -3.63,
+      "three_month_chg": -4.66
+    },
+    "russell2000": {
+      "value": 2438.4509,
+      "date": "2026-03-20",
+      "day_chg": -2.26,
+      "week_chg": -1.68,
+      "month_chg": -8.5,
+      "three_month_chg": -3.64
+    },
+    "vix": {
+      "value": 26.78,
+      "date": "2026-03-20",
+      "day_chg": 11.31,
+      "week_chg": -1.51,
+      "month_chg": 32.38,
+      "three_month_chg": 62.3
+    },
+    "gold": {
+      "value": 4574.8999,
+      "date": "2026-03-20",
+      "day_chg": -0.56,
+      "week_chg": -9.45,
+      "month_chg": -8.06,
+      "three_month_chg": 6.23
+    },
+    "oil_wti": {
+      "value": 98.23,
+      "date": "2026-03-20",
+      "day_chg": 2.17,
+      "week_chg": -0.49,
+      "month_chg": 47.87,
+      "three_month_chg": 72.88
+    },
+    "copper": {
+      "value": 5.3745,
+      "date": "2026-03-20",
+      "day_chg": -1.08,
+      "week_chg": -5.95,
+      "month_chg": -6.2,
+      "three_month_chg": 0.67
+    },
+    "eurusd": {
+      "value": 1.1575,
+      "date": "2026-03-20",
+      "day_chg": 0.97,
+      "week_chg": 0.47,
+      "month_chg": -1.81,
+      "three_month_chg": -1.48
+    },
+    "dxy": {
+      "value": 99.503,
+      "date": "2026-03-20",
+      "day_chg": 0.28,
+      "week_chg": -0.85,
+      "month_chg": 1.61,
+      "three_month_chg": 1.38
+    },
+    "tlt_20y_treasury": {
+      "value": 85.83,
+      "date": "2026-03-20",
+      "day_chg": -1.9,
+      "week_chg": -0.82,
+      "month_chg": -3.91,
+      "three_month_chg": -0.71
+    },
+    "hyg": {
+      "value": 78.92,
+      "date": "2026-03-20",
+      "day_chg": -0.93,
+      "week_chg": -0.35,
+      "month_chg": -2.02,
+      "three_month_chg": -0.66
+    },
+    "lqd": {
+      "value": 107.85,
+      "date": "2026-03-20",
+      "day_chg": -1.23,
+      "week_chg": -0.3,
+      "month_chg": -3.1,
+      "three_month_chg": -1.13
+    },
+    "eem": {
+      "value": 55.64,
+      "date": "2026-03-20",
+      "day_chg": -3.44,
+      "week_chg": -2.04,
+      "month_chg": -8.85,
+      "three_month_chg": 4.36
+    },
+    "efa": {
+      "value": 93.59,
+      "date": "2026-03-20",
+      "day_chg": -3.04,
+      "week_chg": -2.81,
+      "month_chg": -10.05,
+      "three_month_chg": -1.86
+    },
+    "usdjpy": {
+      "value": 157.924,
+      "date": "2026-03-20",
+      "day_chg": -1.17,
+      "week_chg": -0.81,
+      "month_chg": 2.09,
+      "three_month_chg": 2.03
+    },
+    "usdchf": {
+      "value": 0.7887,
+      "date": "2026-03-20",
+      "day_chg": -0.5,
+      "week_chg": 0.43,
+      "month_chg": 2.14,
+      "three_month_chg": -0.82
+    },
+    "usdcny": {
+      "value": 6.8852,
+      "date": "2026-03-20",
+      "day_chg": 0.18,
+      "week_chg": 0.24,
+      "month_chg": -0.33,
+      "three_month_chg": -2.22
+    },
+    "bkln_leveraged_loans": {
+      "value": 20.49,
+      "date": "2026-03-20",
+      "day_chg": -0.24,
+      "week_chg": 0.15,
+      "month_chg": -0.24,
+      "three_month_chg": -1.05
+    }
+  },
+  "positioning": {
+    "sp500": {
+      "name": "S&P 500 E-mini",
+      "category": "equities",
+      "trader_type": "Asset Manager",
+      "net_speculative": 886828.0,
+      "prior_net": 898852.0,
+      "weekly_change": -12024.0,
+      "percentile_52w": 44.2,
+      "extreme": null,
+      "direction": "unwinding long",
+      "date": "2026-03-17"
+    },
+    "nasdaq100": {
+      "name": "Nasdaq-100",
+      "category": "equities",
+      "trader_type": "Asset Manager",
+      "net_speculative": 61391.0,
+      "prior_net": 65518.0,
+      "weekly_change": -4127.0,
+      "percentile_52w": 30.8,
+      "extreme": null,
+      "direction": "unwinding long",
+      "date": "2026-03-17"
+    },
+    "10y_treasury": {
+      "name": "10-Year Treasury Note",
+      "category": "rates",
+      "trader_type": "Leveraged Money",
+      "net_speculative": -1934928.0,
+      "prior_net": -1878928.0,
+      "weekly_change": -56000.0,
+      "percentile_52w": 76.9,
+      "extreme": null,
+      "direction": "building short",
+      "date": "2026-03-17"
+    },
+    "2y_treasury": {
+      "name": "2-Year Treasury Note",
+      "category": "rates",
+      "trader_type": "Leveraged Money",
+      "net_speculative": -2086476.0,
+      "prior_net": -1927605.0,
+      "weekly_change": -158871.0,
+      "percentile_52w": 34.6,
+      "extreme": null,
+      "direction": "building short",
+      "date": "2026-03-17"
+    },
+    "eur_usd": {
+      "name": "EUR/USD",
+      "category": "fx",
+      "trader_type": "Leveraged Money",
+      "net_speculative": -6952.0,
+      "prior_net": 5231.0,
+      "weekly_change": -12183.0,
+      "percentile_52w": 0.0,
+      "extreme": "extreme short",
+      "direction": "building short",
+      "date": "2026-03-17"
+    },
+    "jpy_usd": {
+      "name": "JPY/USD",
+      "category": "fx",
+      "trader_type": "Leveraged Money",
+      "net_speculative": -65429.0,
+      "prior_net": -49219.0,
+      "weekly_change": -16210.0,
+      "percentile_52w": 13.5,
+      "extreme": "crowded short",
+      "direction": "building short",
+      "date": "2026-03-17"
+    },
+    "gold": {
+      "name": "Gold",
+      "category": "commodities",
+      "trader_type": "Money Manager",
+      "net_speculative": 102043.0,
+      "prior_net": 98399.0,
+      "weekly_change": 3644.0,
+      "percentile_52w": 19.2,
+      "extreme": "crowded short",
+      "direction": "building long",
+      "date": "2026-03-17"
+    },
+    "crude_oil_wti": {
+      "name": "Crude Oil WTI",
+      "category": "commodities",
+      "trader_type": "Money Manager",
+      "net_speculative": 96371.0,
+      "prior_net": 92122.0,
+      "weekly_change": 4249.0,
+      "percentile_52w": 69.2,
+      "extreme": null,
+      "direction": "building long",
+      "date": "2026-03-17"
+    },
+    "copper": {
+      "name": "Copper",
+      "category": "commodities",
+      "trader_type": "Money Manager",
+      "net_speculative": 46558.0,
+      "prior_net": 47676.0,
+      "weekly_change": -1118.0,
+      "percentile_52w": 51.9,
+      "extreme": null,
+      "direction": "unwinding long",
+      "date": "2026-03-17"
+    }
+  },
+  "regional_fed_mfg": {
+    "empire_state": {
+      "value": -0.2,
+      "date": "2026-03-01",
+      "change": -7.3,
+      "mom": -102.8169,
+      "signal": "contraction"
+    },
+    "philly_fed": {
+      "value": 18.1,
+      "date": "2026-03-01",
+      "change": 1.8,
+      "mom": 11.0429,
+      "signal": "expansion"
+    },
+    "dallas_fed": {
+      "value": 0.2,
+      "date": "2026-02-01",
+      "change": 1.4,
+      "mom": 116.6667,
+      "signal": "expansion"
+    },
+    "composite": {
+      "expanding_count": 2,
+      "contracting_count": 1,
+      "total_count": 3,
+      "average": 6.03,
+      "consensus": "expansion",
+      "conviction": "moderate"
+    }
+  },
+  "eurozone": {
+    "m3": {
+      "value_eur_millions": 17344679.0,
+      "date": "2026-01",
+      "yoy_pct": 3.44
+    },
+    "m3_yoy": 3.44,
+    "ecb_balance_sheet": {
+      "total_assets_eur_millions": 6168261.0,
+      "date": "2026-W11",
+      "wow_change_eur_millions": -8203.0
+    },
+    "hicp_headline": {
+      "value": 2.0,
+      "date": "2025-12",
+      "direction": "falling",
+      "prior_value": 2.1
+    },
+    "hicp_core": {
+      "value": 2.3,
+      "date": "2025-12",
+      "direction": "falling",
+      "prior_value": 2.4
+    }
+  },
+  "derived_signals": {
+    "yield_curve_10y2y": {
+      "value": 0.51,
+      "signal": "steepening (expansion)",
+      "date": "2026-03-20",
+      "consecutive_weeks_in_state": 52,
+      "percentile": 3.3
+    },
+    "real_10y_rate": {
+      "value": 1.87,
+      "signal": "neutral",
+      "date": "2026-03-19"
+    },
+    "credit_spreads": {
+      "hy_oas_bps": 327.0,
+      "ig_oas_bps": 90.0,
+      "hy_ig_diff_bps": 237.0,
+      "hy_signal": "normal",
+      "hy_direction": "widening",
+      "hy_percentile": 97.7,
+      "date": "2026-03-19",
+      "private_credit_proxy": {
+        "sloos_tightening_pct": 5.3,
+        "sloos_date": "2026-01-01",
+        "sloos_signal": "neutral",
+        "ci_loans_level_B": 2.8,
+        "ci_loans_yoy_pct": 4.44,
+        "ci_loans_date": "2026-02-01",
+        "ci_loans_signal": "moderate growth",
+        "leveraged_loan_etf": 20.49,
+        "leveraged_loan_week_chg": 0.15,
+        "leveraged_loan_month_chg": -0.24,
+        "leveraged_loan_date": "2026-03-20",
+        "leveraged_loan_signal": "stable",
+        "hy_oas_cross_ref": 3.27,
+        "composite_signal": "benign \u2014 majority of proxies converging",
+        "stress_count": 0,
+        "easing_count": 2,
+        "total_proxies": 4,
+        "_disclaimer": "These are PROXIES for private credit conditions, not direct observations. Private credit has no public mark-to-market. Bank lending surveys, C&I loan volumes, and leveraged loan ETF prices capture adjacent markets that share borrower profiles with private credit \u2014 but they can diverge. Treat convergence as informative and divergence as genuinely uncertain, not as a sign one proxy is 'right'."
+      }
+    },
+    "vix_regime": {
+      "value": 26.78,
+      "signal": "fear",
+      "week_change": -1.51,
+      "date": "2026-03-20"
+    },
+    "liquidity_plumbing": {
+      "tga_balance_B": 853.1,
+      "tga_change": 14866.0,
+      "rrp_usage_B": 0.8,
+      "rrp_change": 0.185,
+      "signal": "double drain"
+    },
+    "financial_conditions": {
+      "nfci": -0.4857,
+      "signal": "loose",
+      "consecutive_weeks_loose": 25,
+      "percentile": 96.0,
+      "date": "2026-03-13"
+    },
+    "usd_trend": {
+      "value": 99.503,
+      "week_change_pct": -0.85,
+      "month_change_pct": 1.61,
+      "signal": "strengthening"
+    },
+    "credit_stress_private_proxy": {
+      "sloos_tightening_pct": 5.3,
+      "sloos_date": "2026-01-01",
+      "sloos_signal": "neutral",
+      "ci_loans_level_B": 2.8,
+      "ci_loans_yoy_pct": 4.44,
+      "ci_loans_date": "2026-02-01",
+      "ci_loans_signal": "moderate growth",
+      "leveraged_loan_etf": 20.49,
+      "leveraged_loan_week_chg": 0.15,
+      "leveraged_loan_month_chg": -0.24,
+      "leveraged_loan_date": "2026-03-20",
+      "leveraged_loan_signal": "stable",
+      "hy_oas_cross_ref": 3.27,
+      "composite_signal": "benign \u2014 majority of proxies converging",
+      "stress_count": 0,
+      "easing_count": 2,
+      "total_proxies": 4,
+      "_disclaimer": "These are PROXIES for private credit conditions, not direct observations. Private credit has no public mark-to-market. Bank lending surveys, C&I loan volumes, and leveraged loan ETF prices capture adjacent markets that share borrower profiles with private credit \u2014 but they can diverge. Treat convergence as informative and divergence as genuinely uncertain, not as a sign one proxy is 'right'."
+    },
+    "equity_regime": {
+      "sp500": 6506.48,
+      "week_pct": -1.9,
+      "month_pct": -5.18,
+      "three_month_pct": -4.55,
+      "trend": "downtrend"
+    },
+    "inflation_expectations": {
+      "breakeven_5y": 2.63,
+      "breakeven_10y": 2.38,
+      "anchored": true,
+      "signal": "drifting higher",
+      "date": "2026-03-20"
+    }
+  }
+}

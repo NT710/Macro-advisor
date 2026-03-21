@@ -102,10 +102,10 @@ For each file in the active theses directory, extract:
       "classification": "tactical|structural",
       "mechanism_type": "divergence|regime_shift|positioning_extreme|policy_shift|cross_market_dislocation|structural_constraint|other",
       "etf_expressions": {
-        "first_order": [{"etf": "XLE", "sizing": "medium 3-5%", "rationale": "..."}],
-        "second_order": [{"etf": "XOP", "sizing": "small 1-3%", "rationale": "..."}],
-        "third_order": [{"etf": "OIH", "sizing": "small 1-2%", "rationale": "..."}],
-        "reduce_avoid": ["QQQ"]
+        "first_order": [{"etf": "XLE", "name": "Energy Select Sector SPDR", "sizing": "medium 3-5%", "rationale": "..."}],
+        "second_order": [{"etf": "XOP", "name": "SPDR S&P Oil & Gas Exploration & Production", "sizing": "small 1-3%", "rationale": "..."}],
+        "third_order": [{"etf": "OIH", "name": "VanEck Oil Services ETF", "sizing": "small 1-2%", "rationale": "..."}],
+        "reduce_avoid": [{"etf": "QQQ", "name": "Invesco QQQ Trust (Nasdaq-100)"}]
       },
       "kill_switch": "specific condition from thesis",
       "kill_switch_status": "NOT_TRIGGERED|NEAR|TRIGGERED",

@@ -78,7 +78,10 @@ These analysts publish less frequently. Check each week, but expect "no new cont
 Work through the sources systematically. For each source:
 
 1. **Read the Last Seen table** from `outputs/collection/analyst-themes.md` (the section at the bottom). This tells you the date and title of the most recent content captured for each source last week.
-2. **Navigate to the feed/page** using the access method specified above.
+2. **Navigate to the feed/page using the correct access method for that source.** This is not optional — each source specifies its access method:
+   - **Chrome browser** (requires login): Steno (X), Gromen (X), Alpine Macro (LinkedIn)
+   - **WebFetch** (no login needed): Macro Compass (Substack), MacroVoices (transcript page), Oaktree (insights page), Lyn Alden (constructed URL), Evergreen Gavekal (blog)
+   - **Do NOT use web search as a shortcut when the proper access method is available.** Web search is a fallback for when Chrome is unavailable, not a default. WebFetch sources should always use WebFetch directly on the URL — it returns the actual page content, which is far richer than a search result snippet.
 3. **Compare against Last Seen.** If the newest content on the page matches (same date and title), there's nothing new. Note it and move on. Don't re-analyze stale content.
 4. **If new content exists** (date is newer than Last Seen, or title is different): Proceed to Steps 2-3 for that source.
 5. **If Last Seen table is missing** (first run, or analyst-themes.md doesn't exist yet): treat all content as new.

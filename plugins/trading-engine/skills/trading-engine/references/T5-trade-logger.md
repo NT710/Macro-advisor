@@ -21,6 +21,7 @@ For each trade executed, append to `outputs/trades/trade-log.json` (cumulative f
   "date": "ISO date",
   "run_type": "sunday_full|wednesday_check",
   "symbol": "SPY",
+  "name": "SPDR S&P 500 ETF Trust",
   "side": "buy|sell",
   "qty": 10,
   "fill_price": 525.30,
@@ -60,14 +61,14 @@ Also produce a human-readable weekly summary appended to `outputs/trades/weekly-
 - Regime: [quadrant] (week [N])
 
 ### Trades Executed
-| Symbol | Side | Qty | Price | Layer | Thesis | Reason |
-|--------|------|-----|-------|-------|--------|--------|
-| SPY | BUY | 10 | $525.30 | regime | — | Goldilocks tilt |
+| Symbol | Name | Side | Qty | Price | Layer | Thesis | Reason |
+|--------|------|------|-----|-------|-------|--------|--------|
+| SPY | SPDR S&P 500 ETF Trust | BUY | 10 | $525.30 | regime | — | Goldilocks tilt |
 
 ### Trades Skipped
-| Symbol | Reason |
-|--------|--------|
-| OIH | Third-order: no concrete edge |
+| Symbol | Name | Reason |
+|--------|------|--------|
+| OIH | VanEck Oil Services ETF | Third-order: no concrete edge |
 
 ### Kill Switch Activity
 [None this run / details]
@@ -76,7 +77,7 @@ Also produce a human-readable weekly summary appended to `outputs/trades/weekly-
 [Thesis: bear case summary. Proceed: Yes/No]
 
 ### Risk State
-- Max position: [symbol] at [X]%
+- Max position: [symbol] ([full name]) at [X]%
 - Thesis overlay: [X]%
 - Drawdown: [X]% from HWM
 - Risk violations: [none / list]
@@ -89,6 +90,7 @@ When a position is fully closed, create a closed-trade entry in `outputs/trades/
 ```json
 {
   "symbol": "XLE",
+  "name": "Energy Select Sector SPDR",
   "entry_date": "2026-03-20",
   "exit_date": "2026-04-15",
   "entry_price": 85.30,

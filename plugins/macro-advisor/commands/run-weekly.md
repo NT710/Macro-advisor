@@ -1,6 +1,6 @@
 ---
 description: Run the full weekly macro analysis cycle manually
-allowed-tools: Read, Write, Edit, Bash, Grep, WebSearch, WebFetch
+allowed-tools: Read, Write, Edit, Bash, Grep, WebSearch, WebFetch, ~~browser
 ---
 
 Run the full Macro Advisor weekly analysis cycle. This executes the same sequence as the scheduled run.
@@ -15,10 +15,17 @@ Before doing anything else, read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/ref
 
 1. Read `config/user-config.json` to load the user's configuration. If not found at the relative path, the working directory may not be the workspace — stop and tell the user to select their workspace folder in Cowork.
 2. If config is missing or `setup_completed` is false, tell the user to run `/macro-advisor:setup` first and stop.
-3. Read `workspace_path` from config. If the current working directory does not match `workspace_path`, `cd` to `workspace_path` so all relative output paths resolve correctly.
-4. Determine the current date and ISO week number. All output files use the format: `YYYY-Www-[skill-name].md`.
-5. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/SKILL.md` for system overview and execution chain.
-6. Read ETF references — two files, both consulted by Skills 7, 9, and 12:
+3. **Config upgrade check.** Read `${CLAUDE_PLUGIN_ROOT}/config/config-schema.json`. For every field that has an `upgrade_notice`, check if that field is entirely missing from `user-config.json` (not null — missing). For each missing field, collect its `upgrade_notice` message. If any notices were collected, show them all at once under a single header:
+   > "**New capabilities available since your last setup:**"
+   > - [each upgrade_notice]
+   > "Your system works fine without these. Enable them when convenient by editing `config/user-config.json`."
+
+   Then continue the run normally. Do not block.
+4. Read `workspace_path` from config. If the current working directory does not match `workspace_path`, `cd` to `workspace_path` so all relative output paths resolve correctly.
+5. Determine the current date and ISO week number. All output files use the format: `YYYY-Www-[skill-name].md`.
+6. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/SKILL.md` for system overview and execution chain.
+7. **Record the start time.** Run `date +%s` and save the Unix timestamp. You'll need this at the end.
+8. Read ETF references — two files, both consulted by Skills 7, 9, and 12:
    - `config/etf-overrides.md` (workspace) — currency-specific equivalents. Read first. May not exist if user chose USD.
    - `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/etf-reference.md` (plugin) — USD defaults and thematic/sector ETFs.
 
@@ -38,7 +45,7 @@ If it exists (subsequent runs), use weekly mode:
 python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode weekly
 ```
 
-Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. Never hardcode the key in any output file.
+Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. CFTC COT data is pulled automatically (no API key needed). Never hardcode keys in any output file.
 
 Read `outputs/data/latest-snapshot.json` after completion. This snapshot is the data foundation for all subsequent skills.
 
@@ -151,12 +158,15 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
 
 ## Post-run
 
+**Calculate elapsed time.** Run `date +%s` again and subtract the start timestamp from pre-flight step 6. Convert to minutes.
+
 Present to the user:
 
 1. **Monday Morning Briefing** — the dashboard HTML file and briefing markdown
 2. **Regime identified** — which quadrant, confidence level, and whether it changed from last week
 3. **Active theses** — count of ACTIVE- and DRAFT- files, any new or invalidated this week
 4. **Self-improvement** — system health score and count of proposed amendments
+5. **Run time** — "This run covered 74+ economic data series (including CFTC COT positioning), 8 external analysts, regime identification, thesis generation, self-improvement scoring, and a full HTML dashboard. For a human analyst, that's roughly 2-3 days of work. Claude did it in [X] minutes."
 
 If Skill 8 proposed any amendments, include: "X skill amendments proposed this week. Run `/macro-advisor:implement-improvements` to review and apply them."
 

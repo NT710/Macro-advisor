@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 """
-Macro Advisor — Weekly Dashboard Generator (Alpine Report Edition)
+Macro Advisor — Weekly Dashboard Generator
 Reads all output files and produces a single HTML dashboard with:
-- Hero section with SVG regime map + metrics strip with sparklines
-- What Changed This Week section
-- Economic Dashboard 2x2 mini-chart grid
-- Regime evolution timeline (26-week, clickable popovers)
-- Active positions (research-report style, expandable)
-- Cross-asset heatmap
-- System health
-
-Uses Jinja2 template at scripts/dashboard-template.html.
+- Regime visualization (four-quadrant scatter with current position + history)
+- Monday briefing (formatted)
+- Active theses (formatted)
+- Improvement report (formatted)
 
 Usage:
     python generate_dashboard.py --week 2026-W12 --output-dir outputs/ --out dashboard.html
@@ -19,18 +14,11 @@ Usage:
 import argparse
 import base64
 import json
-import math
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
-
-
-# ---------------------------------------------------------------------------
-# File helpers
-# ---------------------------------------------------------------------------
 
 def read_file(path):
     """Read a file, return empty string if not found."""
@@ -40,32 +28,8 @@ def read_file(path):
         return ""
 
 
-def inline_asset(path):
-    """Read a local asset file and return content for embedding.
-
-    .woff2 files → base64 data URI
-    .js files → raw content
-    """
-    p = Path(path)
-    if not p.exists():
-        raise FileNotFoundError(f"Asset not found: {path}")
-    if p.suffix == ".woff2":
-        data = p.read_bytes()
-        b64 = base64.b64encode(data).decode("ascii")
-        return f"data:font/woff2;base64,{b64}"
-    return p.read_text(encoding="utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Markdown → HTML conversion
-# ---------------------------------------------------------------------------
-
 def md_to_html(md_text):
-    """Simple markdown to HTML conversion — handles headers, bold, tables, lists, code blocks.
-    Strips <script> tags for XSS defense-in-depth."""
-    # Strip <script> tags before processing
-    md_text = re.sub(r'<script\b[^>]*>.*?</script>', '', md_text, flags=re.DOTALL | re.IGNORECASE)
-
+    """Simple markdown to HTML conversion — handles headers, bold, tables, lists, code blocks."""
     lines = md_text.split("\n")
     html_lines = []
     in_table = False
@@ -79,7 +43,8 @@ def md_to_html(md_text):
                 html_lines.append("</pre></div>")
                 in_code = False
             else:
-                html_lines.append('<div class="code-block"><pre>')
+                lang = line.strip().replace("```", "")
+                html_lines.append(f'<div class="code-block"><pre>')
                 in_code = True
             continue
         if in_code:
@@ -145,21 +110,16 @@ def md_to_html(md_text):
 
 def apply_inline(text):
     """Apply inline markdown formatting."""
+    # Bold
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    # Italic
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    # Inline code
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
-    def _safe_link(m):
-        label, href = m.group(1), m.group(2)
-        if href.lower().startswith("javascript:"):
-            return label  # strip javascript: URIs
-        return f'<a href="{href}">{label}</a>'
-    text = re.sub(r'\[(.+?)\]\((.+?)\)', _safe_link, text)
+    # Links
+    text = re.sub(r'\[(.+?)\]\((.+?)\)', r'<a href="\2">\1</a>', text)
     return text
 
-
-# ---------------------------------------------------------------------------
-# Regime parsing
-# ---------------------------------------------------------------------------
 
 def parse_regime_from_synthesis(synthesis_text):
     """Extract regime data including forecasts from synthesis for the visualization."""
@@ -168,14 +128,17 @@ def parse_regime_from_synthesis(synthesis_text):
     confidence = "Medium"
     forecast_6m = "Unknown"
     forecast_12m = "Unknown"
+    forecast_6m_confidence = "Low"
+    forecast_12m_confidence = "Low"
 
     lines = synthesis_text.split("\n")
     in_forecast_section = False
 
-    for line in lines:
+    for i, line in enumerate(lines):
         lower = line.lower()
 
-        if "current quadrant" in lower or ("regime:" in lower and "forecast" not in lower):
+        # Current regime — only match "Current Quadrant" line or the first "Regime:" line
+        if regime == "Unknown" and ("current quadrant" in lower or ("regime:" in lower and "forecast" not in lower and "most likely" not in lower)):
             if "goldilocks" in lower:
                 regime = "Goldilocks"
             elif "overheating" in lower:
@@ -185,17 +148,11 @@ def parse_regime_from_synthesis(synthesis_text):
             elif "disinflation" in lower or "slowdown" in lower:
                 regime = "Disinflationary Slowdown"
 
-        if "direction:" in lower and "forecast" not in lower:
-            if "stable" in lower:
-                direction = "Stable"
-            elif "stagflation" in lower:
-                direction = "Toward Stagflation"
-            elif "goldilocks" in lower:
-                direction = "Toward Goldilocks"
-            elif "overheating" in lower:
-                direction = "Toward Overheating"
-            elif "disinflation" in lower or "slowdown" in lower:
-                direction = "Toward Disinflation"
+        if "direction:" in lower and "forecast" not in lower and direction == "Stable":
+            # Extract the raw text after "Direction:"
+            match = re.search(r'\*{0,2}[Dd]irection:?\*{0,2}\s*(.+)', line)
+            if match:
+                direction = match.group(1).strip()
 
         if "confidence:" in lower and not in_forecast_section:
             if "high" in lower:
@@ -205,26 +162,41 @@ def parse_regime_from_synthesis(synthesis_text):
             else:
                 confidence = "Medium"
 
+        # Forecast section detection
         if "regime forecast" in lower or "6 and 12 month" in lower:
             in_forecast_section = True
 
         if in_forecast_section:
-            if ("6 month" in lower or "6-month" in lower) and "most likely" in lower:
-                for r in ["Goldilocks", "Overheating", "Stagflation"]:
-                    if r.lower() in lower:
-                        forecast_6m = r
-                        break
-                if "disinflation" in lower or "slowdown" in lower:
-                    forecast_6m = "Disinflationary Slowdown"
+            # Track which forecast horizon we're currently under
+            if "6 month" in lower or "6-month" in lower:
+                current_forecast = "6m"
+            elif "12 month" in lower or "12-month" in lower:
+                current_forecast = "12m"
 
-            if ("12 month" in lower or "12-month" in lower) and "most likely" in lower:
-                for r in ["Goldilocks", "Overheating", "Stagflation"]:
-                    if r.lower() in lower:
-                        forecast_12m = r
-                        break
-                if "disinflation" in lower or "slowdown" in lower:
-                    forecast_12m = "Disinflationary Slowdown"
+            # Match "most likely regime:" on its own line
+            if "most likely" in lower and "regime" in lower:
+                target = current_forecast if 'current_forecast' in dir() else None
+                if target == "6m" and forecast_6m == "Unknown":
+                    if "goldilocks" in lower:
+                        forecast_6m = "Goldilocks"
+                    elif "overheating" in lower:
+                        forecast_6m = "Overheating"
+                    elif "stagflation" in lower:
+                        forecast_6m = "Stagflation"
+                    elif "disinflation" in lower or "slowdown" in lower:
+                        forecast_6m = "Disinflationary Slowdown"
+                elif target == "12m" and forecast_12m == "Unknown":
+                    if "goldilocks" in lower:
+                        forecast_12m = "Goldilocks"
+                    elif "overheating" in lower:
+                        forecast_12m = "Overheating"
+                    elif "stagflation" in lower:
+                        forecast_12m = "Stagflation"
+                    elif "disinflation" in lower or "slowdown" in lower:
+                        forecast_12m = "Disinflationary Slowdown"
 
+    # Map regime to coordinates
+    # X = growth direction (-1 to 1), Y = inflation direction (-1 to 1)
     coords = {
         "Goldilocks": (0.5, -0.5),
         "Overheating": (0.5, 0.5),
@@ -241,444 +213,77 @@ def parse_regime_from_synthesis(synthesis_text):
         "regime": regime,
         "direction": direction,
         "confidence": confidence,
-        "x": x, "y": y,
+        "x": x,
+        "y": y,
         "forecast_6m": forecast_6m,
-        "forecast_6m_x": f6x, "forecast_6m_y": f6y,
+        "forecast_6m_x": f6x,
+        "forecast_6m_y": f6y,
         "forecast_12m": forecast_12m,
-        "forecast_12m_x": f12x, "forecast_12m_y": f12y,
+        "forecast_12m_x": f12x,
+        "forecast_12m_y": f12y,
     }
 
 
-# ---------------------------------------------------------------------------
-# SVG generation engine
-# ---------------------------------------------------------------------------
+def _inline_chartjs():
+    """Read chart.min.js from the local assets folder and return its contents.
 
-REGIME_COLORS = {
-    "Goldilocks": "#34d399",
-    "Overheating": "#fbbf24",
-    "Stagflation": "#f87171",
-    "Disinflationary Slowdown": "#60a5fa",
-    "Unknown": "#8b8fa3",
-}
-
-REGIME_COLORS_BG = {
-    "Goldilocks": "#34d39915",
-    "Overheating": "#fbbf2415",
-    "Stagflation": "#f8717115",
-    "Disinflationary Slowdown": "#60a5fa15",
-    "Unknown": "#8b8fa315",
-}
-
-
-def generate_sparkline(values, width=80, height=20, color="currentColor", stroke_width=1.5):
-    """Generate an inline SVG sparkline.
-
-    Returns empty string for <2 non-None values.
-    Handles None/NaN values by drawing broken line segments with gaps.
-    All-equal values render as a flat horizontal line at midpoint.
+    Falls back to an empty string with a console warning if the file is missing.
     """
-    # Filter out None/NaN but track positions
-    points = []
-    for i, v in enumerate(values or []):
-        if v is not None and not (isinstance(v, float) and math.isnan(v)):
-            points.append((i, float(v)))
-
-    if len(points) < 2:
-        return ""
-
-    n = len(values)
-    y_vals = [p[1] for p in points]
-    min_v = min(y_vals)
-    max_v = max(y_vals)
-
-    # Prevent division by zero for equal values
-    v_range = max_v - min_v if max_v != min_v else 1.0
-    mid_y = height / 2
-
-    def scale_x(idx):
-        return (idx / max(n - 1, 1)) * width
-
-    def scale_y(v):
-        if max_v == min_v:
-            return mid_y
-        return height - ((v - min_v) / v_range) * (height - 2) - 1
-
-    # Build segments (break at None gaps)
-    segments = []
-    current_segment = []
-    for i in range(n):
-        v = values[i]
-        if v is not None and not (isinstance(v, float) and math.isnan(v)):
-            current_segment.append((scale_x(i), scale_y(float(v))))
-        else:
-            if len(current_segment) >= 2:
-                segments.append(current_segment)
-            current_segment = []
-    if len(current_segment) >= 2:
-        segments.append(current_segment)
-    elif len(current_segment) == 1 and segments:
-        # Single trailing point — attach to last segment
-        segments[-1].append(current_segment[0])
-
-    if not segments:
-        return ""
-
-    # Build SVG polylines
-    polylines = []
-    for seg in segments:
-        pts = " ".join(f"{x:.1f},{y:.1f}" for x, y in seg)
-        polylines.append(
-            f'<polyline points="{pts}" fill="none" stroke="{color}" '
-            f'stroke-width="{stroke_width}" stroke-linecap="round" stroke-linejoin="round"/>'
-        )
-
-    label_text = f"Sparkline showing {len(points)} data points"
-    return (
-        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
-        f'role="img" aria-label="{label_text}" style="vertical-align:middle">'
-        + "".join(polylines)
-        + "</svg>"
-    )
+    assets_dir = Path(__file__).resolve().parent / "assets"
+    chart_path = assets_dir / "chart.min.js"
+    if chart_path.exists():
+        return chart_path.read_text(encoding="utf-8")
+    return 'console.warn("chart.min.js not found — charts will not render");'
 
 
-def generate_svg_regime_map(regime_data, regime_history=None, size=300):
-    """Generate an SVG regime map with four colored quadrants, position dot,
-    trailing path, and forecast dots."""
+def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
+                   all_weeks=None, all_weeks_data=None, regime_history=None,
+                   skill_files=None, methodology=None, output_dir=None):
+    """Generate the full HTML dashboard with multi-week history support."""
+
+    all_weeks = all_weeks or [week]
+    all_weeks_data = all_weeks_data or {}
     regime_history = regime_history or []
-    half = size / 2
-    pad = 30  # padding for labels
+    skill_files = skill_files or []
+    methodology = methodology or ""
 
-    def to_svg(x, y):
-        """Convert regime coords (-1..1, -1..1) to SVG coords."""
-        sx = pad + (x + 1) / 2 * (size - 2 * pad)
-        sy = pad + (1 - (y + 1) / 2) * (size - 2 * pad)  # y inverted
-        return sx, sy
+    regime_data = parse_regime_from_synthesis(synthesis)
 
-    parts = [f'<svg viewBox="0 0 {size} {size}" width="{size}" height="{size}" '
-             f'role="img" aria-label="Regime map showing current position in {regime_data["regime"]} quadrant">']
+    # Parse snapshot for key numbers
+    snap = {}
+    if snapshot_data:
+        try:
+            snap = json.loads(snapshot_data)
+        except json.JSONDecodeError:
+            snap = {}
 
-    # Quadrant backgrounds
-    qw = (size - 2 * pad) / 2
-    # Quadrant layout: X=growth (left=falling, right=rising), Y=inflation (top=rising, bottom=falling)
-    # Top-left: Stagflation (growth falling, inflation rising)
-    # Top-right: Overheating (growth rising, inflation rising)
-    # Bottom-left: Disinflationary Slowdown (growth falling, inflation falling)
-    # Bottom-right: Goldilocks (growth rising, inflation falling)
-    quadrants = [
-        (pad, pad, "Stagflation"),
-        (pad + qw, pad, "Overheating"),
-        (pad, pad + qw, "Disinflationary Slowdown"),
-        (pad + qw, pad + qw, "Goldilocks"),
-    ]
-    for qx, qy, qname in quadrants:
-        parts.append(f'<rect x="{qx}" y="{qy}" width="{qw}" height="{qw}" '
-                     f'fill="{REGIME_COLORS_BG[qname]}" />')
-
-    # Crosshairs
-    parts.append(f'<line x1="{pad}" y1="{half}" x2="{size-pad}" y2="{half}" '
-                 f'stroke="#ffffff15" stroke-width="1" stroke-dasharray="4,4"/>')
-    parts.append(f'<line x1="{half}" y1="{pad}" x2="{half}" y2="{size-pad}" '
-                 f'stroke="#ffffff15" stroke-width="1" stroke-dasharray="4,4"/>')
-
-    # Quadrant labels
-    label_positions = [
-        (pad + qw * 0.5, pad + qw * 0.5, "STAGFLATION", REGIME_COLORS["Stagflation"]),
-        (pad + qw * 1.5, pad + qw * 0.5, "OVERHEATING", REGIME_COLORS["Overheating"]),
-        (pad + qw * 0.5, pad + qw * 1.5, "DISINFLATION", REGIME_COLORS["Disinflationary Slowdown"]),
-        (pad + qw * 1.5, pad + qw * 1.5, "GOLDILOCKS", REGIME_COLORS["Goldilocks"]),
-    ]
-    for lx, ly, label, lcolor in label_positions:
-        parts.append(f'<text x="{lx}" y="{ly}" text-anchor="middle" dominant-baseline="middle" '
-                     f'fill="{lcolor}" opacity="0.3" font-size="11" font-weight="600">{label}</text>')
-
-    # Axis labels
-    parts.append(f'<text x="{half}" y="{size - 5}" text-anchor="middle" fill="#8b8fa3" font-size="10">Growth →</text>')
-    parts.append(f'<text x="10" y="{half}" text-anchor="middle" fill="#8b8fa3" font-size="10" '
-                 f'transform="rotate(-90,10,{half})">Inflation ↑</text>')
-
-    # Historical trail
-    if len(regime_history) > 1:
-        trail_points = []
-        for r in regime_history:
-            sx, sy = to_svg(r["x"], r["y"])
-            trail_points.append(f"{sx:.1f},{sy:.1f}")
-        pts = " ".join(trail_points)
-        parts.append(f'<polyline points="{pts}" fill="none" stroke="#60a5fa" '
-                     f'stroke-width="1.5" stroke-opacity="0.3" stroke-dasharray="3,3"/>')
-        # Trail dots (fading)
-        for i, r in enumerate(regime_history[:-1]):
-            sx, sy = to_svg(r["x"], r["y"])
-            opacity = 0.1 + (i / len(regime_history)) * 0.3
-            parts.append(f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="3" '
-                         f'fill="#60a5fa" opacity="{opacity:.2f}"/>')
-
-    # Forecast dots
-    if regime_data.get("forecast_6m", "Unknown") != "Unknown":
-        fx, fy = to_svg(regime_data["forecast_6m_x"], regime_data["forecast_6m_y"])
-        cx, cy = to_svg(regime_data["x"], regime_data["y"])
-        parts.append(f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{fx:.1f}" y2="{fy:.1f}" '
-                     f'stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>')
-        parts.append(f'<polygon points="{fx:.1f},{fy-6:.1f} {fx-5:.1f},{fy+4:.1f} {fx+5:.1f},{fy+4:.1f}" '
-                     f'fill="#fbbf24" opacity="0.7"/>')
-
-    if regime_data.get("forecast_12m", "Unknown") != "Unknown":
-        f12x, f12y = to_svg(regime_data["forecast_12m_x"], regime_data["forecast_12m_y"])
-        # Connect from 6m forecast if available, else from current
-        if regime_data.get("forecast_6m", "Unknown") != "Unknown":
-            sx, sy = to_svg(regime_data["forecast_6m_x"], regime_data["forecast_6m_y"])
-        else:
-            sx, sy = to_svg(regime_data["x"], regime_data["y"])
-        parts.append(f'<line x1="{sx:.1f}" y1="{sy:.1f}" x2="{f12x:.1f}" y2="{f12y:.1f}" '
-                     f'stroke="#f87171" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.5"/>')
-        parts.append(f'<rect x="{f12x-5:.1f}" y="{f12y-5:.1f}" width="10" height="10" '
-                     f'fill="#f87171" opacity="0.6"/>')
-
-    # Current position dot (on top)
-    cx, cy = to_svg(regime_data["x"], regime_data["y"])
-    dot_color = REGIME_COLORS.get(regime_data["regime"], "#60a5fa")
-    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="8" fill="{dot_color}" opacity="0.9"/>')
-    parts.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="4" fill="#fff" opacity="0.9"/>')
-
-    parts.append("</svg>")
-    return "\n".join(parts)
-
-
-def generate_svg_timeline(regime_history, max_weeks=26):
-    """Generate a horizontal SVG timeline showing regime history.
-    Each week = colored dot. Returns empty string for empty history."""
-    if not regime_history:
-        return ""
-
-    history = regime_history[-max_weeks:]  # cap at max_weeks
-    n = len(history)
-    dot_r = 8
-    gap = 36
-    width = max((n - 1) * gap + dot_r * 4, 100)
-    height = 60
-
-    parts = [f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
-             f'preserveAspectRatio="xMinYMid meet" '
-             f'role="img" aria-label="Regime timeline showing {n} weeks of history">']
-
-    y_center = 25
-
-    # Connecting line
-    if n > 1:
-        x1 = dot_r * 2
-        x2 = (n - 1) * gap + dot_r * 2
-        parts.append(f'<line x1="{x1}" y1="{y_center}" x2="{x2}" y2="{y_center}" '
-                     f'stroke="#2e3345" stroke-width="2"/>')
-
-    # Dots
-    for i, r in enumerate(history):
-        cx = i * gap + dot_r * 2
-        color = REGIME_COLORS.get(r.get("regime", "Unknown"), "#8b8fa3")
-        week = r.get("week", "")
-        # Synthesis snippet for popover (first 150 chars)
-        summary = r.get("summary", "")[:150]
-        # Escape quotes in data attributes to prevent attribute injection
-        safe_summary = summary.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
-        safe_week = week.replace('"', "&quot;")
-
-        parts.append(
-            f'<circle cx="{cx}" cy="{y_center}" r="{dot_r}" fill="{color}" '
-            f'class="timeline-dot" tabindex="0" '
-            f'data-week="{safe_week}" data-summary="{safe_summary}" '
-            f'style="cursor:pointer" />'
-        )
-        # Week label below
-        parts.append(
-            f'<text x="{cx}" y="{y_center + 22}" text-anchor="middle" '
-            f'fill="#8b8fa3" font-size="9">{week[-3:]}</text>'
-        )
-
-    parts.append("</svg>")
-    return "\n".join(parts)
-
-
-def generate_svg_mini_chart(values, label, color="#60a5fa", width=280, height=120):
-    """Generate a mini SVG chart for the economic dashboard grid.
-    Returns empty string for empty/insufficient data."""
-    if not values or len(values) < 2:
-        return ""
-
-    # Filter None values
-    clean = [(i, float(v)) for i, v in enumerate(values) if v is not None]
-    if len(clean) < 2:
-        return ""
-
-    n = len(values)
-    y_vals = [v for _, v in clean]
-    min_v = min(y_vals)
-    max_v = max(y_vals)
-    v_range = max_v - min_v if max_v != min_v else 1.0
-
-    pad_x = 5
-    pad_y = 20
-    chart_w = width - 2 * pad_x
-    chart_h = height - 2 * pad_y
-
-    def sx(i):
-        return pad_x + (i / max(n - 1, 1)) * chart_w
-
-    def sy(v):
-        if max_v == min_v:
-            return pad_y + chart_h / 2
-        return pad_y + chart_h - ((v - min_v) / v_range) * chart_h
-
-    pts = " ".join(f"{sx(i):.1f},{sy(v):.1f}" for i, v in clean)
-
-    # Area fill
-    area_pts = pts + f" {sx(clean[-1][0]):.1f},{pad_y + chart_h} {sx(clean[0][0]):.1f},{pad_y + chart_h}"
-
-    return (
-        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
-        f'role="img" aria-label="{label} trend chart">'
-        f'<text x="{pad_x}" y="14" fill="#e4e4e7" font-size="12" font-weight="600">{label}</text>'
-        f'<polygon points="{area_pts}" fill="{color}" opacity="0.08"/>'
-        f'<polyline points="{pts}" fill="none" stroke="{color}" stroke-width="2" '
-        f'stroke-linecap="round" stroke-linejoin="round"/>'
-        # Min/max labels
-        f'<text x="{width - pad_x}" y="{sy(max_v) - 4:.1f}" text-anchor="end" fill="#8b8fa3" font-size="9">{max_v:.1f}</text>'
-        f'<text x="{width - pad_x}" y="{sy(min_v) + 12:.1f}" text-anchor="end" fill="#8b8fa3" font-size="9">{min_v:.1f}</text>'
-        f'</svg>'
-    )
-
-
-# ---------------------------------------------------------------------------
-# Briefing & cross-asset parsers
-# ---------------------------------------------------------------------------
-
-def parse_key_changes(briefing_text):
-    """Parse the 'Key Changes' or 'What Changed' section from the briefing.
-    Returns list of dicts with headline, explanation, impact (bullish/bearish/neutral).
-    Falls back to Big Picture first paragraph if Key Changes not found."""
-    if not briefing_text:
-        return []
-
-    lines = briefing_text.split("\n")
-    changes = []
-
-    # Find Key Changes section
-    in_section = False
-    for line in lines:
-        lower = line.lower().strip()
-        if any(h in lower for h in ["## key changes", "## what changed", "### key changes", "### what changed"]):
-            in_section = True
-            continue
-        if in_section:
-            if line.startswith("## ") or line.startswith("### "):
-                break  # next section
-            if line.strip().startswith("- ") or line.strip().startswith("* "):
-                bullet = line.strip()[2:].strip()
-                if not bullet:
+    # Parse briefing for thesis recommendations (from "Draft candidates" table)
+    thesis_recommendations = {}
+    if briefing:
+        in_draft_table = False
+        header_cols = []
+        for line in briefing.split('\n'):
+            if 'draft candidates' in line.lower() or 'awaiting your decision' in line.lower():
+                in_draft_table = True
+                continue
+            if in_draft_table and '|' in line:
+                cells = [c.strip() for c in line.split('|')[1:-1]]
+                if all(set(c) <= set('- :') for c in cells):
+                    continue  # separator row
+                if not header_cols:
+                    header_cols = [c.lower() for c in cells]
                     continue
-                # Split into headline (first sentence) and explanation (rest)
-                parts = bullet.split(". ", 1)
-                headline = parts[0].strip()
-                explanation = parts[1].strip() if len(parts) > 1 else ""
+                # Map columns by header name
+                row = dict(zip(header_cols, cells))
+                thesis_name = row.get('thesis', '').strip().lower().replace(' ', '-')
+                rec = row.get('recommendation', '').strip().lower()
+                if thesis_name and rec:
+                    thesis_recommendations[thesis_name] = rec
+            elif in_draft_table and line.strip() and '|' not in line and not line.strip().startswith('|'):
+                in_draft_table = False
 
-                # Infer impact from keywords
-                lower_bullet = bullet.lower()
-                if any(w in lower_bullet for w in ["risk-on", "easing", "bullish", "recovery", "improving", "strong"]):
-                    impact = "bullish"
-                elif any(w in lower_bullet for w in ["risk-off", "tightening", "bearish", "deteriorat", "weak", "concern"]):
-                    impact = "bearish"
-                else:
-                    impact = "neutral"
-
-                changes.append({
-                    "headline": headline,
-                    "explanation": explanation,
-                    "impact": impact,
-                })
-
-    if changes:
-        return changes
-
-    # Fallback: Big Picture first paragraph
-    in_big_picture = False
-    for line in lines:
-        lower = line.lower().strip()
-        if "## big picture" in lower or "### big picture" in lower:
-            in_big_picture = True
-            continue
-        if in_big_picture:
-            if line.startswith("## ") or line.startswith("### "):
-                break
-            if line.strip():
-                changes.append({
-                    "headline": line.strip(),
-                    "explanation": "",
-                    "impact": "neutral",
-                })
-                break  # just first paragraph
-
-    return changes
-
-
-def parse_cross_asset_table(briefing_text):
-    """Parse the cross-asset view table from briefing markdown.
-    Returns list of dicts with asset, direction, conviction, change.
-    Returns empty list if table not found or unparseable."""
-    if not briefing_text:
-        return []
-
-    lines = briefing_text.split("\n")
-    rows = []
-
-    in_section = False
-    in_table = False
-    headers = []
-
-    for line in lines:
-        lower = line.lower().strip()
-        if "cross-asset" in lower or "asset allocation" in lower:
-            in_section = True
-            continue
-
-        if in_section and "|" in line:
-            cells = [c.strip() for c in line.split("|")]
-            cells = [c for c in cells if c]  # remove empty from leading/trailing |
-
-            if not cells:
-                continue
-
-            # Skip separator rows
-            if all(set(c) <= set("- :") for c in cells):
-                continue
-
-            if not in_table:
-                headers = [c.lower() for c in cells]
-                in_table = True
-                continue
-
-            if len(cells) >= 2:
-                row = {"asset": cells[0]}
-                for j, cell in enumerate(cells[1:], 1):
-                    if j < len(headers):
-                        row[headers[j]] = cell
-                    elif j == 1:
-                        row["direction"] = cell
-                    elif j == 2:
-                        row["conviction"] = cell
-                    elif j == 3:
-                        row["change"] = cell
-                rows.append(row)
-
-        elif in_table and not line.strip().startswith("|"):
-            break  # end of table
-
-    return rows
-
-
-# ---------------------------------------------------------------------------
-# Thesis processing
-# ---------------------------------------------------------------------------
-
-def process_theses(theses, output_dir):
-    """Deduplicate and enrich thesis data for template rendering."""
-    # Deduplicate: ACTIVE supersedes DRAFT
+    # Deduplicate theses: if both ACTIVE- and DRAFT- versions exist for the same
+    # thesis name, keep only the ACTIVE version (DRAFT is superseded).
     thesis_names = {}
     for name, content in theses:
         base = name.replace("ACTIVE-", "").replace("DRAFT-", "")
@@ -686,27 +291,40 @@ def process_theses(theses, output_dir):
         if base not in thesis_names:
             thesis_names[base] = (name, content, status)
         elif status == "ACTIVE":
+            # ACTIVE supersedes DRAFT
             thesis_names[base] = (name, content, status)
+        # else: DRAFT doesn't overwrite ACTIVE
 
+    # Sort: ACTIVE first, then DRAFT
     deduped = sorted(thesis_names.values(), key=lambda x: (0 if x[2] == "ACTIVE" else 1, x[0]))
 
-    # Load chart specs and presentation reports
+    # Load thesis chart specs from presentations directory
     thesis_chart_specs = {}
     thesis_presentations = {}
     if output_dir is not None:
         presentations_dir = output_dir / "theses" / "presentations"
-        if presentations_dir is not None and presentations_dir.exists():
-            for f in presentations_dir.glob("*-charts.json"):
-                try:
-                    thesis_chart_specs[f.stem.replace("-charts", "")] = json.loads(f.read_text(encoding="utf-8"))
-                except (json.JSONDecodeError, OSError):
-                    pass
-            for f in presentations_dir.glob("*-report.md"):
-                thesis_presentations[f.stem.replace("-report", "")] = f.read_text(encoding="utf-8")
+    else:
+        presentations_dir = None
+    if presentations_dir is not None and presentations_dir.exists():
+        for f in presentations_dir.glob("*-charts.json"):
+            try:
+                thesis_chart_specs[f.stem.replace("-charts", "")] = json.loads(f.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
 
-    # Build enriched thesis list
-    enriched = []
+    # Load thesis presentation reports (Skill 12 output) for enriched rendering
+    if presentations_dir is not None and presentations_dir.exists():
+        for f in presentations_dir.glob("*-report.md"):
+            thesis_presentations[f.stem.replace("-report", "")] = f.read_text(encoding="utf-8")
+
+    # Build thesis index table + detail panels
+    thesis_table_rows = ""
+    thesis_contents = ""
+
     for i, (name, content, status) in enumerate(deduped):
+        clean_name = name.replace("ACTIVE-", "").replace("DRAFT-", "").replace(".md", "").replace("-", " ").title()
+
+        # Detect thesis type: structural vs tactical
         content_lower = content.lower()
         is_structural = (
             "classification:** structural" in content_lower
@@ -714,208 +332,987 @@ def process_theses(theses, output_dir):
             or "structural foundation" in content_lower
         )
         thesis_type = "STRUCTURAL" if is_structural else "TACTICAL"
+
+        # Extract metadata from content
         thesis_key = name.replace("ACTIVE-", "").replace("DRAFT-", "").replace(".md", "")
-        clean_name = thesis_key.replace("-", " ").title()
 
-        # Extract conviction from content
-        conviction = 50
-        conv_match = re.search(r'conviction[:\s]*(\d+)', content_lower)
-        if conv_match:
-            conviction = min(int(conv_match.group(1)), 100)
+        conviction = ""
+        conviction_match = re.search(r'\*Thesis conviction:\*\s*(\w+)', content)
+        if conviction_match:
+            conviction = conviction_match.group(1).strip()
 
-        # Count weeks active (look for "week" mentions or dates)
-        weeks_active = ""
-        weeks_match = re.search(r'(\d+)\s*weeks?\s*(?:active|old|running)', content_lower)
-        if weeks_match:
-            weeks_active = f"W{weeks_match.group(1)}"
+        provenance = ""
+        prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
+        if prov_match:
+            provenance = prov_match.group(1).strip()
 
-        # Count assumptions
-        assumptions_total = 0
-        assumptions_intact = 0
-        for line in content.split("\n"):
-            ll = line.lower().strip()
-            if ll.startswith("- ") and ("assumption" in ll or "intact" in ll or "under pressure" in ll or "broken" in ll):
-                assumptions_total += 1
-                if "intact" in ll or "holds" in ll:
-                    assumptions_intact += 1
+        generated = ""
+        gen_match = re.search(r'\*\*Generated:\*\*\s*(.+)', content)
+        if gen_match:
+            generated = gen_match.group(1).strip()
 
-        # Get presentation report if available
-        render_content = thesis_presentations.get(thesis_key, content)
+        updated = ""
+        upd_match = re.search(r'\*\*Updated:\*\*\s*(.+)', content)
+        if upd_match:
+            updated = upd_match.group(1).strip()
+
+        # Look up recommendation from briefing
+        recommendation = ""
+        thesis_lookup = thesis_key.lower()
+        for rkey, rval in thesis_recommendations.items():
+            if rkey in thesis_lookup or thesis_lookup in rkey:
+                recommendation = rval.capitalize()
+                break
+
+        # Build table row
+        status_class = "status-active" if status == "ACTIVE" else "status-draft"
+        type_class = "type-structural" if is_structural else "type-tactical"
+        selected_class = "selected" if i == 0 else ""
+        status_lower = status.lower()
+        type_lower = thesis_type.lower()
+        rec_class = f"rec-{recommendation.lower()}" if recommendation else ""
+
+        thesis_table_rows += (
+            f'<tr class="thesis-row {selected_class}" onclick="showThesis({i})" data-idx="{i}" data-status="{status_lower}" data-type="{type_lower}">'
+            f'<td class="thesis-name-cell">{clean_name}</td>'
+            f'<td><span class="thesis-status {status_class}">{status}</span></td>'
+            f'<td><span class="thesis-type {type_class}">{thesis_type}</span></td>'
+            f'<td class="thesis-conviction">{conviction or "—"}</td>'
+            f'<td><span class="thesis-rec {rec_class}">{recommendation or "—"}</span></td>'
+            f'<td class="thesis-date">{generated or "—"}</td>'
+            f'<td class="thesis-date">{updated or "—"}</td>'
+            f'</tr>\n'
+        )
+
+        # Build detail content
+        render_content = content
+
+        # Inject conviction into the markdown before rendering
+        if conviction:
+            render_content = re.sub(
+                r'(## Plain English Summary)',
+                f'**Conviction:** {conviction}\n\n\\1',
+                render_content, count=1
+            )
+
+        if is_structural:
+            # Strip Source and Research Brief (shown in source viewer at bottom)
+            render_content = re.sub(
+                r'^\*\*(?:Source|Research Brief):\*\*.*\n?',
+                '', render_content, flags=re.MULTILINE
+            )
+
+        # Build chart HTML if chart spec exists
+        chart_html = ""
         chart_spec = thesis_chart_specs.get(thesis_key)
+        if chart_spec:
+            chart_id = f"thesis-chart-{i}"
+            chart_html = f'<div class="chart-container"><h3>{chart_spec.get("title", "Thesis Chart")}</h3><canvas id="{chart_id}" data-thesis-key="{thesis_key}"></canvas></div>'
 
-        enriched.append({
-            "name": clean_name,
-            "raw_name": name,
-            "thesis_key": thesis_key,
-            "status": status,
-            "thesis_type": thesis_type,
-            "conviction": conviction,
-            "weeks_active": weeks_active,
-            "assumptions_total": assumptions_total,
-            "assumptions_intact": assumptions_intact,
-            "content_html": md_to_html(render_content),
-            "has_chart": chart_spec is not None,
-            "chart_index": i,
-        })
+        # Structural theses get a source viewer
+        source_viewer = ""
+        if is_structural:
+            source_lines = []
+            for line in content.split('\n'):
+                for field in ('Source:', 'Provenance:', 'Research Brief:'):
+                    if line.strip().startswith(f'**{field}'):
+                        source_lines.append(line.strip())
 
-    return enriched, thesis_chart_specs
+            research_brief_content = ""
+            brief_match = re.search(r'`outputs/research/(.+?)`', content)
+            if brief_match and output_dir is not None:
+                brief_path = output_dir / "research" / brief_match.group(1)
+                if brief_path.exists():
+                    research_brief_content = brief_path.read_text(encoding="utf-8")
 
+            source_inner = '<div style="margin-top: 12px;">'
+            for line in source_lines:
+                source_inner += f'<p style="margin: 4px 0; font-size: 13px; color: var(--text);">{md_to_html(line)}</p>'
+            if research_brief_content:
+                source_inner += (
+                    f'<details style="margin-top: 16px;">'
+                    f'<summary style="cursor: pointer; color: var(--accent); font-size: 13px;">Research Brief</summary>'
+                    f'<div style="margin-top: 12px; padding: 16px; background: var(--bg); border-radius: 6px; '
+                    f'max-height: 600px; overflow-y: auto; font-size: 14px; line-height: 1.7;">'
+                    f'{md_to_html(research_brief_content)}'
+                    f'</div>'
+                    f'</details>'
+                )
+            source_inner += '</div>'
 
-# ---------------------------------------------------------------------------
-# Data extraction for metrics strip and mini-charts
-# ---------------------------------------------------------------------------
+            source_viewer = (
+                f'<div style="margin-top: 24px; padding: 12px 16px; background: var(--surface2); border-radius: 8px; border-left: 3px solid var(--accent);">'
+                f'<a href="#" onclick="event.preventDefault(); var el = document.getElementById(\'source-raw-{i}\'); el.style.display = el.style.display === \'none\' ? \'block\' : \'none\';" '
+                f'style="color: var(--accent); font-size: 13px; text-decoration: none;">View sources &rarr;</a>'
+                f'<div id="source-raw-{i}" style="display:none;">{source_inner}</div>'
+                f'</div>'
+            )
 
-def extract_metrics(snapshot_data):
-    """Extract key metrics from snapshot for the hero metrics strip."""
-    snap = {}
-    if snapshot_data:
-        try:
-            snap = json.loads(snapshot_data)
-        except json.JSONDecodeError:
-            return []
+        display = "block" if i == 0 else "none"
+        thesis_contents += (
+            f'<div class="thesis-detail" id="thesis-{i}" style="display:{display}">'
+            f'{chart_html}'
+            f'{md_to_html(render_content)}'
+            f'{source_viewer}'
+            f'</div>\n'
+        )
 
-    markets = snap.get("markets", snap.get("snapshot", {}).get("markets", {}))
-    rates = snap.get("rates", snap.get("snapshot", {}).get("rates", {}))
+    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    metrics = []
+    # Pre-build week-switchable content outside the f-string to avoid brace conflicts
+    week_options_html = ''.join(
+        f'<option value="{w}" {"selected" if w == week else ""}>{w}</option>'
+        for w in all_weeks
+    )
 
-    def _num(v):
-        """Coerce to float, return None if not numeric."""
-        if isinstance(v, (int, float)) and not isinstance(v, bool):
-            return float(v)
-        if isinstance(v, str):
-            try:
-                return float(v.replace(",", ""))
-            except ValueError:
-                return None
-        return None
+    briefing_weeks_html = ""
+    for w in all_weeks:
+        display = "block" if w == week else "none"
+        wd = all_weeks_data.get(w, {})
+        content = wd.get("briefing", "")
+        if not content and w == week:
+            content = briefing
+        if not content:
+            content = f"No briefing available for {w}."
+        briefing_weeks_html += f'<div class="week-content" data-week="{w}" style="display:{display}">{md_to_html(content)}</div>\n'
 
-    # S&P 500
-    sp = markets.get("SP500", markets.get("^GSPC", {}))
-    if isinstance(sp, dict):
-        val = _num(sp.get("value", sp.get("close", sp.get("price"))))
-        change = sp.get("change_pct", sp.get("pct_change"))
-        history = sp.get("history", [])
-        if val is not None:
-            metrics.append({"label": "S&P 500", "value": f"{val:,.0f}" if val > 100 else f"{val:.2f}",
-                            "change": change, "history": history})
-    elif isinstance(sp, (int, float)):
-        metrics.append({"label": "S&P 500", "value": f"{sp:,.0f}", "change": None, "history": []})
+    improvement_weeks_html = ""
+    for w in all_weeks:
+        display = "block" if w == week else "none"
+        wd = all_weeks_data.get(w, {})
+        content = wd.get("improvement", "")
+        if not content and w == week:
+            content = improvement
+        if not content:
+            content = f"No improvement report available for {w}."
+        improvement_weeks_html += f'<div class="week-content" data-week="{w}" style="display:{display}">{md_to_html(content)}</div>\n'
 
-    # VIX
-    vix = markets.get("VIX", markets.get("^VIX", {}))
-    if isinstance(vix, dict):
-        val = _num(vix.get("value", vix.get("close", vix.get("price"))))
-        change = vix.get("change_pct", vix.get("pct_change"))
-        history = vix.get("history", [])
-        if val is not None:
-            metrics.append({"label": "VIX", "value": f"{val:.1f}", "change": change, "history": history})
-    elif isinstance(vix, (int, float)):
-        metrics.append({"label": "VIX", "value": f"{vix:.1f}", "change": None, "history": []})
-
-    # 10Y yield
-    for key in ["US10Y", "^TNX", "DGS10"]:
-        ty = rates.get(key, markets.get(key, {}))
-        if isinstance(ty, dict):
-            val = _num(ty.get("value", ty.get("close", ty.get("price"))))
-            change = ty.get("change_pct", ty.get("pct_change"))
-            history = ty.get("history", [])
-            if val is not None:
-                metrics.append({"label": "10Y", "value": f"{val:.2f}%", "change": change, "history": history})
+    # Build skills accordion HTML
+    skills_html = ""
+    for name, content in skill_files:
+        clean_name = name.replace(".md", "").replace("-", " ").title()
+        # Extract first line as description
+        first_line = ""
+        for line in content.split("\n"):
+            if line.strip().startswith("##") and "Objective" not in line:
+                continue
+            if line.strip() and not line.startswith("#") and not line.startswith("---"):
+                first_line = line.strip()[:120]
                 break
-        elif isinstance(ty, (int, float)):
-            metrics.append({"label": "10Y", "value": f"{ty:.2f}%", "change": None, "history": []})
-            break
+        skills_html += f'''<div class="skill-accordion">
+            <button class="skill-header" onclick="this.classList.toggle('open'); this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'block' ? 'none' : 'block';">
+                <span class="skill-name">{clean_name}</span>
+                <span class="skill-desc">{first_line}...</span>
+                <span class="skill-arrow">&#9660;</span>
+            </button>
+            <div class="skill-body" style="display:none">{md_to_html(content)}</div>
+        </div>\n'''
 
-    # HY OAS
-    for key in ["HY_OAS", "BAMLH0A0HYM2", "ICE_HY_OAS"]:
-        hy = rates.get(key, snap.get("credit", {}).get(key, {}))
-        if isinstance(hy, dict):
-            val = _num(hy.get("value", hy.get("close")))
-            change = hy.get("change_pct")
-            history = hy.get("history", [])
-            if val is not None:
-                metrics.append({"label": "HY OAS", "value": f"{val:.0f}bp", "change": change, "history": history})
-                break
-        elif isinstance(hy, (int, float)):
-            metrics.append({"label": "HY OAS", "value": f"{hy:.0f}bp", "change": None, "history": []})
-            break
+    # Build methodology (About) HTML
+    methodology_html = md_to_html(methodology) if methodology else "<p>No methodology document found.</p>"
 
-    # DXY
-    dxy = markets.get("DXY", markets.get("DX-Y.NYB", {}))
-    if isinstance(dxy, dict):
-        val = _num(dxy.get("value", dxy.get("close", dxy.get("price"))))
-        change = dxy.get("change_pct", dxy.get("pct_change"))
-        history = dxy.get("history", [])
-        if val is not None:
-            metrics.append({"label": "DXY", "value": f"{val:.1f}", "change": change, "history": history})
-    elif isinstance(dxy, (int, float)):
-        metrics.append({"label": "DXY", "value": f"{dxy:.1f}", "change": None, "history": []})
+    # Build thesis chart specs JSON for frontend rendering
+    # NOTE: This is injected via string concatenation after the f-string,
+    # because JSON contains braces that conflict with f-string interpolation.
+    thesis_chart_specs_raw = json.dumps(thesis_chart_specs) if thesis_chart_specs else '{}'
 
-    # Gold
-    gold = markets.get("GOLD", markets.get("GC=F", {}))
-    if isinstance(gold, dict):
-        val = _num(gold.get("value", gold.get("close", gold.get("price"))))
-        change = gold.get("change_pct", gold.get("pct_change"))
-        history = gold.get("history", [])
-        if val is not None:
-            metrics.append({"label": "Gold", "value": f"${val:,.0f}", "change": change, "history": history})
-    elif isinstance(gold, (int, float)):
-        metrics.append({"label": "Gold", "value": f"${gold:,.0f}", "change": None, "history": []})
+    # Build regime history trail data points
+    history_points = ', '.join(
+        f'{{ x: {r["x"]}, y: {r["y"]} }}'
+        for r in regime_history[:-1]  # all except current (current is its own dataset)
+    )
 
-    return metrics
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Macro Advisor — {week}</title>
+<script>{_inline_chartjs()}</script>
+<style>
+:root {{
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242836;
+    --border: #2e3345;
+    --text: #e4e4e7;
+    --text-muted: #8b8fa3;
+    --accent: #60a5fa;
+    --green: #34d399;
+    --red: #f87171;
+    --yellow: #fbbf24;
+    --orange: #fb923c;
+}}
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 0;
+}}
+.header {{
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 24px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}}
+.header h1 {{
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+}}
+.header .meta {{
+    color: var(--text-muted);
+    font-size: 13px;
+}}
+.regime-banner {{
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    padding: 20px 40px;
+    display: flex;
+    gap: 40px;
+    align-items: center;
+}}
+.regime-label {{
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+}}
+.regime-detail {{
+    color: var(--text-muted);
+    font-size: 14px;
+}}
+.regime-detail strong {{
+    color: var(--text);
+}}
+.regime-direction {{
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 4px;
+    font-style: italic;
+}}
+.nav {{
+    display: flex;
+    gap: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 40px;
+}}
+.nav button {{
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    padding: 14px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}}
+.nav button:hover {{
+    color: var(--text);
+}}
+.nav button.active {{
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}}
+.main {{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 32px 40px;
+}}
+.tab-content {{
+    display: none;
+}}
+.tab-content.active {{
+    display: block;
+}}
+.chart-container {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 32px;
+    position: relative;
+}}
+.chart-container h3 {{
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}}
+canvas {{
+    max-height: 400px;
+}}
+/* Content styling */
+h1 {{ font-size: 24px; font-weight: 700; margin: 32px 0 16px; letter-spacing: -0.02em; }}
+h2 {{ font-size: 20px; font-weight: 600; margin: 28px 0 12px; letter-spacing: -0.01em; color: var(--accent); }}
+h3 {{ font-size: 16px; font-weight: 600; margin: 24px 0 10px; }}
+h4 {{ font-size: 14px; font-weight: 600; margin: 20px 0 8px; }}
+p {{ margin: 8px 0; color: var(--text); }}
+ul {{ margin: 8px 0 8px 24px; }}
+li {{ margin: 4px 0; }}
+hr {{ border: none; border-top: 1px solid var(--border); margin: 24px 0; }}
+strong {{ color: #fff; }}
+code {{ background: var(--surface2); padding: 2px 6px; border-radius: 4px; font-size: 13px; }}
+a {{ color: var(--accent); text-decoration: none; }}
+.table-wrapper {{ overflow-x: auto; margin: 16px 0; }}
+table {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}}
+th {{
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+}}
+td {{
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+}}
+tr:hover td {{
+    background: var(--surface2);
+}}
+.code-block {{
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+    overflow-x: auto;
+}}
+.code-block pre {{
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+}}
+/* Thesis index table */
+.thesis-index {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+}}
+.thesis-index table {{
+    margin: 0;
+}}
+.thesis-index th {{
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}}
+.thesis-row {{
+    cursor: pointer;
+    transition: background 0.1s;
+}}
+.thesis-row:hover td {{
+    background: var(--surface2);
+}}
+.thesis-row.selected td {{
+    background: var(--surface2);
+    border-left: 3px solid var(--accent);
+}}
+.thesis-row.selected td:first-child {{
+    padding-left: 11px;
+}}
+.thesis-name-cell {{
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+}}
+.thesis-status {{
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}}
+.status-active {{
+    color: var(--green);
+}}
+.status-draft {{
+    color: var(--yellow);
+}}
+.thesis-type {{
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}}
+.type-structural {{
+    color: #a855f7;
+}}
+.type-tactical {{
+    color: var(--accent);
+}}
+.thesis-conviction {{
+    font-size: 13px;
+    color: var(--text-muted);
+}}
+.thesis-rec {{
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}}
+.rec-activate {{
+    color: var(--green);
+}}
+.rec-watch {{
+    color: var(--yellow);
+}}
+.rec-discard {{
+    color: var(--red);
+}}
+.thesis-date {{
+    font-size: 12px;
+    color: var(--text-muted);
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    white-space: nowrap;
+}}
+/* Thesis filters */
+.thesis-filters {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}}
+.thesis-filters select {{
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+}}
+.thesis-filters select:hover {{
+    border-color: var(--accent);
+}}
+.thesis-count {{
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-left: auto;
+}}
+/* Thesis detail panel */
+.thesis-detail-panel {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 32px;
+}}
+.thesis-detail-panel .thesis-detail {{
+    line-height: 1.7;
+}}
+/* Briefing sections */
+.briefing-hero {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 24px;
+}}
+.briefing-hero .regime-tag {{
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}}
+.briefing-section {{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+}}
+.briefing-section h2 {{
+    margin-top: 0;
+    font-size: 16px;
+}}
+/* Regime colors */
+.regime-goldilocks {{ color: var(--green); }}
+.regime-overheating {{ color: var(--orange); }}
+.regime-stagflation {{ color: var(--red); }}
+.regime-disinflation {{ color: var(--accent); }}
+/* Skill accordion */
+.skill-accordion {{
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}}
+.skill-header {{
+    width: 100%;
+    background: var(--surface);
+    border: none;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    text-align: left;
+    color: var(--text);
+    transition: background 0.2s;
+}}
+.skill-header:hover {{
+    background: var(--surface2);
+}}
+.skill-header.open {{
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+}}
+.skill-name {{
+    font-weight: 600;
+    font-size: 14px;
+    min-width: 200px;
+}}
+.skill-desc {{
+    color: var(--text-muted);
+    font-size: 12px;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.skill-arrow {{
+    color: var(--text-muted);
+    font-size: 10px;
+    transition: transform 0.2s;
+}}
+.skill-header.open .skill-arrow {{
+    transform: rotate(180deg);
+}}
+.skill-body {{
+    padding: 20px;
+    background: var(--bg);
+    font-size: 14px;
+    max-height: 600px;
+    overflow-y: auto;
+}}
+</style>
+</head>
+<body>
 
+<div class="header">
+    <h1>Macro Advisor</h1>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <select id="weekSelector" onchange="switchWeek(this.value)" style="background:var(--surface2); color:var(--text); border:1px solid var(--border); padding:8px 12px; border-radius:6px; font-size:13px; cursor:pointer;">
+            {week_options_html}
+        </select>
+        <div class="meta">Generated {generated}</div>
+    </div>
+</div>
 
-def extract_mini_chart_data(full_data_text):
-    """Extract data series for 2x2 economic dashboard mini-charts from latest-data-full.json."""
-    charts = []
-    if not full_data_text:
-        return charts
+<div class="regime-banner">
+    <div>
+        <div class="regime-label regime-{regime_data['regime'].lower().replace(' ', '-').replace('disinflationary-slowdown', 'disinflation')}">{regime_data['regime']}</div>
+        <div class="regime-detail">Confidence: <strong>{regime_data['confidence']}</strong></div>
+        <div class="regime-direction">{regime_data['direction']}</div>
+    </div>
+</div>
 
-    try:
-        data = json.loads(full_data_text)
-    except json.JSONDecodeError:
-        return charts
+<div class="nav">
+    <button class="active" onclick="showTab('briefing')">Briefing</button>
+    <button onclick="showTab('regime')">Regime Map</button>
+    <button onclick="showTab('theses')">Theses</button>
+    <button onclick="showTab('improvement')">System Health</button>
+    <button onclick="showTab('about')">About</button>
+</div>
 
-    # Navigate data structure — could be nested in various ways
-    series = data if isinstance(data, dict) else {}
+<div class="main">
+    <!-- Briefing Tab -->
+    <div class="tab-content active" id="tab-briefing">
+        {briefing_weeks_html}
+    </div>
 
-    chart_defs = [
-        ("Growth", ["GDP", "GDPC1", "industrial_production", "INDPRO"], "#34d399"),
-        ("Inflation", ["CPI", "CPIAUCSL", "PCE", "PCEPI"], "#fbbf24"),
-        ("Liquidity", ["M2SL", "M2", "NFCI", "financial_conditions"], "#60a5fa"),
-        ("Credit", ["HY_OAS", "BAMLH0A0HYM2", "IG_OAS", "BAMLC0A0CM"], "#f87171"),
-    ]
+    <!-- Regime Map Tab -->
+    <div class="tab-content" id="tab-regime">
+        <div class="chart-container">
+            <h3>Regime Map — Current Position</h3>
+            <canvas id="regimeChart"></canvas>
+        </div>
+        <p style="color: var(--text-muted); font-size: 13px;">
+            <strong>Blue circle:</strong> This week's regime assessment based on current data.
+            <strong>Yellow triangle:</strong> 6-month forecast — where the analysis says we're heading, based on policy trajectory, credit cycle, and growth/inflation trends. Not a linear extrapolation.
+            <strong>Red square:</strong> 12-month forecast — longer-term projection with lower confidence. Both forecasts are derived from the synthesis reasoning, with stated assumptions that could change the trajectory.
+            As weekly runs accumulate, prior weeks will appear as a fading trail showing how the regime has evolved.
+        </p>
+    </div>
 
-    for label, keys, color in chart_defs:
-        values = None
-        for key in keys:
-            # Try direct lookup
-            entry = series.get(key, {})
-            if isinstance(entry, dict):
-                hist = entry.get("history", entry.get("values", []))
-                if hist and isinstance(hist, list):
-                    values = hist[-26:]  # last 26 entries
-                    break
-            # Try nested paths
-            for section in ["macro", "rates", "credit", "liquidity", "growth"]:
-                nested = series.get(section, {}).get(key, {})
-                if isinstance(nested, dict):
-                    hist = nested.get("history", nested.get("values", []))
-                    if hist and isinstance(hist, list):
-                        values = hist[-26:]
-                        break
-            if values:
-                break
+    <!-- Theses Tab -->
+    <div class="tab-content" id="tab-theses">
+        <div class="thesis-filters">
+            <select id="filter-status" onchange="filterTheses()">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="draft">Draft</option>
+            </select>
+            <select id="filter-type" onchange="filterTheses()">
+                <option value="all">All Types</option>
+                <option value="tactical">Tactical</option>
+                <option value="structural">Structural</option>
+            </select>
+            <span class="thesis-count" id="thesis-count">{len(deduped)} theses</span>
+        </div>
+        <div class="thesis-index">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Thesis</th>
+                        <th>Status</th>
+                        <th>Type</th>
+                        <th>Conviction</th>
+                        <th>Rec</th>
+                        <th>Created</th>
+                        <th>Updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {thesis_table_rows}
+                </tbody>
+            </table>
+        </div>
+        <div class="thesis-detail-panel" id="thesis-detail-panel">
+            {thesis_contents}
+        </div>
+    </div>
 
-        charts.append({"label": label, "values": values or [], "color": color})
+    <!-- Improvement Tab -->
+    <div class="tab-content" id="tab-improvement">
+        {improvement_weeks_html}
+    </div>
 
-    return charts
+    <!-- About Tab -->
+    <div class="tab-content" id="tab-about">
+        {methodology_html}
+    </div>
+</div>
 
+<script>
+// Week switching
+function switchWeek(selectedWeek) {{
+    document.querySelectorAll('.week-content').forEach(el => {{
+        el.style.display = el.dataset.week === selectedWeek ? 'block' : 'none';
+    }});
+}}
 
-# ---------------------------------------------------------------------------
-# Week browsing (reused from original)
-# ---------------------------------------------------------------------------
+// Tab navigation
+function showTab(tabId) {{
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + tabId).classList.add('active');
+    event.target.classList.add('active');
+}}
+
+// Thesis filters
+function filterTheses() {{
+    const status = document.getElementById('filter-status').value;
+    const type = document.getElementById('filter-type').value;
+    let visible = 0;
+    document.querySelectorAll('.thesis-row').forEach(row => {{
+        const matchStatus = status === 'all' || row.dataset.status === status;
+        const matchType = type === 'all' || row.dataset.type === type;
+        row.style.display = (matchStatus && matchType) ? '' : 'none';
+        if (matchStatus && matchType) visible++;
+    }});
+    document.getElementById('thesis-count').textContent = visible + ' thes' + (visible === 1 ? 'is' : 'es');
+}}
+
+// Thesis index table navigation
+function showThesis(idx) {{
+    // Update table row selection
+    document.querySelectorAll('.thesis-row').forEach(r => r.classList.remove('selected'));
+    const row = document.querySelector('.thesis-row[data-idx="' + idx + '"]');
+    if (row) row.classList.add('selected');
+    // Show selected detail panel
+    document.querySelectorAll('.thesis-detail').forEach(t => t.style.display = 'none');
+    document.getElementById('thesis-' + idx).style.display = 'block';
+    // Scroll detail panel into view
+    document.getElementById('thesis-detail-panel').scrollIntoView({{ behavior: 'smooth', block: 'nearest' }});
+}}
+
+// Regime Chart
+const ctx = document.getElementById('regimeChart').getContext('2d');
+new Chart(ctx, {{
+    type: 'scatter',
+    data: {{
+        datasets: [
+            {{
+                label: 'This Week',
+                data: [{{ x: {regime_data['x']}, y: {regime_data['y']} }}],
+                backgroundColor: '#60a5fa',
+                borderColor: '#60a5fa',
+                pointRadius: 12,
+                pointHoverRadius: 14,
+                pointStyle: 'circle',
+            }},
+            {{
+                label: '6-Month Forecast ({regime_data["forecast_6m"]})',
+                data: {regime_data["forecast_6m"] != "Unknown" and f'[{{ x: {regime_data["forecast_6m_x"]}, y: {regime_data["forecast_6m_y"]} }}]' or '[]'},
+                backgroundColor: 'rgba(251, 191, 36, 0.6)',
+                borderColor: '#fbbf24',
+                borderWidth: 2,
+                borderDash: [5, 5],
+                pointRadius: 10,
+                pointHoverRadius: 12,
+                pointStyle: 'triangle',
+            }},
+            {{
+                label: 'Historical Trail',
+                data: [{history_points}],
+                backgroundColor: 'rgba(96, 165, 250, 0.2)',
+                borderColor: 'rgba(96, 165, 250, 0.3)',
+                pointRadius: 5,
+                pointHoverRadius: 7,
+                pointStyle: 'circle',
+                showLine: true,
+                borderWidth: 1,
+                borderDash: [2, 2],
+            }},
+            {{
+                label: '12-Month Forecast ({regime_data["forecast_12m"]})',
+                data: {regime_data["forecast_12m"] != "Unknown" and f'[{{ x: {regime_data["forecast_12m_x"]}, y: {regime_data["forecast_12m_y"]} }}]' or '[]'},
+                backgroundColor: 'rgba(248, 113, 113, 0.4)',
+                borderColor: '#f87171',
+                borderWidth: 2,
+                borderDash: [3, 3],
+                pointRadius: 8,
+                pointHoverRadius: 10,
+                pointStyle: 'rect',
+            }}
+        ]
+    }},
+    options: {{
+        responsive: true,
+        maintainAspectRatio: true,
+        aspectRatio: 1.6,
+        scales: {{
+            x: {{
+                min: -1.2,
+                max: 1.2,
+                title: {{
+                    display: true,
+                    text: 'Growth Direction →',
+                    color: '#8b8fa3',
+                    font: {{ size: 13, weight: '600' }}
+                }},
+                grid: {{
+                    color: 'rgba(255,255,255,0.06)',
+                    drawTicks: false,
+                }},
+                ticks: {{
+                    callback: function(v) {{
+                        if (v === -1) return 'Falling';
+                        if (v === 0) return '';
+                        if (v === 1) return 'Rising';
+                        return '';
+                    }},
+                    color: '#8b8fa3',
+                    font: {{ size: 11 }}
+                }},
+                border: {{ color: 'rgba(255,255,255,0.1)' }}
+            }},
+            y: {{
+                min: -1.2,
+                max: 1.2,
+                title: {{
+                    display: true,
+                    text: '↑ Inflation Direction',
+                    color: '#8b8fa3',
+                    font: {{ size: 13, weight: '600' }}
+                }},
+                grid: {{
+                    color: 'rgba(255,255,255,0.06)',
+                    drawTicks: false,
+                }},
+                ticks: {{
+                    callback: function(v) {{
+                        if (v === -1) return 'Falling';
+                        if (v === 0) return '';
+                        if (v === 1) return 'Rising';
+                        return '';
+                    }},
+                    color: '#8b8fa3',
+                    font: {{ size: 11 }}
+                }},
+                border: {{ color: 'rgba(255,255,255,0.1)' }}
+            }}
+        }},
+        plugins: {{
+            legend: {{ display: true, labels: {{ color: '#8b8fa3', font: {{ size: 12 }} }} }},
+            annotation: {{}}
+        }}
+    }},
+    plugins: [{{
+        id: 'quadrantLabels',
+        afterDraw: function(chart) {{
+            const {{ ctx, chartArea }} = chart;
+            const midX = (chartArea.left + chartArea.right) / 2;
+            const midY = (chartArea.top + chartArea.bottom) / 2;
+
+            ctx.save();
+            ctx.font = '600 14px -apple-system, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.globalAlpha = 0.25;
+
+            // Goldilocks (top-right → growth rising, inflation falling → bottom-right)
+            ctx.fillStyle = '#34d399';
+            ctx.fillText('GOLDILOCKS', (midX + chartArea.right) / 2, (midY + chartArea.bottom) / 2);
+
+            // Overheating (growth rising, inflation rising → top-right)
+            ctx.fillStyle = '#fb923c';
+            ctx.fillText('OVERHEATING', (midX + chartArea.right) / 2, (chartArea.top + midY) / 2);
+
+            // Disinflationary Slowdown (growth falling, inflation falling → bottom-left)
+            ctx.fillStyle = '#60a5fa';
+            ctx.fillText('DISINFLATION', (chartArea.left + midX) / 2, (midY + chartArea.bottom) / 2);
+
+            // Stagflation (growth falling, inflation rising → top-left)
+            ctx.fillStyle = '#f87171';
+            ctx.fillText('STAGFLATION', (chartArea.left + midX) / 2, (chartArea.top + midY) / 2);
+
+            // Draw crosshairs
+            ctx.globalAlpha = 0.15;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(midX, chartArea.top);
+            ctx.lineTo(midX, chartArea.bottom);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(chartArea.left, midY);
+            ctx.lineTo(chartArea.right, midY);
+            ctx.stroke();
+
+            ctx.restore();
+        }}
+    }}]
+}});
+
+// Thesis-specific charts (rendered from Skill 12 chart specs)
+const thesisChartSpecs = __THESIS_CHART_SPECS_PLACEHOLDER__;
+Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
+    // Find canvas matching this thesis by data-thesis-key attribute
+    const canvas = document.querySelector(`canvas[data-thesis-key="${{key}}"]`);
+    if (!canvas || canvas._chartRendered) return;
+
+    // Support two formats:
+    // Format A (native Chart.js): spec has type, data.labels, data.datasets directly
+    // Format B (Skill 12 internal): spec has chart_type, datasets with [{{data: [{{x,y}},...], color}}]
+    if (spec.data && spec.data.datasets) {{
+        // Format A: native Chart.js config — pass through with dark-theme defaults
+        const chartConfig = {{
+            type: spec.type || 'line',
+            data: spec.data,
+            options: spec.options || {{
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
+                scales: {{
+                    x: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }} }},
+                    y: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3' }} }},
+                }},
+                plugins: {{ legend: {{ labels: {{ color: '#8b8fa3' }} }} }},
+            }},
+        }};
+        // Ensure dark theme on any pre-set options
+        if (spec.options) {{
+            const s = chartConfig.options.scales = chartConfig.options.scales || {{}};
+            ['x','y','y1'].forEach(axis => {{
+                if (s[axis]) {{
+                    s[axis].grid = s[axis].grid || {{}};
+                    s[axis].grid.color = s[axis].grid.color || 'rgba(255,255,255,0.06)';
+                    s[axis].ticks = s[axis].ticks || {{}};
+                    s[axis].ticks.color = s[axis].ticks.color || '#8b8fa3';
+                }}
+            }});
+            const p = chartConfig.options.plugins = chartConfig.options.plugins || {{}};
+            p.legend = p.legend || {{}};
+            p.legend.labels = p.legend.labels || {{}};
+            p.legend.labels.color = p.legend.labels.color || '#8b8fa3';
+        }}
+        new Chart(canvas.getContext('2d'), chartConfig);
+        canvas._chartRendered = true;
+    }} else if (spec.datasets) {{
+        // Format B: internal format with chart_type and datasets[{{data:[{{x,y}},...], color}}]
+        const datasets = spec.datasets.map((ds, idx) => ({{
+            label: ds.label || 'Series',
+            data: ds.data || [],
+            borderColor: ds.color || ['#60a5fa', '#34d399', '#f87171', '#fbbf24'][idx % 4],
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+        }}));
+        if (datasets.length > 0 && datasets[0].data.length > 0) {{
+            new Chart(canvas.getContext('2d'), {{
+                type: spec.chart_type || 'line',
+                data: {{
+                    labels: datasets[0].data.map(d => d.x || d.date || ''),
+                    datasets: datasets.map(ds => ({{
+                        ...ds,
+                        data: ds.data.map(d => d.y || d.value || d),
+                    }})),
+                }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2.5,
+                    scales: {{
+                        x: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3', maxTicksLimit: 10 }} }},
+                        y: {{ grid: {{ color: 'rgba(255,255,255,0.06)' }}, ticks: {{ color: '#8b8fa3' }} }},
+                    }},
+                    plugins: {{ legend: {{ labels: {{ color: '#8b8fa3' }} }} }},
+                }},
+            }});
+            canvas._chartRendered = true;
+        }}
+    }}
+}});
+
+// Hide raw Chart.js JSON spec code blocks that Skill 12 embeds in presentation reports
+document.querySelectorAll('.thesis-content .code-block').forEach(block => {{
+    const text = block.textContent || '';
+    if (text.includes('"type"') && text.includes('"datasets"') && (text.includes('"borderColor"') || text.includes('"chart_type"'))) {{
+        block.style.display = 'none';
+    }}
+}});
+// Also hide any "Chart Specification" headers preceding hidden code blocks
+document.querySelectorAll('.thesis-content h3, .thesis-content h4').forEach(header => {{
+    const text = (header.textContent || '').toLowerCase();
+    if (text.includes('chart specification') || text.includes('chart spec')) {{
+        const next = header.nextElementSibling;
+        if (next && next.style.display === 'none') {{
+            header.style.display = 'none';
+        }}
+    }}
+}});
+</script>
+
+</body>
+</html>"""
+
+    # Replace the chart specs placeholder with actual JSON (avoids f-string brace conflicts)
+    html = html.replace('__THESIS_CHART_SPECS_PLACEHOLDER__', thesis_chart_specs_raw)
+
+    return html
+
 
 def discover_weeks(output_dir):
     """Find all available weeks by scanning briefing files."""
@@ -923,6 +1320,7 @@ def discover_weeks(output_dir):
     weeks = []
     if briefings_dir.exists():
         for f in sorted(briefings_dir.glob("*-briefing.md"), reverse=True):
+            # Extract week from filename like 2026-W12-briefing.md
             week = f.name.replace("-briefing.md", "")
             weeks.append(week)
     return weeks
@@ -936,150 +1334,12 @@ def load_week_data(output_dir, week):
     return briefing, improvement, synthesis
 
 
-# ---------------------------------------------------------------------------
-# Main dashboard generation
-# ---------------------------------------------------------------------------
-
-def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
-                  all_weeks=None, all_weeks_data=None, regime_history=None,
-                  skill_files=None, methodology=None, output_dir=None,
-                  full_data_text=None):
-    """Generate the full HTML dashboard using Jinja2 template."""
-
-    all_weeks = all_weeks or [week]
-    all_weeks_data = all_weeks_data or {}
-    regime_history = regime_history or []
-    skill_files = skill_files or []
-    methodology = methodology or ""
-
-    # Parse regime data
-    regime_data = parse_regime_from_synthesis(synthesis)
-
-    # Count consecutive weeks unchanged
-    weeks_unchanged = 0
-    if regime_history:
-        current = regime_data["regime"]
-        for r in reversed(regime_history):
-            if r.get("regime") == current:
-                weeks_unchanged += 1
-            else:
-                break
-
-    # Generate SVGs
-    regime_map_svg = generate_svg_regime_map(regime_data, regime_history)
-    timeline_svg = generate_svg_timeline(regime_history)
-
-    # Metrics
-    metrics = extract_metrics(snapshot_data)
-    for m in metrics:
-        m["sparkline"] = generate_sparkline(m.get("history", []), width=60, height=16)
-
-    # Mini charts
-    mini_charts_data = extract_mini_chart_data(full_data_text)
-    mini_charts = []
-    for mc in mini_charts_data:
-        svg = generate_svg_mini_chart(mc["values"], mc["label"], mc["color"])
-        mini_charts.append({"label": mc["label"], "svg": svg})
-
-    # What Changed
-    key_changes = parse_key_changes(briefing)
-
-    # Cross-asset heatmap
-    cross_asset = parse_cross_asset_table(briefing)
-
-    # Theses
-    enriched_theses, thesis_chart_specs = process_theses(theses, output_dir)
-
-    # Briefing HTML
-    briefing_html = md_to_html(briefing) if briefing else ""
-
-    # Improvement HTML
-    improvement_html = md_to_html(improvement) if improvement else ""
-
-    # Skills accordion data
-    skills_data = []
-    for name, content in skill_files:
-        clean_name = name.replace(".md", "").replace("-", " ").title()
-        first_line = ""
-        for line in content.split("\n"):
-            if line.strip().startswith("##") and "Objective" not in line:
-                continue
-            if line.strip() and not line.startswith("#") and not line.startswith("---"):
-                first_line = line.strip()[:120]
-                break
-        skills_data.append({"name": clean_name, "description": first_line, "content_html": md_to_html(content)})
-
-    # Methodology HTML
-    methodology_html = md_to_html(methodology) if methodology else ""
-
-    generated = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    # Load Jinja2 template
-    script_dir = Path(__file__).parent
-    template_path = script_dir / "dashboard-template.html"
-    if not template_path.exists():
-        print(f"ERROR: Template not found at {template_path}", file=sys.stderr)
-        print("Expected: scripts/dashboard-template.html", file=sys.stderr)
-        sys.exit(1)
-
-    # Load assets from local assets/ directory
-    assets_dir = script_dir / "assets"
-    try:
-        chart_js = inline_asset(assets_dir / "chart.min.js")
-    except FileNotFoundError:
-        print("WARNING: Chart.js not found at scripts/assets/chart.min.js — thesis charts will not render", file=sys.stderr)
-        chart_js = "/* Chart.js not available */"
-
-    try:
-        font_data_uri = inline_asset(assets_dir / "inter-latin.woff2")
-    except FileNotFoundError:
-        print("WARNING: Inter font not found — using system fonts", file=sys.stderr)
-        font_data_uri = ""
-
-    env = Environment(
-        loader=FileSystemLoader(str(script_dir)),
-        autoescape=select_autoescape([]),
-    )
-    template = env.get_template("dashboard-template.html")
-
-    # Regime CSS class helper
-    def regime_css_class(regime_name):
-        return regime_name.lower().replace(" ", "-").replace("disinflationary-slowdown", "disinflation")
-
-    html = template.render(
-        week=week,
-        generated=generated,
-        regime_data=regime_data,
-        regime_css_class=regime_css_class(regime_data["regime"]),
-        regime_color=REGIME_COLORS.get(regime_data["regime"], "#8b8fa3"),
-        weeks_unchanged=weeks_unchanged,
-        regime_map_svg=regime_map_svg,
-        metrics=metrics,
-        key_changes=key_changes,
-        mini_charts=mini_charts,
-        timeline_svg=timeline_svg,
-        regime_history=regime_history,
-        theses=enriched_theses,
-        thesis_chart_specs_json=json.dumps(thesis_chart_specs) if thesis_chart_specs else "{}",
-        cross_asset=cross_asset,
-        briefing_html=briefing_html,
-        improvement_html=improvement_html,
-        skills=skills_data,
-        methodology_html=methodology_html,
-        chart_js=chart_js,
-        font_data_uri=font_data_uri,
-        all_weeks=all_weeks,
-    )
-
-    return html
-
-
 def main():
     parser = argparse.ArgumentParser(description="Generate Macro Advisor HTML Dashboard")
     parser.add_argument("--week", required=True, help="Week identifier (e.g., 2026-W12)")
     parser.add_argument("--output-dir", required=True, help="Macro Advisor outputs directory")
     parser.add_argument("--out", required=True, help="Output HTML file path")
-    parser.add_argument("--plugin-root", default=None, help="Plugin root directory")
+    parser.add_argument("--plugin-root", default=None, help="Plugin root directory (for locating methodology.md and skill files)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -1091,8 +1351,10 @@ def main():
     if args.week not in all_weeks:
         all_weeks.insert(0, args.week)
 
-    # Read current week data
+    # Read current week briefing
     briefing = read_file(output_dir / "briefings" / f"{args.week}-briefing.md")
+
+    # Read all thesis files (active + closed)
     theses = []
     for subdir in ["active", "closed"]:
         theses_dir = output_dir / "theses" / subdir
@@ -1100,44 +1362,43 @@ def main():
             for f in sorted(theses_dir.glob("*.md")):
                 theses.append((f.name, f.read_text(encoding="utf-8")))
 
+    # Read improvement
     improvement = read_file(output_dir / "improvement" / f"{args.week}-improvement.md")
-    synthesis = read_file(output_dir / "synthesis" / f"{args.week}-synthesis.md")
-    snapshot = read_file(output_dir / "data" / "latest-snapshot.json")
-    full_data = read_file(output_dir / "data" / "latest-data-full.json")
 
-    # Build historical regime data
+    # Read synthesis (for regime data)
+    synthesis = read_file(output_dir / "synthesis" / f"{args.week}-synthesis.md")
+
+    # Build historical regime data for all weeks (for the regime trail)
     regime_history = []
-    for w in reversed(all_weeks):
+    for w in reversed(all_weeks):  # oldest first
         syn = read_file(output_dir / "synthesis" / f"{w}-synthesis.md")
         if syn:
             rd = parse_regime_from_synthesis(syn)
             rd["week"] = w
-            # Get synthesis summary for timeline popovers
-            for line in syn.split("\n"):
-                if line.strip() and not line.startswith("#") and not line.startswith("---"):
-                    rd["summary"] = line.strip()[:150]
-                    break
             regime_history.append(rd)
 
-    # Load all weeks data
+    # Load all weeks' briefings and improvements for the history selector
     all_weeks_data = {}
     for w in all_weeks:
         b, imp, syn = load_week_data(output_dir, w)
         all_weeks_data[w] = {"briefing": b, "improvement": imp, "synthesis": syn}
 
-    # Read skill files
+    # Read snapshot
+    snapshot = read_file(output_dir / "data" / "latest-snapshot.json")
+
+    # Read skill files for the Skills tab
     skills_dir = output_dir.parent / "skills"
     skill_files = []
     if skills_dir.exists():
         for f in sorted(skills_dir.glob("*.md")):
             skill_files.append((f.name, f.read_text(encoding="utf-8")))
 
-    # Read methodology
+    # Read methodology for the About tab from plugin root (read-only cache is fine)
     methodology = ""
     if args.plugin_root:
         methodology = read_file(Path(args.plugin_root) / "skills" / "macro-advisor" / "references" / "methodology.md")
 
-    # Generate HTML
+    # Generate HTML — pass all weeks data, regime history, skills, methodology
     html = generate_html(
         args.week, briefing, theses, improvement, synthesis, snapshot,
         all_weeks=all_weeks,
@@ -1146,7 +1407,6 @@ def main():
         skill_files=skill_files,
         methodology=methodology,
         output_dir=output_dir,
-        full_data_text=full_data,
     )
 
     # Write output

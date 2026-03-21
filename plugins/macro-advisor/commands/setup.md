@@ -45,15 +45,25 @@ If the test fails, tell the user the key is invalid and ask them to try again.
 
 ## Step 3: Browser Access
 
-Check if Chrome browser tools are available (~~browser). If not, inform the user:
+Check if Chrome browser tools are available (~~browser).
 
-"The Macro Advisor monitors 8 external analysts via Skill 10: Andreas Steno (X), Luke Gromen (X), Alfonso Peccatiello/The Macro Compass (Substack), MacroVoices (podcast transcripts), Howard Marks/Oaktree (memos), Lyn Alden (monthly newsletter), Evergreen Gavekal (blog), and Alpine Macro (LinkedIn).
+The Macro Advisor monitors 8 external analysts via Skill 10. Three require browser access (Chrome extension): Andreas Steno (X), Luke Gromen (X), and Alpine Macro (LinkedIn). The other five — Alfonso Peccatiello/The Macro Compass (Substack), MacroVoices (podcast transcripts), Howard Marks/Oaktree (memos), Lyn Alden (monthly newsletter), and Evergreen Gavekal (blog) — use WebFetch and work without browser access.
 
-Browser access (Chrome extension) is needed for X feeds (Steno, Gromen) and LinkedIn (Alpine Macro). The other sources use WebFetch. Without browser access, the system will still work but X and LinkedIn monitoring will fall back to web search instead of browsing full articles.
+**If browser IS available:** Tell the user:
 
-If you enable browser access, make sure you are logged in to X and LinkedIn in your Chrome browser."
+"Browser access detected. The Macro Advisor will use Chrome to browse X feeds (Steno, Gromen) and LinkedIn (Alpine Macro) for full analyst coverage.
 
-Ask if they want to proceed with or without browser access.
+**Important:** Make sure you are logged in to X and LinkedIn in your Chrome browser before the first weekly run. Without active sessions, the browser will see login walls instead of analyst content."
+
+Save `browser_access: true` in config.
+
+**If browser is NOT available:** Tell the user:
+
+"No browser access detected. The system will still work — 5 of 8 analysts use WebFetch and don't need Chrome. For the remaining 3 (Steno and Gromen on X, Alpine Macro on LinkedIn), the system will fall back to web search instead of browsing full articles.
+
+If you'd like full analyst coverage, enable the Chrome extension for Claude and make sure you're logged in to X and LinkedIn."
+
+Ask if they want to proceed without browser access or enable it first. Save `browser_access: false` in config.
 
 ## Step 4: Currency Preference
 
@@ -156,11 +166,16 @@ Run a quick validation:
 
 1. Pull one week of data using data_collector.py with the user's FRED key
 2. Verify the output JSON is valid and contains data
-3. Confirm the ETF mapping has entries for all major asset classes
+3. Verify `snapshot.positioning` contains CFTC COT contracts (pulled automatically, no API key needed)
+4. Confirm the ETF mapping has entries for all major asset classes
 
 Report results. If everything passes, tell the user:
 
-"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with `/run-weekly`."
+"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with `/macro-advisor:run-weekly`."
+
+If `browser_access` is true, add a reminder:
+
+"**Before your first run:** Make sure you're logged in to X and LinkedIn in Chrome so the analyst monitor (Skill 10) can access Steno, Gromen, and Alpine Macro feeds."
 
 ## Step 11: Trading Engine Introduction
 

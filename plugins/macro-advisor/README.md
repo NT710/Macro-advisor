@@ -6,7 +6,7 @@ An autonomous macro research system for Claude Cowork. Collects economic data fr
 
 Every week, the system:
 
-1. Pulls 62+ economic data series from FRED and Yahoo Finance
+1. Pulls 74+ economic data series from FRED, Yahoo Finance, and CFTC COT (via CFTC SODA API — free, no key needed)
 2. Analyzes central bank policy, liquidity conditions, macro data, geopolitical risks, and market positioning
 3. Reads external analyst feeds for cross-referencing
 4. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation)
@@ -39,6 +39,8 @@ Run `/macro-advisor:setup` after installation. It will walk you through:
 4. **Currency preference** — CHF, EUR, USD, or GBP
 5. **ETF mapping** — builds your ETF reference table for your preferred currency (USD fallback where needed, plus dynamic discovery for niche ETFs)
 6. **Schedule** — when to run the weekly analysis
+
+CFTC COT positioning data (9 key futures contracts) is pulled automatically from the CFTC SODA API — no API key needed.
 
 ## Commands
 
