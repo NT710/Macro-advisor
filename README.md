@@ -91,7 +91,7 @@ Both plugins share a philosophy of epistemic humility and anti-confirmation bias
 - Python 3.8+
 - Free FRED API key ([fred.stlouisfed.org](https://fred.stlouisfed.org))
 - Free Alpaca paper trading account ([alpaca.markets](https://alpaca.markets)) — Trading Engine only
-- Chrome extension — optional, for analyst feed browsing in Macro Advisor
+- Chrome extension — optional, for browsing analyst feeds on X and LinkedIn (3 of 8 analysts require it, the rest use WebFetch)
 
 ## Repository Structure
 
@@ -101,16 +101,20 @@ Both plugins share a philosophy of epistemic humility and anti-confirmation bias
 plugins/
   macro-advisor/            # Macro research plugin
     .claude-plugin/
-    commands/               # /setup, /run-weekly, /investigate-theme, /activate-thesis, /update-etfs, /implement-improvements
-    skills/                 # 13-skill research chain
-    scripts/                # Data collection, dashboard generation
-    config/                 # Risk templates, regime definitions
+    commands/               # /macro-advisor:setup, :run-weekly, :investigate-theme, :activate-thesis, :update-etfs, :implement-improvements
+    hooks/                  # Session start hook (reads user config)
+    skills/                 # 13-skill research chain + references
+    scripts/                # Data collection, dashboard generation, ETF lookup, backtest, tests
+      assets/               # Bundled Chart.js + Inter font for offline dashboards
+    config/                 # User config (created during setup, gitignored)
   trading-engine/           # Paper trading plugin (beta)
     .claude-plugin/
-    commands/               # /setup, /run-trading, /implement-improvements
-    skills/                 # 8-skill trading chain (T0–T7)
-    scripts/                # Trade execution, performance calculation, dashboard
-    config/                 # Risk limits, regime templates
+    commands/               # /trading-engine:setup, :run-trading, :implement-improvements
+    hooks/                  # Session start hook (reads user config)
+    skills/                 # 8-skill trading chain (T0–T7) + references
+    scripts/                # Trade execution, performance calc, dashboard, design tokens, tests
+      assets/               # Bundled Chart.js + Inter font for offline dashboards
+    config/                 # Risk limits, regime templates, user config
 ```
 
 ## License
