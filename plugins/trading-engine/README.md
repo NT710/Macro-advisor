@@ -38,15 +38,15 @@ After each macro advisor weekly run, the trading engine:
 This plugin is part of the Macro Advisor marketplace. After adding the marketplace:
 
 1. Install the trading-engine plugin
-2. Run `/setup` to configure your Alpaca API keys and schedule
+2. Run `/trading-engine:setup` to configure your Alpaca API keys and schedule
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `/setup` | First-run: install alpaca-py, configure API keys, schedule runs |
-| `/run-trading` | Run the full trading chain manually |
-| `/implement-improvements` | Review and approve/defer T7 amendment proposals |
+| `/trading-engine:setup` | First-run: install alpaca-py, configure API keys, schedule runs |
+| `/trading-engine:run-trading` | Run the full trading chain manually |
+| `/trading-engine:implement-improvements` | Review and approve/defer T7 amendment proposals |
 
 ## Schedule
 

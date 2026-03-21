@@ -8,7 +8,7 @@ Execute the full trading engine skill chain manually.
 ## Pre-Flight
 
 1. Read `config/user-config.json` to load the user's Alpaca API keys and configuration. If not found at the relative path, the working directory may not be the workspace — stop and tell the user to select their workspace folder in Cowork.
-2. If config is missing or `setup_completed` is false, tell the user to run `/setup` first and stop.
+2. If config is missing or `setup_completed` is false, tell the user to run `/trading-engine:setup` first and stop.
 3. Read `workspace_path` from config. If the current working directory does not match `workspace_path`, `cd` to `workspace_path` so all relative output paths resolve correctly.
 4. Read `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md` — the universal rules apply to every skill.
 5. Read `${CLAUDE_PLUGIN_ROOT}/CLAUDE.md` for project context.

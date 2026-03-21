@@ -21,17 +21,17 @@ Every week, the system:
 1. In Claude Cowork, go to **Settings → Plugins → Add marketplace**
 2. Enter the GitHub repo URL
 3. Click **Sync**
-4. Run `/setup` in a new session
+4. Run `/macro-advisor:setup` in a new session
 
 ### From GitHub
 
 1. Clone this repo
 2. Open Claude Cowork and point it at the cloned folder
-3. Run `/setup`
+3. Run `/macro-advisor:setup`
 
 ## Setup
 
-Run `/setup` after installation. It will walk you through:
+Run `/macro-advisor:setup` after installation. It will walk you through:
 
 1. **Python dependencies** — installs fredapi, yfinance, pandas, numpy
 2. **FRED API key** — free from [fred.stlouisfed.org](https://fred.stlouisfed.org) (My Account → API Keys)
@@ -44,12 +44,12 @@ Run `/setup` after installation. It will walk you through:
 
 | Command | Description |
 |---------|-------------|
-| `/setup` | First-run configuration |
-| `/run-weekly` | Run the full 13-skill analysis cycle manually |
-| `/investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
-| `/activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
-| `/update-etfs` | Refresh ETF mapping with current market offerings |
-| `/implement-improvements` | Review and apply self-improvement amendments proposed by the system |
+| `/macro-advisor:setup` | First-run configuration |
+| `/macro-advisor:run-weekly` | Run the full 13-skill analysis cycle manually |
+| `/macro-advisor:investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
+| `/macro-advisor:activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
+| `/macro-advisor:update-etfs` | Refresh ETF mapping with current market offerings |
+| `/macro-advisor:implement-improvements` | Review and apply self-improvement amendments proposed by the system |
 
 ## Requirements
 

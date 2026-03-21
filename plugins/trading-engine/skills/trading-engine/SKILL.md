@@ -56,7 +56,7 @@ All Python scripts are in the `scripts/` directory at the plugin root:
 
 ## Macro Advisor Dependency
 
-This plugin reads macro advisor outputs. The macro advisor must run its weekly cycle before the trading engine runs. Source paths are configured during `/setup` based on where the macro advisor plugin stores its outputs.
+This plugin reads macro advisor outputs. The macro advisor must run its weekly cycle before the trading engine runs. Source paths are configured during `/trading-engine:setup` based on where the macro advisor plugin stores its outputs.
 
 If macro advisor outputs are stale (>7 days), the trading engine skips new trades and only processes kill switch exits.
 
@@ -75,7 +75,7 @@ outputs/
 
 ## Configuration
 
-The system reads `config/user-config.json` for user preferences set during `/setup`:
+The system reads `config/user-config.json` for user preferences set during `/trading-engine:setup`:
 
 - `alpaca_api_key` — Alpaca API key (paper trading)
 - `alpaca_secret_key` — Alpaca secret key

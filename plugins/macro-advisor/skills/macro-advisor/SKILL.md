@@ -52,7 +52,7 @@ Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 6 → 7 → 11(if triggered) �
 
 ETF selection uses three layers:
 
-1. **Reference table** (`references/etf-reference.md`) — primary ETFs in the user's preferred currency, built during `/setup` and refreshable with `/update-etfs`
+1. **Reference table** (`references/etf-reference.md`) — primary ETFs in the user's preferred currency, built during `/macro-advisor:setup` and refreshable with `/update-etfs`
 2. **USD fallback** — where no ETF exists in the preferred currency, the reference table includes a USD-denominated alternative (flagged)
 3. **Dynamic discovery** (`etf_lookup.py`) — searches ~100 liquid ETFs on Yahoo Finance for thematic/niche exposures not in the reference table, verifies real price data before recommending
 
@@ -85,7 +85,7 @@ outputs/
 
 ## Configuration
 
-The system reads `config/user-config.json` for user preferences set during `/setup`:
+The system reads `config/user-config.json` for user preferences set during `/macro-advisor:setup`:
 
 - `fred_api_key` — FRED API key
 - `preferred_currency` — CHF, EUR, USD, or GBP
