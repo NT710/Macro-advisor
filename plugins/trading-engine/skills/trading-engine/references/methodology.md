@@ -172,21 +172,32 @@ The Sunday run starts 3 hours after the macro advisor (16:00 CET) to ensure fres
 ```
 Trading/
 ├── CLAUDE.md                        (project instructions)
-├── methodology.md                   (this file)
+├── CONNECTORS.md                    (MCP connector requirements)
+├── README.md
+├── hooks/
+│   └── hooks.json                   (session start hook — reads user config)
 ├── skills/
 │   ├── RULES.md                     (risk constraints, execution discipline, anti-bias)
-│   ├── T0-portfolio-snapshot.md
-│   ├── T1-signal-parser.md
-│   ├── T2-position-reconciler.md
-│   ├── T3-trade-reasoner.md
-│   ├── T4-order-executor.md
-│   ├── T5-trade-logger.md
-│   ├── T6-performance-tracker.md
-│   └── T7-self-improvement-loop.md
+│   ├── references/
+│   │   ├── methodology.md           (this file)
+│   │   ├── T0-portfolio-snapshot.md
+│   │   ├── T1-signal-parser.md
+│   │   ├── T2-position-reconciler.md
+│   │   ├── T3-trade-reasoner.md
+│   │   ├── T4-order-executor.md
+│   │   ├── T5-trade-logger.md
+│   │   ├── T6-performance-tracker.md
+│   │   └── T7-self-improvement-loop.md
 ├── scripts/
-│   ├── trade_executor.py            (alpaca-py API wrapper)
-│   ├── performance_calculator.py    (P&L, attribution, Sharpe)
+│   ├── assets/
+│   │   ├── chart.min.js             (bundled Chart.js for offline dashboards)
+│   │   └── inter-latin.woff2        (bundled Inter font for offline dashboards)
+│   ├── design_tokens.py             (shared design system — CSS variables, colors, fonts)
 │   ├── generate_dashboard.py        (HTML dashboard with P&L + trades tabs)
+│   ├── performance_calculator.py    (P&L, attribution, Sharpe)
+│   ├── trade_executor.py            (alpaca-py API wrapper)
+│   ├── trading-dashboard-template.html (Jinja2 HTML template for dashboard)
+│   ├── test_dashboard.py            (unit tests for dashboard generator)
 │   └── requirements.txt
 ├── config/
 │   ├── risk-limits.json             (hardcoded — not adjustable by T7)
@@ -194,7 +205,8 @@ Trading/
 │   └── user-config.json             (API keys, created during setup)
 ├── commands/
 │   ├── setup.md                     (first-run configuration)
-│   └── run-trading.md               (manual execution trigger)
+│   ├── run-trading.md               (manual execution trigger)
+│   └── implement-improvements.md    (review T7 amendment proposals)
 ├── outputs/
 │   ├── portfolio/                   (snapshots, signals, reconciliation, trade plans)
 │   ├── trades/                      (trade log, execution records, reasoning logs)

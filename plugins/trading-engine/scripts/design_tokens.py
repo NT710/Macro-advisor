@@ -1,10 +1,8 @@
 """
-Shared design tokens for the Alpine Report design system.
+Design tokens for the Alpine Report design system.
 
-Consumed by both macro-advisor and trading-engine dashboard generators via:
-    shared_dir = Path(__file__).resolve().parents[2] / "scripts" / "shared"
-    sys.path.insert(0, str(shared_dir))
-    from design_tokens import CSS_VARIABLES, FONT_FACE_CSS, REGIME_COLORS
+Local copy — duplicated in both macro-advisor and trading-engine plugins
+so each plugin is self-contained.
 """
 
 # ---------------------------------------------------------------------------

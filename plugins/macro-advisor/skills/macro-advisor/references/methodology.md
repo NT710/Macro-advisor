@@ -1,7 +1,7 @@
 # Macro Investment Advisor — Methodology & System Reference
 
-**Version:** 2.3
-**Last Updated:** 2026-03-20
+**Version:** 2.4
+**Last Updated:** 2026-03-21
 **Framework:** Alpine Macro methodology
 
 ---
@@ -48,7 +48,7 @@ Skill 2:  Liquidity & Credit Monitor (M2, credit spreads, NFCI, Fed balance shee
 Skill 3:  Macro Data Tracker (PMIs, employment, inflation, GDP, surprises)
 Skill 4:  Geopolitical & Policy Scanner (trade, fiscal, regulatory, energy)
 Skill 5:  Market Positioning & Sentiment (COT, flows, VIX, AAII, Fear & Greed)
-Skill 10: External Analyst Monitor (Steno X feed + Alpine Macro LinkedIn via Chrome)
+Skill 10: External Analyst Monitor (8 analysts: Steno, Gromen, Peccatiello, MacroVoices, Marks, Alden, Gavekal, Alpine Macro)
 Skill 6:  Weekly Macro Synthesis (reads all above → regime assessment + sector view + 6/12M forecast)
 Skill 7:  Thesis Generator & Monitor (reads synthesis + active theses + analyst insights)
 Skill 11: Structural Research (first-principles research for structural theses — invoked on demand, not weekly)
@@ -63,7 +63,7 @@ Order: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9. Singl
 
 **Skill 0 (data_collector.py)** runs before every analysis cycle, pulling 62+ series from two free institutional-quality sources. Every subsequent skill reads this structured data first. Web search is used only for qualitative context not available in structured form.
 
-Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run.
+Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run. A third mode — targeted pulls via `--series` flag — fetches specific FRED series on demand for Skill 11 research investigations. All FRED fetches use retry with exponential backoff on rate limit (429) errors.
 
 #### Source 1: FRED (Federal Reserve Economic Data)
 Free API (key required). 42+ series covering:
@@ -164,7 +164,7 @@ Every series includes a **percentile rank** vs. the full history fetched — "wh
 
 ### External Analyst Monitoring
 
-**Skill 10** browses two analyst feeds via Chrome: Andreas Steno (@AndreasSteno on X) and Alpine Macro (LinkedIn). It reads with fresh eyes — no pre-loaded expectations about what to find. Crucially, it follows links to full articles, not just feed headlines. The reasoning behind analyst conclusions is what makes this useful for thesis cross-referencing.
+**Skill 10** monitors 8 external analysts across two groups. Group A (frequent: Steno on X, Gromen on X, Peccatiello on Substack, MacroVoices podcast transcripts) and Group B (less frequent: Howard Marks memos, Lyn Alden monthly newsletter, Evergreen Gavekal blog, Alpine Macro on LinkedIn). It reads with fresh eyes — no pre-loaded expectations about what to find. For browser-accessed sources (X, LinkedIn), it follows links to full articles, not just feed headlines. The reasoning behind analyst conclusions is what makes this useful for thesis cross-referencing and as a source of analyst-originated thesis candidates.
 
 ### Thesis System
 
@@ -182,7 +182,11 @@ Both types share:
 - Parameter review (when analyst insights challenge thesis parameters, flagged for review)
 - Time horizon derived from the mechanism, not from a default
 
-No fixed limit on thesis count. Quality over quantity. The thesis monitor reads the analyst monitor output to cross-reference assumptions.
+**Thesis provenance:** Every thesis is tagged as either `data-pattern` (generated from Skill 6 synthesis divergences, regime shifts, positioning extremes) or `analyst-sourced` (flagged by Skill 7 from analyst monitor output, researched by Skill 11). Analyst-sourced theses must produce independent evidence — if the evidence base relies primarily on the originating analyst's own data and claims, conviction is reduced. Skill 8 monitors the ratio of analyst-sourced to data-sourced theses and flags drift if analyst-sourced theses dominate.
+
+**Analyst-sourced thesis path:** Skill 10 monitors analysts → Skill 7 Function A flags candidates (max 2 per week) that meet three criteria: not captured by existing thesis, not already pursued as data-pattern candidate, contains testable mechanism → Skill 11 runs structural research with evidence independence requirement → Skill 7 generates thesis if evidence holds → enters as DRAFT for user activation.
+
+No fixed limit on thesis count. Quality over quantity. The thesis monitor reads the analyst monitor output to cross-reference assumptions. Parameter Reviews from analyst cross-referencing are written directly to the thesis file under an `## Analyst Cross-References` section so findings travel with the thesis.
 
 Lifecycle: DRAFT → ACTIVE → STRENGTHENING / WEAKENING → INVALIDATED / TIME EXPIRED → CLOSED
 
@@ -261,9 +265,14 @@ All 11 GICS sectors covered weekly. Timing derived from catalysts (not pre-set c
 ### Avoiding Confirmation Bias
 - No pre-loaded causal chains or expected outcomes. Derive from current data.
 - The regime model is our belief system — we commit to it. But asset implications are derived per-instance, not from a template.
-- Analyst feeds read with fresh eyes. Frameworks emerge from observation over time, not from pre-loading.
+- Analyst feeds read with fresh eyes. Extraction fields lead with "whatever they're actually saying" — known topics provide context, not filters.
+- Analyst view map is framed analyst-view-first: "Their current view → Challenges our model? → What they see that we might not" — not "Aligns with regime?"
 - Thesis patterns are open-ended — the "What to Look For" list is a starting point, not a closed set.
 - The improvement loop checks reasoning quality: did skills connect information across outputs?
+- Analyst-sourced investigations require evidence independence — cannot rely primarily on the originating analyst's own data.
+- Sampling bias warning: 3 of 8 analysts (Gromen, Alden, Gavekal) share views on fiscal dominance/hard assets. Convergence among them is weighted accordingly.
+- Analyst views persist until superseded by new content from the same analyst (no calendar cutoff), with age tags for transparency.
+- Skill 8 monitors provenance ratio — flags drift if analyst-sourced theses dominate over data-sourced.
 
 ### Accountability
 - Monday briefing opens with a scorecard: what we said last week, what happened, were we right.
@@ -323,28 +332,42 @@ Outputs: `regime-backtest-results.json` (raw data) and `regime-backtest-report.h
 
 ```
 Macro Advisor/
+├── CLAUDE.md                       (project instructions)
+├── CONNECTORS.md                   (MCP connector requirements — browser access for 3/8 analysts)
+├── README.md
 ├── skills/
-│   ├── RULES.md                    (universal policy — data integrity, sizing, language, discipline)
-│   ├── references/
-│   │   └── etf-reference.md        (ETF lookup tables — broad, thematic, currency-specific)
-│   ├── 00-data-collection.md
-│   ├── 01-central-bank-watch.md    (v1.1)
-│   ├── 02-liquidity-credit-monitor.md (v1.1)
-│   ├── 03-macro-data-tracker.md    (v1.1)
-│   ├── 04-geopolitical-policy-scanner.md (v1.1)
-│   ├── 05-market-positioning-sentiment.md
-│   ├── 06-weekly-macro-synthesis.md
-│   ├── 07-thesis-generator-monitor.md (v1.3)
-│   ├── 08-self-improvement-loop.md
-│   ├── 09-monday-briefing.md
-│   ├── 10-analyst-monitor.md       (v1.1)
-│   ├── 11-structural-research.md   (v1.0 — first-principles research for structural theses)
-│   └── 12-thesis-presentation.md   (v1.0 — renders theses into visual reports + briefing cards)
+│   └── macro-advisor/
+│       ├── SKILL.md                (skill definition — triggers, config, ETF reference layers)
+│       └── references/
+│           ├── RULES.md            (universal policy — data integrity, sizing, language, discipline)
+│           ├── etf-reference.md    (ETF lookup tables — broad, thematic, currency-specific)
+│           ├── methodology.md      (this file)
+│           ├── 00-data-collection.md
+│           ├── 01-central-bank-watch.md    (v1.1)
+│           ├── 02-liquidity-credit-monitor.md (v1.1)
+│           ├── 03-macro-data-tracker.md    (v1.1)
+│           ├── 04-geopolitical-policy-scanner.md (v1.1)
+│           ├── 05-market-positioning-sentiment.md
+│           ├── 06-weekly-macro-synthesis.md
+│           ├── 07-thesis-generator-monitor.md (v1.5)
+│           ├── 08-self-improvement-loop.md
+│           ├── 09-monday-briefing.md
+│           ├── 10-analyst-monitor.md       (v2.0 — 8 analysts, analyst-sourced thesis candidates)
+│           ├── 11-structural-research.md   (v1.1 — on-demand FRED, evidence independence)
+│           └── 12-thesis-presentation.md   (v1.0 — visual reports + briefing cards)
+├── hooks/
+│   └── hooks.json                  (session start hook — reads user config)
 ├── scripts/
-│   ├── data_collector.py           (FRED + Yahoo Finance data pull)
+│   ├── assets/
+│   │   ├── chart.min.js            (bundled Chart.js for offline dashboards)
+│   │   └── inter-latin.woff2       (bundled Inter font for offline dashboards)
+│   ├── dashboard-template.html     (Jinja2 HTML template for dashboard rendering)
+│   ├── data_collector.py           (FRED + Yahoo Finance data pull, --series for targeted pulls)
 │   ├── etf_lookup.py               (dynamic ETF discovery + verification)
-│   ├── generate_dashboard.py       (HTML dashboard generator)
-│   └── regime_backtest.py          (historical regime backtest — Layer 1 + Layer 2 liquidity)
+│   ├── generate_dashboard.py       (HTML dashboard generator — reads template + assets)
+│   ├── regime_backtest.py          (historical regime backtest — Layer 1 + Layer 2 liquidity)
+│   ├── test_dashboard.py           (unit tests for dashboard generator)
+│   └── requirements.txt
 ├── outputs/
 │   ├── data/                       (JSON snapshots — weekly + latest)
 │   ├── collection/                 (per-skill weekly outputs)
@@ -356,7 +379,15 @@ Macro Advisor/
 │   ├── briefings/                  (weekly briefing MD + HTML dashboard)
 │   ├── improvement/                (improvement reports + amendment-tracker.md + accuracy-tracker.md)
 │   └── backtest/                   (regime backtest results JSON + HTML report)
-└── methodology.md                  (this file)
+├── commands/
+│   ├── setup.md                    (first-run configuration with workspace folder check)
+│   ├── run-weekly.md               (manual execution trigger for full 13-skill chain)
+│   ├── investigate-theme.md        (on-demand theme research)
+│   ├── activate-thesis.md          (draft thesis activation)
+│   ├── update-etfs.md              (refresh ETF mapping)
+│   └── implement-improvements.md   (review self-improvement amendments)
+└── config/
+    └── user-config.json            (API keys, preferences — created during setup, gitignored)
 ```
 
 ### Naming Conventions
@@ -375,7 +406,7 @@ Macro Advisor/
 - Thesis accountability through testable assumptions and absolute kill switches
 - Self-corrects through the improvement loop (data quality + reasoning quality + analytical accuracy)
 - Builds cumulative institutional memory and track record over time
-- Reads external analysts with fresh eyes, follows links to full articles, and cross-references against thesis parameters
+- Monitors 8 external analysts across X, Substack, LinkedIn, podcasts, newsletters, and blogs — reads with fresh eyes, follows links to full articles, cross-references against thesis parameters, and surfaces analyst-originated thesis candidates through an evidence-independent research pipeline
 
 ### What this system does not do
 - Provide real-time monitoring — weekly cadence only, not a Bloomberg terminal

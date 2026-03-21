@@ -10,13 +10,15 @@ workflows in terms of categories rather than specific products.
 
 | Category | Placeholder | Purpose | Options |
 |----------|-------------|---------|---------|
-| Web browser | `~~browser` | Read external analyst feeds — Steno Research X feed, Alpine Macro LinkedIn (Skill 10) | Chrome extension (Claude in Chrome) |
+| Web browser | `~~browser` | Browse analyst feeds on X (Steno, Gromen) and LinkedIn (Alpine Macro) for Skill 10 | Chrome extension (Claude in Chrome) |
 
 ## Notes
 
-Browser access is optional but recommended. Without it:
+Skill 10 monitors 8 external analysts. Three require browser access (X and LinkedIn), five use WebFetch:
 
-- Analyst monitoring (Skill 10) will be limited to web search instead of browsing full articles and following links
-- All other skills work normally without browser access — ETF data comes from Yahoo Finance via yfinance, not browser scraping
+- **Browser (Chrome):** Andreas Steno (X), Luke Gromen (X), Alpine Macro (LinkedIn)
+- **WebFetch:** Alfonso Peccatiello/Macro Compass (Substack), MacroVoices (podcast transcripts), Howard Marks/Oaktree (memos), Lyn Alden (monthly newsletter), Evergreen Gavekal (blog)
 
-If using browser access, make sure you are logged in to X (for Steno Research feed) and LinkedIn (for Alpine Macro feed) in your Chrome browser. The analyst monitor browses these feeds using your active browser session.
+Browser access is optional. Without it, X and LinkedIn sources fall back to web search instead of full article browsing. All other analysts and all non-analyst skills work normally without browser access.
+
+If using browser access, make sure you are logged in to X and LinkedIn in your Chrome browser.

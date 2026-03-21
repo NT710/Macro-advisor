@@ -130,7 +130,7 @@ Example: "Favor energy — oil supply disruption keeps prices elevated. Reassess
 ---
 
 ## External Analyst Check
-[One paragraph: what are Steno and Alpine Macro saying this week? Does it confirm or challenge our view? Write it conversationally.]
+[One paragraph: what are the external analysts saying this week? Summarize the most notable views from the analyst panel — especially where they challenge our model or see something we might be missing. Write it conversationally.]
 
 ---
 

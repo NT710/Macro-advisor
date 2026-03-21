@@ -47,11 +47,11 @@ If the test fails, tell the user the key is invalid and ask them to try again.
 
 Check if Chrome browser tools are available (~~browser). If not, inform the user:
 
-"The Macro Advisor uses browser access to read external analyst feeds (Steno Research X feed, Alpine Macro LinkedIn). This enables Skill 10 (Analyst Monitor) to follow links and read full articles for cross-referencing against theses. You'll need to enable the Chrome extension for Claude.
+"The Macro Advisor monitors 8 external analysts via Skill 10: Andreas Steno (X), Luke Gromen (X), Alfonso Peccatiello/The Macro Compass (Substack), MacroVoices (podcast transcripts), Howard Marks/Oaktree (memos), Lyn Alden (monthly newsletter), Evergreen Gavekal (blog), and Alpine Macro (LinkedIn).
 
-Without browser access, the system will still work but analyst monitoring (Skill 10) will be limited to web search instead of browsing full articles.
+Browser access (Chrome extension) is needed for X feeds (Steno, Gromen) and LinkedIn (Alpine Macro). The other sources use WebFetch. Without browser access, the system will still work but X and LinkedIn monitoring will fall back to web search instead of browsing full articles.
 
-If you enable browser access, make sure you are logged in to X (for Steno Research) and LinkedIn (for Alpine Macro) in your Chrome browser."
+If you enable browser access, make sure you are logged in to X and LinkedIn in your Chrome browser."
 
 Ask if they want to proceed with or without browser access.
 

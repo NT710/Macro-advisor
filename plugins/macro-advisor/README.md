@@ -35,7 +35,7 @@ Run `/macro-advisor:setup` after installation. It will walk you through:
 
 1. **Python dependencies** — installs fredapi, yfinance, pandas, numpy
 2. **FRED API key** — free from [fred.stlouisfed.org](https://fred.stlouisfed.org) (My Account → API Keys)
-3. **Browser access** — optional, for reading external analyst feeds (Steno Research, Alpine Macro)
+3. **Browser access** — optional, for reading analyst feeds on X and LinkedIn (Steno, Gromen, Alpine Macro). Other analysts use WebFetch.
 4. **Currency preference** — CHF, EUR, USD, or GBP
 5. **ETF mapping** — builds your ETF reference table for your preferred currency (USD fallback where needed, plus dynamic discovery for niche ETFs)
 6. **Schedule** — when to run the weekly analysis
@@ -56,7 +56,7 @@ Run `/macro-advisor:setup` after installation. It will walk you through:
 - Claude Cowork (desktop app)
 - Python 3.8+
 - Free FRED API key
-- Chrome extension (optional, for analyst feed browsing)
+- Chrome extension (optional, for X and LinkedIn analyst feeds — 3 of 8 analysts)
 
 ## How It Works
 
