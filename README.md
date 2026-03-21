@@ -4,7 +4,7 @@ A Claude Cowork plugin marketplace for autonomous macro research and paper tradi
 
 ## Plugins
 
-### Macro Advisor `v0.2.0`
+### Macro Advisor `v0.4.0`
 
 Autonomous macro research system. Pulls 62+ economic data series from FRED and Yahoo Finance, identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) using the Alpine Macro liquidity-first framework, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
@@ -19,7 +19,7 @@ Autonomous macro research system. Pulls 62+ economic data series from FRED and Y
 
 [Full documentation →](plugins/macro-advisor/README.md)
 
-### Trading Engine `v0.1.0-beta`
+### Trading Engine `v0.1.1-beta`
 
 Autonomous paper trading system. Reads the Macro Advisor's regime assessments and theses, reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
 
@@ -64,7 +64,8 @@ Each plugin works independently. The Macro Advisor is useful on its own as a res
 1. In Claude Cowork, go to **Settings → Plugins → Add marketplace**
 2. Enter: `https://github.com/NT710/Macro-advisor`
 3. Click **Sync** — both plugins appear in your plugin list
-4. Run `/macro-advisor:setup` first, then `/trading-engine:setup`
+4. **Select a workspace folder** in Cowork (the folder icon) before running setup. All outputs, config, and data are saved here and persist between sessions.
+5. Run `/macro-advisor:setup` first, then `/trading-engine:setup`
 
 ### From GitHub
 
