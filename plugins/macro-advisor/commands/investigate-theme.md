@@ -38,6 +38,7 @@ If the snapshot is more than 7 days old, refresh it:
 pip install -r ${CLAUDE_PLUGIN_ROOT}/scripts/requirements.txt --break-system-packages -q 2>/dev/null
 python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode weekly
 ```
+Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`.
 
 Identify which data series in the snapshot are directly relevant to the theme. Pull the specific numbers — levels, trends, percentile ranks.
 

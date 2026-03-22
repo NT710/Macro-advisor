@@ -123,7 +123,7 @@ Store this as `workspace_path` in the config (Step 8). All commands will read th
 ## Step 7: Create Output Directories
 
 ```bash
-mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest config
+mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest outputs/structural/candidates config
 ```
 
 ## Step 8: Schedule
@@ -160,6 +160,8 @@ Save all user preferences to `config/user-config.json`:
 
 The `workspace_path` is the absolute path resolved in Step 6. This allows commands and scheduled tasks to find outputs regardless of what working directory they start from.
 
+EIA petroleum data and BIS credit data are fetched automatically (no API key needed). The data collector downloads the EIA bulk file (~61MB) each run for US petroleum inventories, refinery utilization, and demand data.
+
 ## Step 10: Validation Run
 
 Run a quick validation:
@@ -171,7 +173,9 @@ Run a quick validation:
 
 Report results. If everything passes, tell the user:
 
-"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with `/macro-advisor:run-weekly`."
+"Setup complete. Your Macro Advisor is configured and scheduled. The first full analysis will run at [scheduled time]. You can also run it manually anytime with `/macro-advisor:run-weekly`.
+
+The first run includes a full structural scan — the system will look for multi-year macro imbalances across the economy (supply gaps, capex underinvestment, fiscal stress, demographic shifts). After that, the structural scanner runs bi-weekly as part of the regular cycle."
 
 If `browser_access` is true, add a reminder:
 

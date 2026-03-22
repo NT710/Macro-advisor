@@ -112,7 +112,9 @@ The deep-read document. When someone clicks into a thesis from the briefing, thi
 
 #### Structural Thesis Report
 
-Everything in the tactical report, plus these additional sections inserted after "The Evidence":
+**CRITICAL: Detecting thesis type.** Before rendering, check the thesis file for `classification: Structural` or the `[STRUCTURAL]` badge. If present, you MUST use this expanded template — do not fall back to the tactical template. Structural theses without these sections are incomplete and unusable.
+
+**A structural report includes everything in the tactical report, plus these mandatory additional sections inserted after "The Evidence":**
 
 ```markdown
 ## Structural Foundation
@@ -185,7 +187,27 @@ For each thesis, identify the 1-2 most relevant data series from the snapshot:
 
 For each thesis that gets a chart, produce a JSON block that `generate_dashboard.py` can consume. **The chart spec must be self-contained** — the dashboard generator is a dumb renderer that plots whatever data it receives. It does not resolve references or look up data series.
 
-**CRITICAL: Resolve all data series into actual `{x, y}` arrays before writing the chart spec.** Read the data from `outputs/data/latest-data-full.json` (for time series history) or `outputs/data/latest-snapshot.json` (for current values). The `data` field in each dataset must contain an array of `{x: "YYYY-MM-DD", y: number}` objects — not a reference string like `"snapshot.markets.oil_wti"`. If you write a reference string instead of resolved data, the chart canvas will render empty.
+**CRITICAL: Resolve all data series into actual `{x, y}` arrays before writing the chart spec.** The `data` field in each dataset must contain an array of `{x: "YYYY-MM-DD", y: number}` objects — NOT a reference string like `"snapshot.markets.oil_wti"` or `"data_series"`. If you write a reference string instead of resolved data, the chart canvas will render empty and the presentation is broken.
+
+**How to resolve data — follow this exact process:**
+
+1. Read `outputs/data/latest-data-full.json`
+2. Navigate to the series: FRED data is at `fred.data.[SERIES_ID].history`, Yahoo data is at `yahoo.data.[TICKER].history`
+3. Each history entry is `{"date": "YYYY-MM-DD", "value": number}`
+4. Map to chart format: `{"x": entry.date, "y": entry.value}`
+
+**Concrete example — resolving 10Y yield for a rate thesis:**
+```
+# In latest-data-full.json:
+fred.data.DGS10.history = [{"date": "2026-01-05", "value": 4.17}, {"date": "2026-01-12", "value": 4.22}, ...]
+
+# In chart JSON you write:
+"data": [{"x": "2026-01-05", "y": 4.17}, {"x": "2026-01-12", "y": 4.22}, ...]
+```
+
+**Common mistake:** Writing `"data": "fred.data.DGS10.history"` or `"data": "data_series"` — this is WRONG. The dashboard renderer is a dumb plotter. It does not resolve references. You must put the actual numbers in the array.
+
+**If the series is not found** in the data file, write `"data": []` and add an annotation: `{"type": "note", "label": "Data series [name] not available in snapshot"}`.
 
 ```json
 {
@@ -243,6 +265,16 @@ Every chart must directly support the thesis mechanism. No decorative charts. If
 
 ### Change Tracking
 When re-rendering an active thesis, highlight what changed since last week. New data, assumption status changes, kill switch proximity. The reader should see the delta, not just the current state.
+
+### Pre-Output Checklist (run before writing any file)
+
+Before writing each thesis report and chart JSON, verify:
+
+1. **Chart data resolved?** Open the chart JSON you are about to write. Does every `data` array contain actual `{x, y}` objects with real numbers? If any `data` field contains a string, STOP and resolve it from `latest-data-full.json`.
+2. **Structural sections present?** If the thesis is `classification: Structural`, confirm these sections exist in your report: Structural Foundation, Supply-Demand Trajectory chart, What We Have To Believe (4+ rows), The Bear Case Steelmanned (with quantified claims table), Conviction / Expression / Timing (with separate entry timing assessment).
+3. **Chart JSON separate from report?** The chart spec is in a `-charts.json` file, NOT embedded as a code block in the `-report.md`.
+
+If any check fails, fix it before writing the file.
 
 ### No Editorializing
 This skill renders what Skill 7 and Skill 11 produced. It does not add analytical conclusions, upgrade/downgrade conviction, or introduce new assumptions. If the underlying thesis is weak, the presentation will make that visible — which is the point.

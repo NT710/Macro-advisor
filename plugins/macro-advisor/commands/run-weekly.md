@@ -45,11 +45,11 @@ If it exists (subsequent runs), use weekly mode:
 python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode weekly
 ```
 
-Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. CFTC COT data is pulled automatically (no API key needed). Never hardcode keys in any output file.
+Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. EIA petroleum data, CFTC COT, and BIS credit data are all pulled automatically (no API key needed). Never hardcode keys in any output file.
 
 Read `outputs/data/latest-snapshot.json` after completion. This snapshot is the data foundation for all subsequent skills.
 
-## EXECUTION SEQUENCE: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9
+## EXECUTION SEQUENCE: 0→1→2→3→4→5→10→13(bi-weekly)→6→7→11(if triggered)→8→12→9
 
 Each skill MUST:
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` (re-read for each skill to keep guardrails in context)
@@ -93,16 +93,28 @@ If Chrome/browser unavailable (check `browser_access` in config), fall back to w
 Save to: `outputs/collection/YYYY-Www-analyst-monitor.md`
 Also update: `outputs/collection/analyst-themes.md` (overwrite with current themes — see Skill 10 Step 5).
 
+### SKILL 13: Structural Scanner (bi-weekly)
+Read: `outputs/structural/last-scan.json`. If `last_run_date` exists and is fewer than 12 days ago, skip: "Structural scanner: last ran [date], skipping this cycle." If the file doesn't exist (first run), proceed.
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/13-structural-scanner.md` + snapshot + full data file.
+Runs Phase 1 (signal detection) → Phase 2 (screening) → Phase 3 (candidate generation) → Phase 4 (contrarian pass).
+Has full data access: can pull on-demand FRED series, use web search, read snapshot.
+Save scan to: `outputs/structural/YYYY-Www-structural-scan.md`
+Save candidates to: `outputs/structural/candidates/CANDIDATE-[domain-slug]-[date].md`
+Update: `outputs/structural/last-scan.json`
+Candidates are consumed by Skill 7 as structural thesis candidates (alongside data patterns and analyst-sourced candidates).
+
 ### SKILL 6: Weekly Macro Synthesis
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-synthesis.md` + ALL collection outputs (Skills 1-5) + analyst monitor (Skill 10) + snapshot + prior synthesis (if exists in `outputs/synthesis/`).
+**Note:** Do NOT read Skill 13 (Structural Scanner) output here. The synthesis is a cyclical regime assessment. Structural imbalances enter through a separate pipeline: Skill 13 → Skill 11 → Skill 7.
 Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 
 ### SKILL 7: Thesis Generator & Monitor
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/07-thesis-generator-monitor.md`
 Read: synthesis + active theses in `outputs/theses/active/` + analyst themes index (`outputs/collection/analyst-themes.md`) + current week analyst monitor output (`outputs/collection/YYYY-Www-analyst-monitor.md`) + data snapshot. If a theme in the index is relevant to an active thesis, follow the Detail link to read the full weekly analyst file for substance.
-**Function A (Generate):** Two thesis sources:
+**Function A (Generate):** Three thesis sources:
 - **Data patterns:** Scan synthesis for divergences, dislocations, regime shifts per standard process.
 - **Analyst-sourced candidates:** Scan analyst monitor for structural views or novel frameworks not captured by existing theses or the synthesis. Max 2 analyst-sourced investigation candidates per week. Each auto-triggers Skill 11 — no human gate. Tag provenance as "analyst-sourced: [name]" on every candidate.
+- **Structural scanner candidates:** Read `outputs/structural/candidates/` for any CANDIDATE- files not yet processed. These are structural imbalances identified by Skill 13's signal-based detection. Each auto-triggers Skill 11 for full or focused research. Tag provenance as "structural-scanner" on every candidate. Do not duplicate — if a scanner candidate overlaps with an existing thesis or current-week data pattern, note the convergence but don't create a second thesis.
 **Function B (Monitor):** Cross-reference analyst monitor findings against active thesis assumptions, kill switches, and mechanisms. If external insights are directly relevant to a thesis parameter, flag as "Parameter Review" and write finding to thesis file.
 For structural thesis candidates: check for existing Skill 11 research brief in `outputs/research/`. If none exists, flag for Skill 11 invocation — do not generate a structural thesis without the research foundation.
 For themes not in the ETF reference table, run:
@@ -114,15 +126,15 @@ Save monitor: `outputs/collection/YYYY-Www-thesis-monitor.md`
 
 ### SKILL 11: Structural Research (IF TRIGGERED by Skill 7)
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/11-structural-research.md`
-Runs if Skill 7 flagged a structural thesis candidate (from data patterns or analyst-sourced). Most weeks this does not fire.
+Runs if Skill 7 flagged a structural thesis candidate (from data patterns, analyst-sourced, or structural scanner). Most weeks this does not fire. When triggered by a scanner candidate, the candidate file already contains the quantified imbalance, binding constraint, and bear case inputs — use these as Phase 1 starting points rather than researching from scratch.
 Data access: read `outputs/data/latest-snapshot.json` first. For FRED series not in the snapshot, pull on-demand to `outputs/data/research-temp/`. Use `etf_lookup.py` for price data. Web search for everything else.
 For analyst-sourced investigations: the analyst's framework is a hypothesis to test, not a conclusion. Evidence independence must be assessed — if the research can't find support beyond the originating analyst's own claims, conviction is reduced.
 Save to: `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
 ### SKILL 8: Self-Improvement Loop
-Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs + prior improvement output (if exists).
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs (including Skill 13 structural scanner meta, if it ran this cycle) + structural scanner last-run tracker (`outputs/structural/last-scan.json`) + prior improvement output (if exists).
 CRITICAL: Read the amendment tracker (`outputs/improvement/amendment-tracker.md`) FIRST to check which amendments are already implemented. Do not re-propose implemented amendments. Evaluate implemented amendments against current metrics and update the tracker with results.
-Assess both data quality AND reasoning quality.
+Assess both data quality AND reasoning quality. Includes scanner health checks: emptiness ratio, kill rate, provenance distribution, domain recurrence, and sector clustering.
 Save to: `outputs/improvement/YYYY-Www-improvement.md`
 Update: `outputs/improvement/amendment-tracker.md` with evaluation results.
 Update: `outputs/improvement/accuracy-tracker.md` with this week's scorecard.
@@ -165,8 +177,9 @@ Present to the user:
 1. **Monday Morning Briefing** — the dashboard HTML file and briefing markdown
 2. **Regime identified** — which quadrant, confidence level, and whether it changed from last week
 3. **Active theses** — count of ACTIVE- and DRAFT- files, any new or invalidated this week
-4. **Self-improvement** — system health score and count of proposed amendments
-5. **Run time** — "This run covered 74+ economic data series (including CFTC COT positioning), 8 external analysts, regime identification, thesis generation, self-improvement scoring, and a full HTML dashboard. For a human analyst, that's roughly 2-3 days of work. Claude did it in [X] minutes."
+4. **Structural scanner** — if it ran this cycle: signal hit rate, domains advanced, candidates generated. If skipped: "Structural scanner: last ran [date], next cycle [date]."
+5. **Self-improvement** — system health score and count of proposed amendments
+6. **Run time** — "This run covered 90+ economic data series (FRED, Yahoo, CFTC COT, ECB, Eurostat, EIA, BIS), 8 external analysts, structural scanning (if bi-weekly cycle), regime identification, thesis generation, self-improvement scoring, and a full HTML dashboard. For a human analyst, that's roughly 2-3 days of work. Claude did it in [X] minutes."
 
 If Skill 8 proposed any amendments, include: "X skill amendments proposed this week. Run `/macro-advisor:implement-improvements` to review and apply them."
 
@@ -174,7 +187,7 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 
 1. Read RULES.md before anything else and re-read before each skill.
 2. Run Skill 0 first. Everything depends on it.
-3. Execute in order: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9.
+3. Execute in order: 0→1→2→3→4→5→10→13(bi-weekly)→6→7→11(if triggered)→8→12→9.
 4. Every number must be sourced. Never fabricate.
 5. All investment views use specific ETF tickers. User's preferred currency where available.
 6. Write briefing and theses in accessible language.

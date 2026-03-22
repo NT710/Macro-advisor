@@ -31,7 +31,7 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 - **Bloomberg Financial Conditions Index** — alternative cross-check
 
 ### Central Bank Balance Sheets & Plumbing
-- **Fed balance sheet** — weekly H.4.1 release (total assets, reserve balances). Available in snapshot: `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`
+- **Fed balance sheet** — weekly H.4.1 release (total assets, reserve balances). Available in snapshot: `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`. **Rolling trend:** `snapshot.liquidity.trends.fed_total_assets` provides 4-week and 8-week direction bias (`expansion_bias`, `contraction_bias`, `mixed_positive`, `mixed_negative`, or `neutral`), week counts, and cumulative change with percentage. Use the trend to resolve single-week ambiguity — a +$9B week means nothing alone but `expansion_bias` over 4 and 8 weeks confirms a direction.
 - **QT pace** — actual vs. scheduled reduction
 - **TGA balance** — Treasury General Account at the Fed (affects reserve levels). Available in snapshot via FRED WTREGEN.
 - **Reverse repo facility (RRP)** — usage level and trend (draining = liquidity injection). Available in snapshot via FRED RRPONTSYD.
@@ -44,7 +44,7 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
    - **Eurozone M3:** `snapshot.eurozone.m3` (EUR millions, date), `snapshot.eurozone.m3_yoy` (YoY %)
    - **Credit spreads:** `snapshot.credit.*` (HY OAS, IG OAS — from FRED)
    - **Financial conditions:** `snapshot.liquidity.financial_conditions` (NFCI — from FRED)
-   - **Fed balance sheet:** `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`
+   - **Fed balance sheet:** `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`, **plus rolling trends:** `snapshot.liquidity.trends.fed_total_assets` (4w and 8w direction, cumulative change %). Also available: `snapshot.liquidity.trends.tga`, `snapshot.liquidity.trends.reserves`, `snapshot.liquidity.trends.m2_weekly`
    - **TGA / RRP:** via FRED data in snapshot
    - **ECB balance sheet:** `snapshot.eurozone.ecb_balance_sheet` (total assets, WoW change)
    - **Private credit proxy:** `snapshot.credit.private_credit_proxy` (composite + components)

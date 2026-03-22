@@ -1,18 +1,19 @@
 # Macro Advisor
 
-An autonomous macro research system for Claude Cowork. Collects economic data from FRED and Yahoo Finance, identifies macro regimes using the Alpine Macro framework (liquidity-first, four-quadrant regime model), generates investment theses with specific ETF implementation, and delivers weekly HTML dashboards.
+An autonomous macro research system for Claude Cowork. Collects economic data from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies macro regimes using the Alpine Macro framework (liquidity-first, four-quadrant regime model), generates investment theses with specific ETF implementation, and delivers weekly HTML dashboards.
 
 ## What It Does
 
 Every week, the system:
 
-1. Pulls 74+ economic data series from FRED, Yahoo Finance, and CFTC COT (via CFTC SODA API — free, no key needed)
+1. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS
 2. Analyzes central bank policy, liquidity conditions, macro data, geopolitical risks, and market positioning
 3. Reads external analyst feeds for cross-referencing
-4. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation)
-5. Generates and monitors investment theses with testable assumptions and kill switches
-6. Scores its own accuracy and self-improves
-7. Delivers an HTML dashboard with briefing, regime map, thesis reports, and system health
+4. Scans for structural imbalances — supply-demand gaps, capex underinvestment, demographic shifts (bi-weekly)
+5. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation)
+6. Generates and monitors investment theses from three sources: data patterns, analyst insights, and structural scans
+7. Scores its own accuracy and self-improves
+8. Delivers an HTML dashboard with briefing, regime map, thesis reports, and system health
 
 ## Installation
 
@@ -67,9 +68,12 @@ The system runs 13 skills in sequence, each building on the previous:
 ```
 Data Collection → Central Bank Watch → Liquidity Monitor → Macro Tracker →
 Geopolitical Scanner → Positioning & Sentiment → Analyst Monitor →
-Weekly Synthesis → Thesis Generator → Self-Improvement → Thesis Presentation →
+Structural Scanner (bi-weekly) → Weekly Synthesis → Thesis Generator →
+Structural Research (if triggered) → Self-Improvement → Thesis Presentation →
 Monday Briefing
 ```
+
+The thesis generator draws from three sources: data patterns from the weekly synthesis, analyst-sourced candidates from the analyst monitor, and structural scanner candidates from the bi-weekly structural scan. Structural candidates are routed through first-principles research (Skill 11) before becoming theses.
 
 Full methodology is documented in `skills/macro-advisor/references/methodology.md`.
 

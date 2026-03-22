@@ -107,6 +107,11 @@ FRED_SERIES = {
     # Credit Conditions (private credit proxies)
     "DRTSCILM": ("Senior Loan Officer Survey - Tightening C&I Loans (Large/Mid)", "credit_conditions", "quarterly"),
     "BUSLOANS": ("Commercial & Industrial Loans Outstanding", "credit_conditions", "monthly"),
+
+    # Inventory-to-Sales Ratios (supply chain tightness for Skill 13)
+    "RETAILIRSA": ("Retail Inventories/Sales Ratio", "inventories", "monthly"),
+    "MNFCTRIRSA": ("Manufacturing Inventories/Sales Ratio", "inventories", "monthly"),
+    "WHLSLRIRSA": ("Wholesale Inventories/Sales Ratio", "inventories", "monthly"),
 }
 
 # ---------------------------------------------------------------------------
@@ -130,10 +135,13 @@ YAHOO_TICKERS = {
     "HYG": ("iShares High Yield Corporate", "credit_etf"),
     "LQD": ("iShares Investment Grade Corporate", "credit_etf"),
 
-    # Commodities
+    # Commodities — Front Month
     "GC=F": ("Gold Futures", "commodities"),
     "CL=F": ("Crude Oil WTI Futures", "commodities"),
     "HG=F": ("Copper Futures", "commodities"),
+    "SI=F": ("Silver Futures", "commodities"),
+    "NG=F": ("Natural Gas Futures", "commodities"),
+    "BZ=F": ("Brent Crude Futures", "commodities"),
 
     # Currencies
     "EURUSD=X": ("EUR/USD", "fx"),
@@ -522,9 +530,10 @@ def fetch_cot_data(lookback_weeks=52):
                 break  # success
 
             except urllib.error.HTTPError as e:
-                if e.code == 429 and attempt < 2:
-                    wait = 2 ** attempt
-                    print(f"    Rate limited on {name}, retrying in {wait}s...")
+                if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                    wait = 2 ** (attempt + 1)  # 2s, 4s — give CFTC servers time to recover
+                    label = "Rate limited" if e.code == 429 else f"Server error {e.code}"
+                    print(f"    {label} on {name}, retrying in {wait}s...")
                     time.sleep(wait)
                 else:
                     errors.append(f"{name} ({contract_code}): HTTP {e.code} — {str(e)[:80]}")
@@ -734,6 +743,339 @@ def fetch_eurostat_data():
     return {"data": results, "errors": errors}
 
 
+# ---------------------------------------------------------------------------
+# EIA PETROLEUM DATA (free, no key — via bulk download from eia.gov)
+# ---------------------------------------------------------------------------
+EIA_SERIES = {
+    "WCESTUS1": {
+        "name": "US Commercial Crude Oil Inventories (excl. SPR)",
+        "bulk_id": "PET.WCESTUS1.W",
+    },
+    "WCSSTUS1": {
+        "name": "US Strategic Petroleum Reserve",
+        "bulk_id": "PET.WCSSTUS1.W",
+    },
+    "WPULEUS3": {
+        "name": "US Refinery Utilization",
+        "bulk_id": "PET.WPULEUS3.W",
+    },
+    "WRPUPUS2": {
+        "name": "US Total Petroleum Products Supplied (demand proxy)",
+        "bulk_id": "PET.WRPUPUS2.W",
+    },
+}
+
+
+def fetch_eia_data(lookback_weeks=52):
+    """Fetch EIA petroleum data via bulk download (free, no API key required).
+
+    Downloads PET.zip (~61MB) from eia.gov/opendata/bulk/, extracts 4 target
+    weekly petroleum series, and discards the rest. Updated twice daily by EIA.
+    Takes ~30-60 seconds depending on connection speed.
+
+    Returns dict with {"data": {...}, "errors": [...]} or None on total failure.
+    """
+    import urllib.request
+    import zipfile
+    import io
+
+    bulk_url = "https://www.eia.gov/opendata/bulk/PET.zip"
+    target_ids = {cfg["bulk_id"]: sid for sid, cfg in EIA_SERIES.items()}
+
+    results = {}
+    errors = []
+
+    try:
+        print("    Downloading EIA bulk file (PET.zip, ~61MB, no key needed)...")
+        req = urllib.request.Request(bulk_url, headers={"User-Agent": "MacroAdvisor/1.0"})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            zip_bytes = resp.read()
+
+        print(f"    Downloaded {len(zip_bytes) / 1024 / 1024:.1f} MB, extracting target series...")
+
+        # Extract PET.txt from zip in memory
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            # Find the text file (usually PET.txt)
+            txt_name = [n for n in zf.namelist() if n.endswith('.txt')][0]
+            with zf.open(txt_name) as f:
+                for line in f:
+                    line = line.decode('utf-8', errors='replace').strip()
+                    if not line:
+                        continue
+                    # Quick check before parsing JSON (performance: skip 99.99% of lines)
+                    match = False
+                    for bulk_id in target_ids:
+                        if bulk_id in line:
+                            match = True
+                            break
+                    if not match:
+                        continue
+
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    series_bulk_id = obj.get("series_id", "")
+                    if series_bulk_id not in target_ids:
+                        continue
+
+                    series_id = target_ids[series_bulk_id]
+                    config = EIA_SERIES[series_id]
+                    raw_data = obj.get("data", [])
+
+                    if not raw_data:
+                        errors.append(f"{series_id}: no data in bulk file")
+                        continue
+
+                    # raw_data is list of [date_str, value] in desc order
+                    # date format: YYYYMMDD → convert to YYYY-MM-DD
+                    history = []
+                    for entry in reversed(raw_data):
+                        if len(entry) < 2 or entry[1] is None:
+                            continue
+                        try:
+                            date_str = str(entry[0])
+                            val = float(entry[1])
+                            # Convert YYYYMMDD to YYYY-MM-DD
+                            if len(date_str) == 8 and date_str.isdigit():
+                                formatted_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+                            else:
+                                formatted_date = date_str
+                            history.append({"date": formatted_date, "value": round(val, 2)})
+                        except (ValueError, TypeError, IndexError):
+                            continue
+
+                    # Trim to lookback window
+                    if lookback_weeks < len(history):
+                        history = history[-lookback_weeks:]
+
+                    if not history:
+                        errors.append(f"{series_id}: all values null in bulk data")
+                        continue
+
+                    latest = history[-1]
+                    prior = history[-2] if len(history) >= 2 else None
+
+                    results[series_id] = {
+                        "name": config["name"],
+                        "series_id": series_id,
+                        "latest_value": latest["value"],
+                        "latest_date": latest["date"],
+                        "prior_value": prior["value"] if prior else None,
+                        "prior_date": prior["date"] if prior else None,
+                        "observation_count": len(history),
+                        "history": history,
+                    }
+
+        # Check for missing series
+        for bulk_id, sid in target_ids.items():
+            if sid not in results:
+                errors.append(f"{sid}: not found in bulk file (expected {bulk_id})")
+
+    except urllib.error.URLError as e:
+        errors.append(f"Bulk download failed: {str(e)[:200]}")
+    except Exception as e:
+        errors.append(f"Bulk extraction failed: {str(e)[:200]}")
+
+    return {"data": results, "errors": errors} if results or errors else None
+
+
+# ---------------------------------------------------------------------------
+# BIS CREDIT-TO-GDP DATA (free, no key — CSV download from bis.org)
+# ---------------------------------------------------------------------------
+BIS_COUNTRIES = {
+    "US": "United States",
+    "XM": "Euro area",  # BIS uses XM for Euro area aggregate
+    "CN": "China",
+    "JP": "Japan",
+    "GB": "United Kingdom",
+}
+
+
+def fetch_bis_credit_data():
+    """Fetch BIS credit-to-GDP gap data (free CSV, no key required).
+
+    The BIS publishes credit-to-GDP ratios (actual) and HP-filter trends quarterly.
+    The credit gap = actual ratio - trend. We fetch both and compute the gap.
+
+    Data URL: https://data.bis.org/topics/CREDIT_GAPS/BIS,WS_CREDIT_GAP,1.0/Q.[CC].P.A.[A|B]
+    where A = actual ratio, B = HP-filter trend
+
+    Returns:
+        dict with country-level credit-to-GDP gap data, or None on total failure
+    """
+    import urllib.request
+
+    results = {}
+    errors = []
+
+    base_url = "https://data.bis.org/topics/CREDIT_GAPS/BIS,WS_CREDIT_GAP,1.0/"
+
+    def _fetch_bis_series(country_code, suffix):
+        """Fetch a BIS CSV series, return list of {date, value} or None."""
+        url = f"{base_url}Q.{country_code}.P.A.{suffix}?file_format=csv&format=long&include=code%2Clabel"
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "MacroAdvisor/1.0"})
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    raw = resp.read().decode("utf-8")
+                # Parse the BIS portal CSV — data rows start with "BIS,WS_CREDIT_GAP
+                # Format: ...,date,availability,,obs_status,value
+                data_lines = [l for l in raw.split("\n") if l.startswith('"BIS')]
+                history = []
+                for line in data_lines:
+                    parts = line.split(",")
+                    # Find date (YYYY-MM-DD) and last float value
+                    date = None
+                    value = None
+                    for p in parts:
+                        p = p.strip().strip('"')
+                        if len(p) == 10 and p[4:5] == "-" and p[7:8] == "-":
+                            date = p
+                        try:
+                            value = float(p)
+                        except (ValueError, TypeError):
+                            pass
+                    if date and value is not None:
+                        history.append({"date": date, "value": round(value, 2)})
+                return history if history else None
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                    time.sleep(2 ** (attempt + 1))
+                else:
+                    return None
+            except Exception:
+                if attempt < 2:
+                    time.sleep(1)
+                else:
+                    return None
+        return None
+
+    for country_code, country_name in BIS_COUNTRIES.items():
+        try:
+            # Fetch actual credit-to-GDP ratio and HP-filter trend
+            actual = _fetch_bis_series(country_code, "A")
+            trend = _fetch_bis_series(country_code, "B")
+
+            if not actual:
+                errors.append(f"BIS {country_code}: could not fetch actual ratio")
+                continue
+            if not trend:
+                errors.append(f"BIS {country_code}: could not fetch trend — using actual only")
+                # Can't compute gap without trend, skip
+                continue
+
+            # Align by date and compute gap = actual - trend
+            trend_by_date = {h["date"]: h["value"] for h in trend}
+            gap_history = []
+            for point in actual:
+                if point["date"] in trend_by_date:
+                    gap = round(point["value"] - trend_by_date[point["date"]], 2)
+                    gap_history.append({"date": point["date"], "value": gap})
+
+            if not gap_history:
+                errors.append(f"BIS {country_code}: no overlapping dates for gap computation")
+                continue
+
+            # Take last 8 quarters (2 years)
+            gap_history = gap_history[-8:]
+            latest = gap_history[-1]
+            prior = gap_history[-2] if len(gap_history) >= 2 else None
+
+            # Credit gap interpretation
+            gap = latest["value"]
+            signal = (
+                "overheating" if gap > 10 else
+                "above_trend" if gap > 2 else
+                "near_trend" if gap > -2 else
+                "below_trend" if gap > -10 else
+                "depressed"
+            )
+
+            results[country_code] = {
+                "country": country_name,
+                "credit_gap_pp": gap,
+                "signal": signal,
+                "latest_date": latest["date"],
+                "prior_gap": prior["value"] if prior else None,
+                "prior_date": prior["date"] if prior else None,
+                "direction": "widening" if prior and gap > prior["value"] else "narrowing" if prior and gap < prior["value"] else "stable",
+                "observation_count": len(gap_history),
+                "history": gap_history,  # Last 2 years quarterly (already trimmed to 8)
+            }
+
+        except Exception as e:
+            errors.append(f"BIS {country_code}: {str(e)[:100]}")
+
+    return {"data": results, "errors": errors} if results or errors else None
+
+
+def compute_rolling_trend(history, windows=(4, 8)):
+    """Compute rolling direction bias from periodic history (any frequency).
+
+    For each window size, counts how many period-over-period changes were
+    positive vs negative, computes cumulative change, and classifies direction.
+    Works with any data frequency (daily, weekly, monthly) — the window size
+    refers to number of observations, not calendar weeks.
+
+    Args:
+        history: list of {"date": str, "value": float} sorted ascending
+        windows: tuple of window sizes in observation periods (default: 4 and 8)
+
+    Returns:
+        dict with trend data per window, or None if insufficient history
+    """
+    if not history or len(history) < max(windows) + 1:
+        return None
+
+    result = {}
+    for w in windows:
+        # Take the last (w+1) entries to get w period-over-period changes
+        recent = history[-(w + 1):]
+        changes = []
+        for i in range(1, len(recent)):
+            changes.append(recent[i]["value"] - recent[i - 1]["value"])
+
+        periods_positive = sum(1 for c in changes if c > 0)
+        periods_negative = sum(1 for c in changes if c < 0)
+        periods_flat = sum(1 for c in changes if c == 0)
+        cumulative = round(sum(changes), 2)
+
+        # Magnitude check: if cumulative change is <0.1% of the base value,
+        # the direction is noise regardless of period counts
+        base_value = recent[0]["value"]
+        cumulative_pct = abs(cumulative / base_value * 100) if base_value != 0 else 0
+
+        # Direction classification: require clear majority AND meaningful magnitude
+        if cumulative_pct < 0.05:
+            # Less than 0.05% change over the window — statistically flat
+            direction = "neutral"
+        elif periods_positive >= (w * 0.75):
+            direction = "expansion_bias"
+        elif periods_negative >= (w * 0.75):
+            direction = "contraction_bias"
+        elif periods_positive > periods_negative:
+            direction = "mixed_positive"
+        elif periods_negative > periods_positive:
+            direction = "mixed_negative"
+        else:
+            direction = "neutral"
+
+        result[f"{w}w"] = {
+            "direction": direction,
+            "periods_positive": periods_positive,
+            "periods_negative": periods_negative,
+            "periods_flat": periods_flat,
+            "cumulative_change": cumulative,
+            "cumulative_change_pct": round(cumulative_pct, 3),
+            "start_date": recent[0]["date"],
+            "end_date": recent[-1]["date"],
+        }
+
+    return result
+
+
 def compute_derived_metrics(fred_data, yahoo_data):
     """Compute higher-level derived metrics from raw data."""
     derived = {}
@@ -814,6 +1156,27 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "rrp_change": rrp_change,
             "signal": liquidity_signal
         }
+
+    # Rolling trends for key liquidity series
+    # These resolve single-week ambiguity (e.g., +$9.6B — noise or trend?)
+    # by looking at 4-week and 8-week windows
+    liquidity_trends = {}
+    for sid, label, scale in [
+        ("WALCL", "fed_total_assets", 1),      # Fed balance sheet (millions)
+        ("WTREGEN", "tga", 1),                  # Treasury General Account (millions)
+        ("WRESBAL", "reserves", 1),             # Reserve balances (millions)
+    ]:
+        if sid in fd:
+            trend = compute_rolling_trend(fd[sid].get("history", []))
+            if trend:
+                liquidity_trends[label] = trend
+    # M2 weekly (separate series from monthly M2SL)
+    if "WM2NS" in fd:
+        trend = compute_rolling_trend(fd["WM2NS"].get("history", []))
+        if trend:
+            liquidity_trends["m2_weekly"] = trend
+    if liquidity_trends:
+        derived["liquidity_trends"] = liquidity_trends
 
     # M2 growth regime
     if "M2SL" in fd and fd["M2SL"].get("yoy_change_percent") is not None:
@@ -990,10 +1353,106 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "date": fd["T5YIE"]["latest_date"]
         }
 
+    # -----------------------------------------------------------------------
+    # Commodity structural signals (for Skill 13: Structural Scanner)
+    # -----------------------------------------------------------------------
+    # 1. WTI-Brent spread as crude oil curve shape proxy
+    #    When WTI > Brent: acute US near-term tightness (unusual, signals domestic supply stress)
+    #    When Brent > WTI: normal structure, international demand premium
+    #    Spread widening/narrowing over time signals shifting tightness
+    if "CL=F" in yd and "BZ=F" in yd:
+        wti = yd["CL=F"]["latest_value"]
+        brent = yd["BZ=F"]["latest_value"]
+        spread = round(wti - brent, 2)
+        # Compute spread trend from history if available
+        spread_trend = None
+        wti_hist = yd["CL=F"].get("history", [])
+        brent_hist = yd["BZ=F"].get("history", [])
+        if len(wti_hist) >= 20 and len(brent_hist) >= 20:
+            # Align by date (use last 20 common data points)
+            wti_dates = {h["date"]: h["value"] for h in wti_hist}
+            recent_spreads = []
+            for h in brent_hist[-30:]:
+                if h["date"] in wti_dates:
+                    recent_spreads.append(wti_dates[h["date"]] - h["value"])
+            if len(recent_spreads) >= 10:
+                early_avg = sum(recent_spreads[:5]) / 5
+                late_avg = sum(recent_spreads[-5:]) / 5
+                if late_avg > early_avg + 0.5:
+                    spread_trend = "narrowing_to_wti_premium"
+                elif late_avg < early_avg - 0.5:
+                    spread_trend = "widening_brent_premium"
+                else:
+                    spread_trend = "stable"
+
+        derived["crude_term_structure"] = {
+            "wti_brent_spread": spread,
+            "signal": "us_tightness" if spread > 0 else "normal_brent_premium" if spread > -5 else "wide_brent_premium",
+            "spread_trend": spread_trend,
+            "wti_price": wti,
+            "brent_price": brent,
+            "date": yd["CL=F"]["latest_date"],
+        }
+
+    # 2. Commodity momentum signals (price vs 13-week and 26-week moving averages)
+    #    Sustained above-MA = supply tightness being priced
+    #    Sustained below-MA = demand weakness or supply relief
+    commodity_momentum = {}
+    for ticker, key in [("GC=F", "gold"), ("CL=F", "crude_wti"), ("HG=F", "copper"),
+                        ("SI=F", "silver"), ("NG=F", "natgas")]:
+        if ticker in yd and yd[ticker].get("history"):
+            hist = yd[ticker]["history"]
+            price = yd[ticker]["latest_value"]
+            if len(hist) >= 26:
+                ma13 = sum(h["value"] for h in hist[-13:]) / 13
+                ma26 = sum(h["value"] for h in hist[-26:]) / 26
+                above_13 = price > ma13
+                above_26 = price > ma26
+                if above_13 and above_26:
+                    momentum = "strong_uptrend"
+                elif above_26 and not above_13:
+                    momentum = "weakening"
+                elif not above_26 and above_13:
+                    momentum = "recovering"
+                else:
+                    momentum = "downtrend"
+                commodity_momentum[key] = {
+                    "price": price,
+                    "ma_13w": round(ma13, 2),
+                    "ma_26w": round(ma26, 2),
+                    "above_13w_ma": above_13,
+                    "above_26w_ma": above_26,
+                    "momentum": momentum,
+                    "pct_above_26w_ma": round((price - ma26) / ma26 * 100, 2),
+                }
+    if commodity_momentum:
+        derived["commodity_momentum"] = commodity_momentum
+
+    # 3. Inventory-to-sales ratios (already in weekly FRED, compute trend here)
+    #    Rising I/S = demand weakening or overproduction (bearish for supply-tightness thesis)
+    #    Falling I/S = inventory drawdown (bullish for supply-tightness thesis)
+    inv_sales = {}
+    for sid, label in [("RETAILIRSA", "retail"), ("MNFCTRIRSA", "manufacturing"),
+                       ("WHLSLRIRSA", "wholesale")]:
+        if sid in fd:
+            val = fd[sid]["latest_value"]
+            trend = compute_rolling_trend(fd[sid].get("history", []), windows=(4, 8))
+            inv_sales[label] = {
+                "ratio": val,
+                "date": fd[sid]["latest_date"],
+                "trend": trend,
+                "signal": "drawing" if trend and trend.get("8w", {}).get("direction") == "contraction_bias"
+                         else "building" if trend and trend.get("8w", {}).get("direction") == "expansion_bias"
+                         else "stable"
+            }
+    if inv_sales:
+        derived["inventory_to_sales"] = inv_sales
+
     return derived
 
 
-def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_data=None, eurostat_data=None):
+def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_data=None, eurostat_data=None,
+                           eia_data=None, bis_data=None):
     """Build a concise summary for skill consumption."""
     fd = fred_data.get("data", {}) if fred_data else {}
     yd = yahoo_data.get("data", {}) if yahoo_data else {}
@@ -1013,6 +1472,7 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
         "positioning": {},
         "regional_fed_mfg": {},
         "eurozone": {},
+        "commodities": {},
         "derived_signals": {},
     }
 
@@ -1036,6 +1496,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
     if "WALCL" in fd:
         snapshot["liquidity"]["fed_total_assets_T"] = round(fd["WALCL"]["latest_value"] / 1e6, 2)
         snapshot["liquidity"]["fed_assets_change"] = fd["WALCL"].get("change_absolute")
+    if "liquidity_trends" in derived:
+        snapshot["liquidity"]["trends"] = derived["liquidity_trends"]
 
     # Growth
     for sid, key in [("UNRATE", "unemployment"), ("ICSA", "initial_claims"), ("CCSA", "continuing_claims"),
@@ -1186,6 +1648,70 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
             "prior_value": core.get("prior_value"),
         }
 
+    # Commodity structural signals (for Skill 13)
+    if "crude_term_structure" in derived:
+        snapshot["commodities"]["term_structure"] = derived["crude_term_structure"]
+    if "commodity_momentum" in derived:
+        snapshot["commodities"]["momentum"] = derived["commodity_momentum"]
+    if "inventory_to_sales" in derived:
+        snapshot["commodities"]["inventory_to_sales"] = derived["inventory_to_sales"]
+
+    # EIA Petroleum Data (for Skill 13 — energy structural signals)
+    eia = eia_data.get("data", {}) if eia_data else {}
+    if eia:
+        energy = {}
+        if "WCESTUS1" in eia:
+            energy["crude_inventory_mbbls"] = {
+                "value": eia["WCESTUS1"]["latest_value"],
+                "date": eia["WCESTUS1"]["latest_date"],
+                "prior": eia["WCESTUS1"].get("prior_value"),
+            }
+        if "WCSSTUS1" in eia:
+            spr = eia["WCSSTUS1"]["latest_value"]
+            # SPR thresholds calibrated 2025-03 (pre-2022 baseline ~600M; post-drawdown ~350-400M)
+            energy["spr_inventory_mbbls"] = {
+                "value": spr,
+                "date": eia["WCSSTUS1"]["latest_date"],
+                "signal": "depleted" if spr < 350 else "low" if spr < 450 else "adequate" if spr < 600 else "full",
+            }
+        if "WPULEUS3" in eia:
+            util = eia["WPULEUS3"]["latest_value"]
+            # Refinery utilization thresholds calibrated 2025-03 (nameplate max ~97%; sustained >95% unusual)
+            energy["refinery_utilization_pct"] = {
+                "value": util,
+                "date": eia["WPULEUS3"]["latest_date"],
+                "signal": "at_ceiling" if util > 95 else "tight" if util > 92 else "normal" if util > 85 else "weak",
+            }
+        if "WCESTUS1" in eia and "WRPUPUS2" in eia:
+            inv = eia["WCESTUS1"]["latest_value"]
+            demand = eia["WRPUPUS2"]["latest_value"]
+            if demand and demand > 0:
+                # Days of supply = inventory (thousands of barrels) / daily demand
+                # WRPUPUS2 is in thousands of barrels per day
+                days = round(inv / demand, 1)
+                # Days-of-supply thresholds calibrated 2025-03 (DOE typical: 20-30 days; sub-20 historically rare)
+                energy["days_of_supply"] = {
+                    "value": days,
+                    "signal": "critically_low" if days < 20 else "tight" if days < 25 else "adequate" if days < 30 else "comfortable",
+                }
+        if energy:
+            snapshot["energy"] = energy
+
+    # BIS Credit Data (for Skill 13 — international structural context)
+    bis = bis_data.get("data", {}) if bis_data else {}
+    if bis:
+        intl = {}
+        for country_code, data in bis.items():
+            intl[f"credit_gap_{country_code.lower()}"] = {
+                "country": data["country"],
+                "credit_gap_pp": data["credit_gap_pp"],
+                "signal": data["signal"],
+                "direction": data["direction"],
+                "date": data["latest_date"],
+            }
+        if intl:
+            snapshot["international_structural"] = intl
+
     # Derived signals (the most useful section for skills)
     snapshot["derived_signals"] = derived
 
@@ -1198,6 +1724,8 @@ def main():
     parser.add_argument("--output-dir", required=True, help="Output directory")
     parser.add_argument("--mode", choices=["weekly", "historical"], default="weekly",
                        help="weekly = 26-week lookback (default), historical = 5-year lookback")
+    parser.add_argument("--skip-eia", action="store_true",
+                       help="Skip EIA petroleum data download (saves ~30-60s if not needed)")
     parser.add_argument("--series", default=None,
                        help="Comma-separated FRED series IDs for targeted pull (e.g., 'FYFSD,FGEXPND,A091RC1Q027SBEA'). "
                             "When specified, only these series are fetched (no Yahoo, no derived metrics). "
@@ -1335,16 +1863,46 @@ def main():
             for err in eurostat_data["errors"]:
                 print(f"    - {err}")
 
-    # 6. Derived metrics
+    # 6. EIA Petroleum Data (free, no key — via bulk download)
+    eia_data = None
+    if not args.skip_eia:
+        eia_weeks = 52 if args.mode == "weekly" else 260
+        print("Fetching EIA petroleum data (eia.gov bulk download)...")
+        eia_data = fetch_eia_data(eia_weeks)
+        if eia_data:
+            n = len(eia_data["data"])
+            e = len(eia_data["errors"])
+            print(f"  EIA: {n} series fetched, {e} errors")
+            if eia_data["errors"]:
+                for err in eia_data["errors"]:
+                    print(f"    - {err}")
+        else:
+            print("  EIA: no data returned (bulk download may have failed)")
+    else:
+        print("EIA: skipped (--skip-eia flag)")
+
+    # 7. BIS Credit Data (free, no key — CSV download)
+    print("Fetching BIS credit-to-GDP data (bis.org)...")
+    bis_data = fetch_bis_credit_data()
+    if bis_data:
+        n = len(bis_data["data"])
+        e = len(bis_data["errors"])
+        print(f"  BIS: {n} country series fetched, {e} errors")
+        if bis_data["errors"]:
+            for err in bis_data["errors"]:
+                print(f"    - {err}")
+
+    # 8. Derived metrics
     print("Computing derived metrics...")
     derived = compute_derived_metrics(fred_data, yahoo_data)
     print(f"  Derived: {len(derived)} metrics computed")
 
-    # 7. Snapshot
+    # 9. Snapshot
     print("Building summary snapshot...")
-    snapshot = build_summary_snapshot(fred_data, yahoo_data, derived, cot_data, ecb_data, eurostat_data)
+    snapshot = build_summary_snapshot(fred_data, yahoo_data, derived, cot_data, ecb_data, eurostat_data,
+                                     eia_data=eia_data, bis_data=bis_data)
 
-    # 6. Save
+    # 10. Save
     full_output = {
         "collection_date": today,
         "collection_week": week,
@@ -1355,6 +1913,8 @@ def main():
         "cot": cot_data,
         "ecb": ecb_data,
         "eurostat": eurostat_data,
+        "eia": eia_data,
+        "bis": bis_data,
         "derived": derived,
         "snapshot": snapshot,
     }
@@ -1375,11 +1935,13 @@ def main():
     total_cot = len(cot_data["data"]) if cot_data else 0
     total_ecb = len(ecb_data["data"]) if ecb_data else 0
     total_eurostat = len(eurostat_data["data"]) if eurostat_data else 0
-    total = total_fred + total_yahoo + total_cot + total_ecb + total_eurostat
-    total_err = sum(len(d.get("errors", [])) for d in [fred_data, yahoo_data, cot_data, ecb_data, eurostat_data] if d)
+    total_eia = len(eia_data["data"]) if eia_data else 0
+    total_bis = len(bis_data["data"]) if bis_data else 0
+    total = total_fred + total_yahoo + total_cot + total_ecb + total_eurostat + total_eia + total_bis
+    total_err = sum(len(d.get("errors", [])) for d in [fred_data, yahoo_data, cot_data, ecb_data, eurostat_data, eia_data, bis_data] if d)
 
     print(f"\n=== Collection Complete ===")
-    print(f"Series fetched: {total} (FRED: {total_fred}, Yahoo: {total_yahoo}, COT: {total_cot}, ECB: {total_ecb}, Eurostat: {total_eurostat})")
+    print(f"Series fetched: {total} (FRED: {total_fred}, Yahoo: {total_yahoo}, COT: {total_cot}, ECB: {total_ecb}, Eurostat: {total_eurostat}, EIA: {total_eia}, BIS: {total_bis})")
     print(f"Errors: {total_err}")
     print(f"Derived metrics: {len(derived)}")
     print(f"Success rate: {total / max(total + total_err, 1) * 100:.1f}%")

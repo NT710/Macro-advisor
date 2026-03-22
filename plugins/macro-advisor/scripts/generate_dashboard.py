@@ -356,6 +356,18 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         if upd_match:
             updated = upd_match.group(1).strip()
 
+        # Extract time horizon (first line after ## Time Horizon)
+        horizon = ""
+        horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
+        if horizon_match:
+            # Grab just the short duration label (e.g. "1-3 months", "2-5 years")
+            h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?))', horizon_match.group(1).strip(), re.IGNORECASE)
+            if h_match:
+                horizon = h_match.group(1)
+            else:
+                # Fallback: take first phrase before period or parenthesis
+                horizon = horizon_match.group(1).strip().split('.')[0].split('(')[0].strip()
+
         # Look up recommendation from briefing
         recommendation = ""
         thesis_lookup = thesis_key.lower()
@@ -379,6 +391,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             f'<td><span class="thesis-type {type_class}">{thesis_type}</span></td>'
             f'<td class="thesis-conviction">{conviction or "—"}</td>'
             f'<td><span class="thesis-rec {rec_class}">{recommendation or "—"}</span></td>'
+            f'<td class="thesis-horizon">{horizon or "—"}</td>'
             f'<td class="thesis-date">{generated or "—"}</td>'
             f'<td class="thesis-date">{updated or "—"}</td>'
             f'</tr>\n'
@@ -777,6 +790,11 @@ tr:hover td {{
 .rec-discard {{
     color: var(--red);
 }}
+.thesis-horizon {{
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}}
 .thesis-date {{
     font-size: 12px;
     color: var(--text-muted);
@@ -978,6 +996,7 @@ tr:hover td {{
                         <th>Type</th>
                         <th>Conviction</th>
                         <th>Rec</th>
+                        <th>Horizon</th>
                         <th>Created</th>
                         <th>Updated</th>
                     </tr>

@@ -38,7 +38,7 @@ When genuinely uncertain, classify as tactical but include a note: "Flagged for 
 
 ## Function A: Generate Thesis Candidates
 
-Thesis candidates come from two sources: data patterns (primary) and external analyst frameworks (secondary). Both feed into the same classification and template system.
+Thesis candidates come from three sources: data patterns (primary), external analyst frameworks (secondary), and structural scanner candidates (tertiary). All feed into the same classification and template system.
 
 ### Source 1: Data Patterns
 
@@ -78,6 +78,21 @@ This automatically triggers Skill 11 to investigate. No human approval gate — 
 - If Skill 11 research relies primarily on the analyst's own data/claims rather than independent sources, flag it: "Evidence base is thin — primarily sourced from originating analyst."
 - Do not generate more than 2 analyst-sourced investigation candidates per week. If the analyst monitor surfaces 5 interesting ideas, pick the 2 with the clearest testable mechanisms. The rest can be noted in the monitor output for future weeks.
 - Track analyst-sourced vs. data-sourced thesis origins in the meta block. If analyst-sourced theses consistently outnumber data-sourced ones, the system is drifting from data-driven to opinion-driven — Skill 8 should flag this.
+
+### Source 3: Structural Scanner Candidates
+
+Read `outputs/structural/candidates/` for any advancing candidates from Skill 13 (Structural Scanner). These are domains where the scanner detected a quantitative tension signal, screened it through equilibrium, base rate, and consensus checks, and produced a structured candidate brief.
+
+**How scanner candidates enter the thesis pipeline:**
+1. Each candidate file contains a domain, quantified imbalance, binding constraint, bear case inputs, and a recommended investigation depth.
+2. ALL scanner candidates are routed to Skill 11 for research. The scanner candidate file IS the investigation brief for Skill 11. The candidate's "recommended investigation depth" (Full / Focused / Quick check) is passed to Skill 11 as a suggestion for how much work to do — but Skill 11 always runs its first-principles framing and contrarian stress-test regardless of depth. No scanner candidate bypasses Skill 11, even if the base rate looks strong — the scanner's own assessment is not a substitute for independent first-principles validation.
+3. Scanner candidates always classify as **structural** (by definition — the scanner only flags imbalances with >12-month resolution timelines).
+
+**Deduplication:** Before processing, check whether an existing active thesis or current-week data-pattern candidate already covers the same domain. If the scanner candidate points in the same direction as the existing thesis (e.g., both say energy is supply-constrained), the scanner candidate becomes supporting evidence (add to its Analyst Cross-References section under "Structural Scanner Corroboration"), not a separate investigation. However, if the scanner candidate's reading conflicts with the existing thesis (e.g., thesis says supply-constrained but scanner detects demand destruction signals, or scanner flags a different binding constraint), flag the conflict explicitly: "SCANNER-THESIS CONFLICT: [domain] — existing thesis assumes [X], scanner detects [Y]." This conflict is a high-value signal and should trigger a review of the existing thesis's assumptions, not silent absorption.
+
+**Provenance:** Scanner-originated theses carry `provenance: structural-scanner` through the entire pipeline. This is distinct from `data-pattern` and `analyst-sourced` to enable separate performance tracking by Skill 8.
+
+**Combined investigation cap:** In any single weekly run, no more than 5 total investigation candidates should be sent to Skill 11 (across all three sources: data-pattern + analyst-sourced + scanner). If the combined count exceeds 5, prioritize by: (1) size of quantified gap or strength of mechanism, (2) novelty vs. existing thesis coverage, (3) distance from consensus. Defer the rest to next cycle.
 
 ### Tactical Thesis Template
 
@@ -371,15 +386,19 @@ CLOSED → Final status. Record outcome in thesis log.
 ---
 meta:
   skill: thesis-generator-monitor
-  skill_version: "1.6"
+  skill_version: "1.7"
   run_date: "[ISO date]"
   function: [generate/monitor/both]
   theses_monitored: [number]
   theses_generated: [number]
   theses_generated_data_sourced: [number]
   theses_generated_analyst_sourced: [number]
+  theses_generated_scanner_sourced: [number]
   analyst_investigation_candidates_flagged: [number]
-  analyst_investigations_triggered: [number]
+  scanner_candidates_processed: [number]
+  scanner_candidates_sent_to_skill11: [number]
+  scanner_candidates_deduplicated: [number]
+  total_investigations_triggered: [number]
   theses_invalidated: [number]
   theses_strengthened: [number]
   theses_weakened: [number]

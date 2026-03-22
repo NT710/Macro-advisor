@@ -1,7 +1,7 @@
 # Macro Investment Advisor — Methodology & System Reference
 
-**Version:** 2.5
-**Last Updated:** 2026-03-21
+**Version:** 2.6
+**Last Updated:** 2026-03-22
 **Framework:** Alpine Macro methodology
 
 ---
@@ -42,31 +42,32 @@ The regime label is the starting point. Asset implications are derived from each
 ### Execution Chain (Single Sunday Run)
 
 ```
-Skill 0:  Data Collection (FRED + Yahoo Finance → structured JSON)
+Skill 0:  Data Collection (FRED + Yahoo + CFTC + ECB + Eurostat + EIA + BIS → structured JSON)
 Skill 1:  Central Bank Watch (Fed, ECB, SNB, BoJ, PBoC)
 Skill 2:  Liquidity & Credit Monitor (M2, credit spreads, NFCI, Fed balance sheet)
 Skill 3:  Macro Data Tracker (PMIs, employment, inflation, GDP, surprises)
 Skill 4:  Geopolitical & Policy Scanner (trade, fiscal, regulatory, energy)
 Skill 5:  Market Positioning & Sentiment (COT, flows, VIX, AAII, Fear & Greed)
 Skill 10: External Analyst Monitor (8 analysts: Steno, Gromen, Peccatiello, MacroVoices, Marks, Alden, Gavekal, Alpine Macro)
-Skill 6:  Weekly Macro Synthesis (reads all above → regime assessment + sector view + 6/12M forecast)
-Skill 7:  Thesis Generator & Monitor (reads synthesis + active theses + analyst insights)
-Skill 11: Structural Research (first-principles research for structural theses — invoked on demand, not weekly)
-Skill 8:  Self-Improvement Loop (observe → inspect → amend → evaluate + accuracy scoring)
+Skill 13: Structural Scanner (bi-weekly: supply-demand gaps, capex underinvestment, structural imbalances — data-first with subagent deep research)
+Skill 6:  Weekly Macro Synthesis (reads Skills 1-5 + Skill 10 — NOT Skill 13; structural findings enter via thesis pipeline → regime assessment + sector view + 6/12M forecast)
+Skill 7:  Thesis Generator & Monitor (3 sources: data-pattern + analyst-sourced + scanner candidates; combined 5-investigation cap for Skill 11)
+Skill 11: Structural Research (first-principles research — 4 trigger paths: data-pattern, analyst, scanner, manual)
+Skill 8:  Self-Improvement Loop (observe → inspect → amend → evaluate + accuracy scoring + Skill 13 health: kill rate, emptiness, provenance ratio)
 Skill 12: Thesis Presentation (renders theses into visual reports + briefing cards + chart specs)
 Skill 9:  Monday Morning Briefing (reads synthesis + theses + presentation cards + improvement → HTML dashboard)
 ```
 
-Order: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
+Order: 0→1→2→3→4→5→10→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
 
 ### Data Foundation
 
-**Skill 0 (data_collector.py)** runs before every analysis cycle, pulling 84+ series from five free institutional-quality sources. Every subsequent skill reads this structured data first. Web search is used only for qualitative context not available in structured form.
+**Skill 0 (data_collector.py)** runs before every analysis cycle, pulling 90+ series from seven free institutional-quality sources. Every subsequent skill reads this structured data first. Web search is used only for qualitative context not available in structured form.
 
 Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run. A third mode — targeted pulls via `--series` flag — fetches specific FRED series on demand for Skill 11 research investigations. All API fetches (FRED, CFTC) use retry with exponential backoff on rate limit (429) errors.
 
 #### Source 1: FRED (Federal Reserve Economic Data)
-Free API (key required). 49+ series covering:
+Free API (key required). 52+ series covering:
 
 **Money Supply:**
 - US M2 Money Stock (weekly: WM2NS, monthly: M2SL)
@@ -142,13 +143,20 @@ Free API (key required). 49+ series covering:
 
 *These are proxies for private credit conditions, not direct observations. Private credit has no public mark-to-market. See Skill 5 for interpretation guardrails.*
 
+**Inventory-to-Sales Ratios (supply chain tightness for Skill 13):**
+- Retail Inventories/Sales Ratio (RETAILIRSA) — monthly
+- Manufacturing Inventories/Sales Ratio (MNFCTRIRSA) — monthly
+- Wholesale Inventories/Sales Ratio (WHLSLRIRSA) — monthly
+
+*Falling I/S = inventory drawdown (supply tightness). Rising I/S = demand weakening or overproduction. The collector computes 4w/8w rolling trend for each.*
+
 #### Source 2: Yahoo Finance
-Free, no API key required. 22+ tickers covering:
+Free, no API key required. 25 tickers covering:
 
 **Equity Indices:** S&P 500 (^GSPC), Nasdaq 100 (^NDX), Russell 2000 (^RUT), Euro Stoxx 50 (^STOXX50E)
 **Volatility & Sentiment:** VIX (^VIX), CBOE Skew Index (^SKEW)
 **Bond ETFs:** TLT (20+ Year Treasury), HYG (High Yield), LQD (Investment Grade)
-**Commodities:** Gold (GC=F), Crude Oil WTI (CL=F), Copper (HG=F)
+**Commodities:** Gold (GC=F), Crude Oil WTI (CL=F), Copper (HG=F), Silver (SI=F), Natural Gas (NG=F), Brent Crude (BZ=F)
 **Currencies:** EUR/USD, USD/JPY, USD/CHF, GBP/USD, USD/CNY, DXY (DX-Y.NYB)
 **Regional ETFs:** EEM (Emerging Markets), EFA (EAFE)
 **Money Markets:** SHV (Short Treasury)
@@ -191,6 +199,27 @@ Free JSON API, no authentication required. 2 series:
 
 Available in snapshot under `snapshot.eurozone.hicp_headline` and `snapshot.eurozone.hicp_core`. These replace web searches that were previously used by Skill 3 (Macro Data Tracker) for Eurozone HICP data.
 
+#### Source 6: EIA (US Energy Information Administration)
+Free, no API key required. Downloads the EIA bulk file (PET.zip, ~61MB) and extracts 4 weekly series:
+
+**US Petroleum:**
+- Commercial Crude Oil Inventories excl. SPR (WCESTUS1) — weekly, thousands of barrels
+- Strategic Petroleum Reserve (WCSSTUS1) — weekly, thousands of barrels
+- Refinery Utilization (WPULEUS3) — weekly, percent
+- Total Petroleum Products Supplied / demand proxy (WRPUPUS2) — weekly, thousands of barrels/day
+
+The collector computes days of supply (inventory / demand rate). Available at `snapshot.energy`. Note: EIA covers US petroleum only — European and Chinese energy data requires web search.
+
+#### Source 7: BIS (Bank for International Settlements)
+Free, no API key required. Fetches from the BIS data portal (data.bis.org). 5 economies:
+
+**Credit-to-GDP Gap:**
+- Actual credit-to-GDP ratio (suffix A) and HP-filter trend (suffix B) for US, Euro area, China, Japan, UK
+- Gap = actual − trend. Positive gap = credit growing faster than trend (overheating risk), negative = below trend (deleveraging)
+- Signal classification: `overheating` (>+10pp), `above_trend`, `near_trend`, `below_trend`, `depressed` (<−10pp)
+
+Available at `snapshot.international_structural`. Quarterly frequency — the most recent observation may lag by 1-2 quarters. Used by Skill 13 Signal 5 as a quantitative anchor for sovereign/credit structural analysis.
+
 #### Derived Signals (computed automatically)
 The data collector computes higher-level signals from raw data:
 
@@ -199,12 +228,18 @@ The data collector computes higher-level signals from raw data:
 - **Credit Stress:** HY OAS level + direction + percentile rank vs. history
 - **VIX Regime:** panic / fear / elevated / normal / complacent
 - **Liquidity Plumbing:** TGA + RRP direction → double injection / net injection / net drain / double drain
+- **Rolling Liquidity Trends:** 4-week and 8-week direction bias for Fed total assets (WALCL), TGA, reserve balances, and M2 weekly. Each window reports direction (`expansion_bias`, `contraction_bias`, `mixed_positive`, `mixed_negative`, `neutral`), week counts, cumulative change, and cumulative change %. A magnitude floor (0.05% of base value) prevents noise from registering as a trend. Resolves single-week ambiguity — e.g., a +$9B weekly change is meaningless alone, but `expansion_bias` over 4 and 8 weeks confirms the Fed is expanding.
 - **M2 Growth Regime:** expanding / moderate / stagnant / contracting
 - **Financial Conditions:** NFCI with consecutive weeks in loose/tight state
 - **USD Trend:** DXY direction over week/month
 - **Private Credit Stress Proxy:** Composite of SLOOS tightening, C&I loan growth, leveraged loan ETF price, and HY OAS cross-reference. Requires majority convergence to signal stress or benign — mixed signals produce "inconclusive," which is an honest finding, not a failure. See `snapshot.credit.private_credit_proxy`.
 - **Equity Regime:** S&P 500 trend over week/month/3-month
 - **Inflation Expectations:** 5Y and 10Y breakevens, anchored vs. drifting assessment
+- **Crude Term Structure:** WTI-Brent spread as curve shape proxy — `us_tightness` / `normal_brent_premium` / `wide_brent_premium` with spread trend direction
+- **Commodity Momentum:** Price vs. 13-week and 26-week moving averages for gold, crude, copper, silver, natural gas — `strong_uptrend` / `weakening` / `recovering` / `downtrend`
+- **Inventory-to-Sales Ratios:** Retail, manufacturing, and wholesale I/S ratios with 4w/8w trend — `drawing` (contraction bias) / `building` (expansion bias) / `stable`
+- **EIA Energy Data** (free, no key): US commercial crude inventories, SPR level, refinery utilization, days of supply. Available at `snapshot.energy`.
+- **BIS Credit-to-GDP Gap** (free, no key): Credit-to-GDP gap deviation from trend for US, Euro area, China, Japan, UK — `overheating` (>+10pp) / `above_trend` / `near_trend` / `below_trend` / `depressed` (<-10pp). Available at `snapshot.international_structural`.
 
 Every series includes a **percentile rank** vs. the full history fetched — "where is the current value relative to the range?" This enables statements like "HY OAS is at the 97th percentile of tightness" without needing external benchmarking.
 
@@ -242,9 +277,14 @@ Both types share:
 - Parameter review (when analyst insights challenge thesis parameters, flagged for review)
 - Time horizon derived from the mechanism, not from a default
 
-**Thesis provenance:** Every thesis is tagged as either `data-pattern` (generated from Skill 6 synthesis divergences, regime shifts, positioning extremes) or `analyst-sourced` (flagged by Skill 7 from analyst monitor output, researched by Skill 11). Analyst-sourced theses must produce independent evidence — if the evidence base relies primarily on the originating analyst's own data and claims, conviction is reduced. Skill 8 monitors the ratio of analyst-sourced to data-sourced theses and flags drift if analyst-sourced theses dominate.
+**Thesis provenance:** Every thesis is tagged as `data-pattern` (generated from Skill 6 synthesis divergences, regime shifts, positioning extremes), `analyst-sourced` (flagged by Skill 7 from analyst monitor output, researched by Skill 11), or `structural-scanner` (originated from Skill 13 scanner candidates, researched by Skill 11). Analyst-sourced theses must produce independent evidence — if the evidence base relies primarily on the originating analyst's own data and claims, conviction is reduced. Skill 8 monitors the ratio across all three provenance categories and flags drift if any single category dominates (>60% of active theses).
 
-**Analyst-sourced thesis path:** Skill 10 monitors analysts → Skill 7 Function A flags candidates (max 2 per week) that meet three criteria: not captured by existing thesis, not already pursued as data-pattern candidate, contains testable mechanism → Skill 11 runs structural research with evidence independence requirement → Skill 7 generates thesis if evidence holds → enters as DRAFT for user activation.
+**Three thesis candidate pipelines (Skill 7 Function A):**
+1. **Data-pattern path:** Skill 6 synthesis → Skill 7 identifies divergences/regime shifts → generates tactical or flags for Skill 11 if structural.
+2. **Analyst-sourced path:** Skill 10 monitors analysts → Skill 7 flags candidates (max 2 per week) that meet three criteria: not captured by existing thesis, not already pursued as data-pattern candidate, contains testable mechanism → Skill 11 runs structural research with evidence independence requirement → Skill 7 generates thesis if evidence holds → enters as DRAFT.
+3. **Scanner-sourced path:** Skill 13 detects quantitative tension → screens through equilibrium/base-rate/consensus checks → writes candidate to `outputs/structural/candidates/` → Skill 7 reads and routes ALL scanner candidates to Skill 11 (no bypass) → Skill 7 generates thesis if Skill 11 validates → enters as DRAFT with `provenance: structural-scanner`.
+
+**Combined investigation cap:** No more than 5 total investigation candidates are sent to Skill 11 in a single weekly run (across all three pipelines). If the combined count exceeds 5, prioritize by gap size, novelty, and distance from consensus. Defer the rest.
 
 No fixed limit on thesis count. Quality over quantity. The thesis monitor reads the analyst monitor output to cross-reference assumptions. Parameter Reviews from analyst cross-referencing are written directly to the thesis file under an `## Analyst Cross-References` section so findings travel with the thesis.
 
@@ -409,12 +449,13 @@ Macro Advisor/
 │           ├── 04-geopolitical-policy-scanner.md (v1.1)
 │           ├── 05-market-positioning-sentiment.md (v1.2 — COT from snapshot, graceful degradation)
 │           ├── 06-weekly-macro-synthesis.md
-│           ├── 07-thesis-generator-monitor.md (v1.5)
+│           ├── 07-thesis-generator-monitor.md (v1.7 — 3 input sources: data-pattern + analyst + scanner candidates, combined 5-investigation cap)
 │           ├── 08-self-improvement-loop.md
 │           ├── 09-monday-briefing.md
 │           ├── 10-analyst-monitor.md       (v2.0 — 8 analysts, analyst-sourced thesis candidates)
-│           ├── 11-structural-research.md   (v1.1 — on-demand FRED, evidence independence)
-│           └── 12-thesis-presentation.md   (v1.1 — visual reports + briefing cards, resolved chart data)
+│           ├── 11-structural-research.md   (v1.2 — 4 trigger paths including scanner candidates, on-demand FRED, evidence independence)
+│           ├── 12-thesis-presentation.md   (v1.1 — visual reports + briefing cards, resolved chart data)
+│           └── 13-structural-scanner.md   (v1.0 — bi-weekly structural imbalance detection, data-first with subagent research)
 ├── hooks/
 │   └── hooks.json                  (session start hook — reads user config)
 ├── scripts/
@@ -422,7 +463,7 @@ Macro Advisor/
 │   │   ├── chart.min.js            (bundled Chart.js for offline dashboards)
 │   │   └── inter-latin.woff2       (bundled Inter font for offline dashboards)
 │   ├── dashboard-template.html     (Jinja2 HTML template for dashboard rendering)
-│   ├── data_collector.py           (FRED + Yahoo Finance + CFTC COT data pull via SODA API, --series for targeted pulls)
+│   ├── data_collector.py           (FRED + Yahoo + CFTC + ECB + Eurostat + EIA + BIS data pull, --series for targeted FRED pulls)
 │   ├── etf_lookup.py               (dynamic ETF discovery + verification)
 │   ├── generate_dashboard.py       (HTML dashboard generator — reads template + assets)
 │   ├── regime_backtest.py          (historical regime backtest — Layer 1 + Layer 2 liquidity)
@@ -437,6 +478,8 @@ Macro Advisor/
 │   ├── theses/closed/              (closed thesis files with outcomes)
 │   ├── theses/presentations/       (Skill 12 rendered reports + chart specs)
 │   ├── briefings/                  (weekly briefing MD + HTML dashboard)
+│   ├── structural/                 (Skill 13 scan results + last-scan.json)
+│   ├── structural/candidates/      (advancing scanner candidates for Skill 7 → Skill 11)
 │   ├── improvement/                (improvement reports + amendment-tracker.md + accuracy-tracker.md)
 │   └── backtest/                   (regime backtest results JSON + HTML report)
 ├── commands/
@@ -444,6 +487,7 @@ Macro Advisor/
 │   ├── run-weekly.md               (manual execution trigger for full 13-skill chain)
 │   ├── investigate-theme.md        (on-demand theme research)
 │   ├── activate-thesis.md          (draft thesis activation)
+│   ├── structural-scan.md          (manual structural scanner run)
 │   ├── update-etfs.md              (refresh ETF mapping)
 │   └── implement-improvements.md   (review self-improvement amendments)
 └── config/
@@ -461,7 +505,7 @@ Macro Advisor/
 ## Honest Limitations
 
 ### What this system does well
-- Structured data collection from institutional-quality free APIs (74+ FRED/Yahoo/COT series, 95%+ success rate) with four-tier quality classification and date-stamped sourcing
+- Structured data collection from institutional-quality free APIs (90+ series across FRED/Yahoo/CFTC/ECB/Eurostat/EIA/BIS, 95%+ success rate) with four-tier quality classification and date-stamped sourcing
 - Interprets policy — reads central bank decisions, analyst views, and geopolitical developments and takes positions ("Fed is dovish despite inflation revision"). The user can override any interpretation; the thesis review process is the governance mechanism.
 - Forces weekly regime identification with explicit reasoning
 - Thesis accountability through testable assumptions and absolute kill switches

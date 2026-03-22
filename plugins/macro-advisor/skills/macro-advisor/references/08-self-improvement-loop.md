@@ -26,6 +26,8 @@ Read ALL of the following:
 5. Market Positioning & Sentiment meta
 6. Weekly Synthesis meta
 7. Thesis Monitor meta
+8. Structural Scanner meta (bi-weekly — read from `outputs/structural/YYYY-Www-structural-scan.md` if it ran this cycle)
+9. Structural Scanner last-run tracker (`outputs/structural/last-scan.json` — always read, even on weeks the scanner didn't run)
 
 Also read the prior improvement loop output (if it exists) for trend context and to check whether previous amendments were effective.
 
@@ -47,6 +49,7 @@ From each skill's meta block, extract and compile:
 | Positioning | [score] | [conf] | [n/n] | [n] | [date] | [date] |
 | Synthesis | [score] | [conf] | [inputs: n/5] | — | — | — |
 | Thesis Monitor | [score] | [conf] | — | — | — | — |
+| Structural Scanner | [score or "skipped"] | [conf] | [signals: n/6] | [n] | [date] | [date] |
 ```
 
 Also compile the complete list of gaps across all skills:
@@ -104,6 +107,20 @@ Skill A found: [what]
 Skill B should have used it for: [what]
 Impact: [what conclusion would have changed]
 ```
+
+### 2g-ii. Structural Scanner Health (from Skill 13 meta + last-scan.json)
+
+Read `outputs/structural/last-scan.json` every week, even if the scanner didn't run this cycle. Check:
+
+1. **Emptiness ratio:** `signals_with_no_finding / total_signals_checked`. A healthy ratio is 2-4 findings out of 6 detectors. If the scanner consistently finds tension in all 6 signals (emptiness = 0), the detection thresholds are too loose — propose an amendment to tighten them. If it consistently finds 0-1 findings, thresholds may be too tight or the data sources may be stale.
+
+2. **Kill rate:** `historical_kill_rate.survived_skill_11 / total_candidates_generated`. A healthy kill rate is 40-60%. If >80% of scanner candidates survive Skill 11 research, the scanner's bar is too low — it's advancing weak candidates. If <20% survive, the scanner is generating noise. Either way, flag for threshold review.
+
+3. **Provenance ratio (expanded):** Track three provenance categories in the thesis portfolio: `data-pattern`, `analyst-sourced`, and `structural-scanner`. No single category should dominate (>60% of active theses). If scanner-sourced theses dominate, the system is over-weighting structural findings relative to cyclical signals. If scanner-sourced theses are 0% after 4+ scanner runs that produced candidates, the pipeline is broken — candidates are being generated but not making it through Skill 11 → Skill 7.
+
+4. **Domain recurrence:** Check `last-scan.json` for domains flagged 3+ consecutive cycles. If the quantified gap is not growing, the scanner may be stuck on a narrative rather than tracking a worsening imbalance. Flag for review.
+
+5. **Sector clustering:** If the scanner's findings cluster in one area for 3+ consecutive runs (e.g., all energy, all commodities), flag as potential signal-set bias. Do not force diversification — but note the clustering.
 
 ### 2h. Analytical Accuracy (Prior Week Scorecard)
 
@@ -287,7 +304,7 @@ Save the full improvement loop output as `YYYY-Www-improvement.md` in the improv
 ---
 meta:
   skill: self-improvement-loop
-  skill_version: "1.0"
+  skill_version: "1.1"
   run_date: "[ISO date]"
   amendments_proposed: [number]
   amendments_evaluated: [number]

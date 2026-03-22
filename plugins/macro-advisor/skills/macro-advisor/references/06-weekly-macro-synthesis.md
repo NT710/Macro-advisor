@@ -53,6 +53,8 @@ Read the following files from the current week's output directory. The file nami
 
 Also read last week's synthesis output (if it exists) for trend context and prior regime assessment.
 
+**Note: Skill 13 (Structural Scanner) output is NOT read here.** The synthesis is a cyclical regime assessment — it answers "where are we in the cycle right now?" Structural imbalances (multi-year supply-demand gaps, capex underinvestment, demographic shifts) enter the system through a separate pipeline: Skill 13 → Skill 11 → Skill 7. This separation is intentional. The regime assessment should reflect current-cycle data, not be anchored by structural findings that operate on a different timescale. If a structural finding (e.g., energy supply tightness) is also showing up in the cyclical data (e.g., rising energy prices affecting the inflation axis), the synthesis will pick it up through the normal data flow from Skills 1-5 — it doesn't need the scanner's framing to do so.
+
 ## Execution Steps
 
 1. Read all five collection skill outputs for the current week
