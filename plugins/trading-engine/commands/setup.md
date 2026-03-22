@@ -182,7 +182,7 @@ Then ask about the Wednesday defense check:
 
 Options: Wednesday 18:00 CET (recommended), Skip Wednesday checks, Custom time
 
-Create scheduled tasks based on their answers.
+Create scheduled tasks based on their answers. **Use thin launcher prompts** — the schedule prompt should invoke `/trading-engine:run-trading` (and `/trading-engine:run-trading` with `--defense-only` for Wednesday), not duplicate the execution steps. Include only the workspace path and the command to run. All execution details live in the command files.
 
 ## Step 9: Write Configuration
 

@@ -138,7 +138,21 @@ Then ask:
 "What timezone are you in?"
 Options: CET (Central European), ET (US Eastern), PT (US Pacific), GMT
 
-Based on their answers, create a scheduled task using the schedule tool. The task should execute the full skill chain: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9.
+Based on their answers, create a scheduled task using the schedule tool. **The scheduled task prompt must be a thin launcher — not a detailed instruction set.** The skill chain, execution order, and step-by-step instructions already live in `/macro-advisor:run-weekly` and the reference files. Duplicating them in the schedule prompt creates a second source of truth that drifts when the plugin is updated.
+
+Use this exact prompt template (substitute the workspace path):
+
+```
+Run the full weekly Macro Advisor analysis cycle.
+
+Workspace: "[absolute workspace path from Step 6]"
+
+Execute by running `/macro-advisor:run-weekly`. Follow the instructions in that command file exactly — it contains the current skill chain, execution order, and all step-by-step instructions. Do not improvise steps or skip skills.
+
+Present the final briefing summary when complete.
+```
+
+Do NOT list individual skills, API keys, or execution details in the schedule prompt. Those belong in the command file and config, not in the schedule.
 
 ## Step 9: Write Configuration
 
