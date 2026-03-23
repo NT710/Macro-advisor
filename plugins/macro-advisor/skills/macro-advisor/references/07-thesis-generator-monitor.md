@@ -102,6 +102,7 @@ For tactical theses (the default), produce:
 ### THESIS CANDIDATE: [Short descriptive name]
 **Status:** DRAFT — Pending review
 **Generated:** [Date]
+**Updated:** [Date — set to Generated date initially. Skill 7 Function B updates this each week the thesis is monitored.]
 **Source:** Weekly Synthesis [Week reference] OR Analyst-sourced: [analyst name] via [Week reference] analyst monitor
 **Provenance:** [data-pattern / analyst-sourced]
 
@@ -147,7 +148,11 @@ Refer to the thematic ETF table in RULES.md for common plays. For themes not in 
 ```bash
 python scripts/etf_lookup.py --theme "[theme keywords]"
 ```
-This searches ~100 liquid ETFs, verifies real price data, and returns ticker + AUM + performance. Only recommend ETFs the script has verified — never guess a ticker.
+This searches ~160 curated ETFs (Layer 1) plus live Yahoo Finance discovery (Layer 2), verifies real price data, and returns ticker + AUM + performance. Only recommend ETFs the script has verified — never guess a ticker.
+
+**Counter-thesis ETF search:** After running the ETF lookup for the thesis direction, run a second search for the **opposing** thesis. If the thesis is "long euro," also search for "short euro" or "dollar strength." If the thesis is "long duration," also search for "short duration" or "rising rates." This forces you to see what the other side of the trade looks like — who's on it, how liquid it is, and what the recent performance tells you about conviction on that side. State in the thesis what the counter-expression would be and why you believe it's wrong. If you can't articulate why the opposing trade is wrong, your thesis isn't ready.
+
+**Entry timing check:** Review the `month_change_pct` across your thesis-aligned ETF results. If the move has already happened (≥80% of results moved strongly in your thesis direction), note this in the thesis as a timing consideration. This is not a reason to kill the thesis — but it is a reason to assess whether you're early or late, and to size accordingly.
 
 The non-obvious second/third-order plays are often the better risk/reward because the market prices the first-order effect fastest.
 
@@ -180,6 +185,7 @@ For structural theses (requires Skill 11 research brief as input), produce:
 **Status:** DRAFT — Pending review
 **Classification:** Structural
 **Generated:** [Date]
+**Updated:** [Date — set to Generated date initially. Skill 7 Function B updates this each week the thesis is monitored.]
 **Source:** Structural Research Brief [reference] + Weekly Synthesis [Week reference] OR Analyst-sourced: [analyst name] via [Week reference] analyst monitor
 **Provenance:** [data-pattern / analyst-sourced]
 **Research Brief:** `outputs/research/STRUCTURAL-[theme-name]-[date].md`
@@ -273,15 +279,25 @@ All standards from the tactical template apply, plus:
 ### Inputs
 
 Read ALL of the following before monitoring:
-- Active thesis files from `outputs/theses/active/`
+- Active thesis files from `outputs/theses/active/` — **list every file in this directory.** This is the authoritative set of theses to monitor. Theses may have been created outside the weekly chain (via `/investigate-theme` or `/structural-scan`), so do not rely on Function A's output or prior weeks' monitor output as the thesis list. The directory listing IS the list.
 - Weekly synthesis output (Skill 6) — for regime assessment and cross-asset view
 - Analyst themes index (`outputs/collection/analyst-themes.md`) — scan for themes relevant to active theses. If a theme overlaps with a thesis (e.g., analyst focused on "credit complacency" and you have a credit spread thesis), follow the `Detail` link to read the full weekly analyst monitor output for that week's substance. Only read the full weekly file when a theme is relevant — don't read every historical analyst file every week.
 - Current week analyst monitor output (Skill 10, `outputs/collection/YYYY-Www-analyst-monitor.md`) — always read the current week's full output for fresh insights.
 - Data snapshot — for hard numbers to check assumptions against
 
+### Reconciliation Step (run before monitoring)
+
+List all files in `outputs/theses/active/`. Compare against the theses mentioned in Function A's output (if Function A ran this cycle). Any thesis file that exists on disk but was NOT generated or mentioned by Function A this cycle is an **externally-created thesis** — it was created by `/investigate-theme`, `/structural-scan`, or a prior week's chain. These must be monitored with the same process as chain-generated theses. Flag each in the monitor output:
+
+```
+NEW TO MONITOR: [Thesis name] — created by [investigate-theme / structural-scan / prior week], first monitoring cycle.
+```
+
+This ensures no thesis falls through the cracks regardless of how it entered the system.
+
 ### Monitoring Process
 
-For each active thesis, check:
+For each thesis in `outputs/theses/active/` (the full directory listing, not a subset), check:
 
 1. **Are the stated assumptions still intact?** Check each one individually against the latest data from the snapshot and synthesis. Mark each as: INTACT / UNDER PRESSURE / BROKEN.
 2. **Has any kill switch condition been met?** Be rigorous — if it's met, call it. No "well, it's close but..." If the condition is met, the status is INVALIDATED.
@@ -315,6 +331,8 @@ For each active thesis, check:
    This ensures the analyst insight travels with the thesis it informed. When a thesis is later reviewed (by Skill 12 for presentation, by the user for decision-making, or by this skill in future weeks), the cross-reference history is right there — not buried in a weekly analyst file from three weeks ago. It also creates a record of how external views influenced (or didn't influence) thesis parameters over time.
 
    Keep the entries chronological. Don't remove old entries even if the parameter was later adjusted — the history of what was considered and why matters for the self-improvement loop.
+
+8. **Update the `**Updated:**` field.** After monitoring each thesis, set the `**Updated:**` line in the thesis file to the current date. This stamps when the thesis was last reviewed, regardless of whether anything changed. The dashboard uses this field to show when each thesis was last touched.
 
 ### Status Table
 

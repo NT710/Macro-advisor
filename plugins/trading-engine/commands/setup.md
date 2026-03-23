@@ -5,7 +5,29 @@ allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 
 Run the first-time setup for the Trading Engine. Execute each step sequentially. Do not skip steps.
 
-## Step 0: Verify Workspace Folder
+## Step 0: Introduction
+
+Before any setup steps, present the value proposition to the user. Use AskUserQuestion with this message:
+
+"**Systematic Execution. Position Management. Real Accountability.**
+
+**What it does.** Takes the regime calls and investment theses your Macro Advisor produces and paper-trades them. Every trade faces a devil's advocate challenge before execution. Positions are sized by conviction and regime alignment. Kill switches are enforced mid-week, not just on Sundays.
+
+**What you get.** A paper portfolio that tests whether your macro research actually makes money. Full P&L attribution back to the thesis that generated each trade. Performance tracking by thesis type, regime, and conviction level.
+
+**External portfolio overlay.** You can also overlay your real-world holdings: see your actual exposure across sectors, geographies, and currencies, compare it to the system's views, and get alerts when a thesis behind one of your positions gets invalidated.
+
+**What it takes.** A free Alpaca paper trading account. The Macro Advisor already running. Five minutes to set up."
+
+Options: Let's set it up, Tell me more, Not right now
+
+**If "Tell me more":** Explain briefly: after the Macro Advisor completes each week, the Trading Engine reads the latest regime and theses, challenges each trade with a devil's advocate, sizes positions, and executes on Alpaca paper trading. Wednesdays it checks kill switches and drawdown on all open positions. Every trade has a full paper trail: the thesis, the devil's advocate argument, the sizing rationale, and the exit conditions. Then re-ask if they want to proceed.
+
+**If "Not right now":** Say "No problem. Run `/trading-engine:setup` whenever you're ready." End the command.
+
+**If "Let's set it up":** Continue to Step 1.
+
+## Step 0b: Verify Workspace Folder
 
 Before anything else, check that the user has selected a workspace folder in Cowork. The workspace folder is where all outputs, config, and data persist between sessions. Without it, everything is written to a temporary directory that vanishes.
 
@@ -215,8 +237,133 @@ Run T0 (portfolio snapshot) to verify the full pipeline works:
 python ${CLAUDE_PLUGIN_ROOT}/scripts/trade_executor.py --action snapshot --config config/user-config.json --output outputs/portfolio/
 ```
 
+Report results. If the snapshot succeeds, continue to Step 11.
+
+## Step 11: External Portfolio (Optional)
+
+Ask the user using AskUserQuestion:
+
+"**External Portfolio Tracking (Optional)**
+
+The trading engine can track your real-world holdings alongside the paper portfolio. This gives you:
+
+- **Exposure awareness** — see what you're actually betting on across all your positions (sector, geography, currency, asset class), including look-through into ETF holdings
+- **Kill switch propagation** — when the system invalidates a thesis, get alerts for your real positions that are aligned with that thesis
+- **Gap analysis** — see where your real portfolio diverges from what the system's model portfolio recommends, and which thesis or regime view drives each gap
+
+Your positions are never used as input to the trading engine's decisions — the paper portfolio stays a clean sandbox. This is purely informational.
+
+Would you like to set up external portfolio tracking?"
+
+Options: Yes — I want to track my real holdings, No — skip this for now
+
+**If No:** Set `external_portfolio_enabled: false` in `config/user-config.json`. Tell the user: "No problem. You can set this up anytime later by running `/update-external-positions`." Skip to Step 15.
+
+**If Yes:** Set `external_portfolio_enabled: true` and continue.
+
+## Step 12: Base Currency
+
+Ask the user using AskUserQuestion:
+
+"What is your base currency? All external portfolio values will be converted to this currency for comparison."
+
+Options: DKK, EUR, USD, GBP, CHF, SEK, NOK, Other (specify)
+
+Save as `base_currency` in both `config/user-config.json` and `config/external-positions.json`.
+
+## Step 13: Investable Asset Types
+
+Ask the user using AskUserQuestion:
+
+"What asset types do you invest in? The system won't flag exposure gaps in asset types you exclude. You can change this later."
+
+Options (multi-select): Equities, Fixed Income / Bonds, Commodities, FX / Currency, Crypto, REITs
+
+Save as `investable_asset_types` list in `config/external-positions.json`.
+
+## Step 14: External Positions
+
+Walk the user through adding their positions. For each position:
+
+**14a.** Ask for the ticker symbol. Immediately validate and classify:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/external_portfolio.py --action classify --ticker "[TICKER]"
+```
+
+If the ticker is valid, show the user what the system found:
+- Name, exchange, currency
+- Classification: asset class, sector, geography
+- For ETFs: category, sector weightings (top 3), top holdings (top 3)
+- Current price
+
+If the ticker is NOT valid (yfinance can't resolve it), tell the user:
+
+"I couldn't find '[TICKER]' on Yahoo Finance. This could be a local fund, a delisted security, or a typo. You can:
+1. Try a different ticker symbol (e.g., for Copenhagen stocks, use the .CO suffix like NOVO-B.CO)
+2. Enter it as a manual position — I'll store it but you'll need to update the value manually"
+
+**For manual positions:** Collect name, asset class (from investable types), primary sector, geography, currency, and current total value. Set `manual_valuation: true`.
+
+**14b.** Ask for quantity (number of shares/units).
+
+**14c.** Ask for entry price (optional): "What was your average entry price? This is optional — if you provide it, the dashboard will show your P&L. If not, it just tracks current value and exposure."
+
+Options: [number input], Skip — just track current value
+
+**14d.** Ask for entry date (optional): Same framing as entry price.
+
+**14e.** Ask for account label (optional): "Which account is this in? This is just a label for your reference (e.g., 'Saxo', 'Pension', 'IBKR')."
+
+Options: [text input], Skip
+
+**14f.** Ask if there are more positions to add.
+
+Options: Add another position, Done adding positions
+
+Store all positions to `config/external-positions.json`. Format:
+
+```json
+{
+  "last_updated": "YYYY-MM-DD",
+  "base_currency": "DKK",
+  "investable_asset_types": ["equities", "fixed_income", "commodities"],
+  "positions": [
+    {
+      "ticker": "NOVO-B.CO",
+      "name": "Novo Nordisk B A/S",
+      "quantity": 50,
+      "entry_price": 850.00,
+      "entry_date": "2024-06-15",
+      "currency": "DKK",
+      "account": "Saxo",
+      "manual_valuation": false,
+      "classification": {
+        "asset_class": "equities",
+        "sector": "Healthcare",
+        "industry": "Drug Manufacturers - General",
+        "geography": "Denmark",
+        "currency_exposure": "DKK"
+      },
+      "sector_weightings": null,
+      "asset_classes": null
+    }
+  ]
+}
+```
+
+Create output directory:
+```bash
+mkdir -p outputs/external
+```
+
+## Step 15: Final Summary
+
 Report results. If everything passes, tell the user:
 
-"Setup complete. Your Trading Engine is configured and scheduled. The first trading run will execute at [scheduled time] after the Macro Advisor completes its weekly cycle. You can also run it manually anytime with `/run-trading`.
+"Setup complete. Your Trading Engine is configured and scheduled. The first trading run will execute at [scheduled time] after the Macro Advisor completes its weekly cycle. You can also run it manually anytime with `/run-trading`."
 
-**Important:** Make sure the Macro Advisor has completed at least one full weekly run before the trading engine runs. Without macro data, the engine will skip all trades."
+If external portfolio was configured, add:
+"External portfolio tracking is enabled with [N] positions ([total value in base currency]). The dashboard will include an External Portfolio tab showing exposure comparison, thesis alignment, and kill switch alerts. Update your positions anytime with `/update-external-positions`."
+
+"**Important:** Make sure the Macro Advisor has completed at least one full weekly run before the trading engine runs. Without macro data, the engine will skip all trades."

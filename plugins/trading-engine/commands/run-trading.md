@@ -50,6 +50,13 @@ Read `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/T6-performance-trac
 ### T7: Self-Improvement Loop
 Read `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/T7-self-improvement-loop.md` and execute. Produces improvement report in `outputs/improvement/`.
 
+### T8: External Portfolio Overlay (Optional, Sunday Only)
+Check `config/user-config.json` for `external_portfolio_enabled`:
+
+- If `true` AND this is a Sunday full run (not a Wednesday defense check): Read `${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/T8-external-portfolio-overlay.md` and execute. Produces external portfolio snapshot, exposure comparison, thesis alignment, and kill switch alerts in `outputs/external/`.
+- If `false`: skip T8.
+- If the field is **missing** (existing user who updated the plugin): skip T8 silently. Do NOT prompt during a run — the run should complete without interruption. Instead, include a one-time note in the post-run summary: "New in this version: external portfolio tracking is available. Run `/update-external-positions` to set it up." Only show this note once — after showing it, write `external_portfolio_enabled: false` to the config so future runs skip silently without the note.
+
 ## Post-Run
 
 Take a final snapshot:
@@ -66,10 +73,13 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
   --trades outputs/trades/ \
   --performance outputs/performance/ \
   --improvement outputs/improvement/ \
+  --external outputs/external/ \
   --output outputs/dashboard/
 ```
 
-This produces `outputs/dashboard/latest-dashboard.html` — a self-contained HTML file with three tabs: P&L, Trades, and Improvements.
+This produces `outputs/dashboard/latest-dashboard.html` — a self-contained HTML file with tabs: P&L, Trades, Improvements, and (if external portfolio is enabled) External Portfolio.
+
+The `--external` flag is optional. If the directory doesn't exist or is empty, the dashboard renders without the External Portfolio tab.
 
 Present the dashboard file to the user as the primary output of the run.
 

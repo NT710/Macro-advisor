@@ -284,7 +284,7 @@ After writing the weekly analyst monitor output, update `outputs/collection/anal
 
 ### Andreas Steno
 **Current focus:** [2-3 themes, comma-separated]
-**Weeks on theme:** [For each theme, consecutive week count. Check prior week's analyst-themes.md. New theme = 1.]
+**Weeks on theme:** [For each theme, consecutive ISO week count. Check the existing `analyst-themes.md` for prior counts. On a same-week rerun, carry forward the same counts — do not increment. New theme = 1.]
 **Strongest current view:** [One sentence — highest-conviction call this week, with direction]
 **Detail:** `outputs/collection/YYYY-Www-analyst-monitor.md`
 

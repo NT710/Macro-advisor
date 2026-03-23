@@ -29,7 +29,7 @@ Before executing ANY skill, read `references/RULES.md`. These are non-negotiable
 The system runs as a single sequential chain. Each skill reads the output of prior skills.
 
 ```
-Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 13(bi-weekly) → 6 → 7 → 11(if triggered) → 8 → 12 → 9
+Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly) → 6 → 7 → 11(if triggered) → 8 → 12 → 9
 ```
 
 | Step | Skill | Reference File | Purpose |
@@ -41,12 +41,13 @@ Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 13(bi-weekly) → 6 → 7 → 
 | 4 | Geopolitical Scanner | `references/04-geopolitical-policy-scanner.md` | Trade, fiscal, regulatory, energy |
 | 5 | Positioning & Sentiment | `references/05-market-positioning-sentiment.md` | COT, flows, VIX, AAII |
 | 10 | Analyst Monitor | `references/10-analyst-monitor.md` | External analyst feeds via ~~browser |
-| 13 | Structural Scanner | `references/13-structural-scanner.md` | Bi-weekly: supply-demand gaps, capex underinvestment, structural imbalances |
+| 14 | Decade Horizon | `references/14-decade-horizon.md` | Quarterly: 3-5 mega-forces, causal chain mapping, thesis book blind spot analysis |
+| 13 | Structural Scanner | `references/13-structural-scanner.md` | Bi-weekly: 7 signal detectors including technology displacement |
 | 6 | Weekly Synthesis | `references/06-weekly-macro-synthesis.md` | Regime assessment + sector view + forecast (cyclical only — does NOT read Skill 13) |
 | 7 | Thesis Generator | `references/07-thesis-generator-monitor.md` | Generate and monitor theses (three sources: data patterns, analyst-sourced, structural scanner) |
-| 11 | Structural Research | `references/11-structural-research.md` | First-principles research (triggered by Skill 7 from data patterns, analyst, or scanner candidates) |
-| 8 | Self-Improvement | `references/08-self-improvement-loop.md` | Observe → inspect → amend → evaluate (includes scanner health monitoring) |
-| 12 | Thesis Presentation | `references/12-thesis-presentation.md` | Visual reports + briefing cards |
+| 11 | Structural Research | `references/11-structural-research.md` | First-principles research (5 trigger paths: data patterns, analyst, scanner, decade-horizon blind spots, manual) |
+| 8 | Self-Improvement | `references/08-self-improvement-loop.md` | Observe → inspect → amend → evaluate (includes scanner + horizon health monitoring) |
+| 12 | Thesis Presentation | `references/12-thesis-presentation.md` | Chart JSON specs + briefing cards (dashboard renders raw thesis files directly) |
 | 9 | Monday Briefing | `references/09-monday-briefing.md` | HTML dashboard delivery |
 
 ## ETF Reference
@@ -75,12 +76,14 @@ outputs/
 ├── data/              (JSON snapshots — weekly + latest)
 ├── collection/        (per-skill weekly outputs)
 ├── synthesis/         (weekly regime assessments)
+├── strategic/         (quarterly decade horizon maps + last-horizon.json)
+├── strategic/blind-spots/ (BLINDSPOT- files for Skill 13/7/11 consumption)
 ├── structural/        (bi-weekly scanner output + last-scan.json)
 ├── structural/candidates/ (CANDIDATE- files for Skill 7/11 consumption)
 ├── research/          (structural research briefs)
 ├── theses/active/     (ACTIVE- and DRAFT- thesis files)
 ├── theses/closed/     (closed thesis files with outcomes)
-├── theses/presentations/ (rendered reports + chart specs)
+├── theses/presentations/ (chart specs JSON — no report files)
 ├── briefings/         (weekly briefing MD + HTML dashboard)
 ├── improvement/       (improvement reports + trackers)
 └── backtest/          (regime backtest results)

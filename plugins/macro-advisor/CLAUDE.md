@@ -30,7 +30,7 @@ The system's methodology, architecture, and design decisions are documented in `
 
 ## Scheduled Task
 
-The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→6→7→11(if triggered)→8→12→9. Delivers an HTML dashboard.
+The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Delivers an HTML dashboard.
 
 ## Principles
 

@@ -24,7 +24,35 @@ Consulted by the thesis generator (Skill 7) and Monday briefing (Skill 9) when t
 - Broad Commodities: **DJP** (iPath Bloomberg Commodity), **GSG** (iShares S&P GSCI Commodity)
 - Oil: **USO** (United States Oil Fund), **BNO** (United States Brent Oil Fund)
 - Real Estate: **VNQ** (Vanguard Real Estate), **SCHH** (Schwab US REIT)
+- Mid-Duration Treasury: **IEI** (iShares 3-7 Year Treasury), **IEF** (iShares 7-10 Year Treasury), **TLH** (iShares 10-20 Year Treasury)
+- Floating Rate: **FLOT** (iShares Floating Rate Bond), **USFR** (WisdomTree Floating Rate Treasury)
+- Short TIPS: **STIP** (iShares 0-5 Year TIPS Bond)
+- EM Bonds: **EMB** (iShares JP Morgan USD EM Bond), **VWOB** (Vanguard EM Government Bond)
 - Cash Equivalent: **SGOV** (iShares 0-3 Month Treasury), **BIL** (SPDR 1-3 Month T-Bill)
+
+---
+
+## Currency/FX ETFs (USD tickers)
+
+- Euro: **FXE** (CurrencyShares Euro Trust)
+- Japanese Yen: **FXY** (CurrencyShares Japanese Yen Trust)
+- Swiss Franc: **FXF** (CurrencyShares Swiss Franc Trust)
+- British Pound: **FXB** (CurrencyShares British Pound Trust)
+- Australian Dollar: **FXA** (CurrencyShares Australian Dollar Trust)
+- Canadian Dollar: **FXC** (CurrencyShares Canadian Dollar Trust)
+- Chinese Yuan: **CYB** (WisdomTree Chinese Yuan Strategy)
+- EM Currencies (basket): **CEW** (WisdomTree Emerging Currency Strategy)
+- US Dollar Bull: **UUP** (Invesco DB US Dollar Index Bullish)
+- US Dollar Bear: **UDN** (Invesco DB US Dollar Index Bearish)
+
+---
+
+## Volatility ETFs (USD tickers)
+
+- VIX Short-Term Futures: **VIXY** (ProShares VIX Short-Term Futures)
+- VIX Mid-Term Futures: **VIXM** (ProShares VIX Mid-Term Futures)
+- Short VIX (inverse): **SVXY** (ProShares Short VIX Short-Term Futures)
+- Tail Risk Hedge: **TAIL** (Cambria Tail Risk ETF)
 
 ---
 
@@ -55,6 +83,14 @@ Consulted by the thesis generator (Skill 7) and Monday briefing (Skill 9) when t
 - Utilities (defensive): **XLU** (Utilities Select Sector SPDR)
 - Healthcare (defensive): **XLV** (Health Care Select Sector SPDR)
 - Consumer Staples (defensive): **XLP** (Consumer Staples Select Sector SPDR)
+- Bitcoin: **BITO** (ProShares Bitcoin Strategy), **IBIT** (iShares Bitcoin Trust)
+- Ethereum: **ETHE** (Grayscale Ethereum Trust)
+- Natural Gas: **UNG** (United States Natural Gas Fund), **BOIL** (ProShares Ultra Bloomberg Natural Gas)
+- Wheat: **WEAT** (Teucrium Wheat Fund)
+- Corn: **CORN** (Teucrium Corn Fund)
+- Carbon Credits: **KRBN** (KraneShares Global Carbon Strategy)
+- Data Centers/AI Infra: **DTCR** (Global X Data Center & Digital Infrastructure)
+- MLPs/Pipelines: **AMLP** (Alerian MLP)
 
 ---
 
@@ -64,8 +100,11 @@ When a thesis needs exposure to a theme not covered above:
 
 ```bash
 python scripts/etf_lookup.py --theme "drone warfare defense"
-python scripts/etf_lookup.py --theme "space satellite"
+python scripts/etf_lookup.py --theme "euro currency long"
+python scripts/etf_lookup.py --theme "volatility hedge"
 python scripts/etf_lookup.py --verify "ARKQ,ITA,UFO"
 ```
 
-Searches ~100 liquid ETFs, verifies real price data on Yahoo Finance, returns: ticker, name, price, 1M/3M performance, AUM. Only recommend ETFs the script has verified. If no match: "no verified ETF found for [theme] — manual research needed."
+Two-layer search: (1) keyword match against a curated universe of ~150 liquid ETFs, (2) if no matches, a live Yahoo Finance search for broader discovery. All results are verified with real price data before being returned. Only recommend ETFs the script has verified — never guess tickers.
+
+**Guardrails:** The script flags a `verification_warning` if a ticker fails price verification (no data, stale >7 days, or illiquid <10K avg volume). Skill 7 runs a counter-thesis search (opposing direction) and entry timing check — those analytical judgments belong in the requester, not the lookup tool.

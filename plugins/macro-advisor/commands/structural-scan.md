@@ -30,6 +30,7 @@ If `last-scan.json` doesn't exist, this is the first run — proceed.
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/13-structural-scanner.md`
 Read: `outputs/data/latest-snapshot.json` + `outputs/data/latest-data-full.json`
 Read: `config/user-config.json` for FRED API key (needed for on-demand FRED pulls)
+Read: `outputs/strategic/blind-spots/` (if exists) for decade-horizon blind spots flagged for scanner attention — supplementary context, not override
 
 If the data snapshot is more than 7 days old, refresh it first:
 ```bash
@@ -62,7 +63,7 @@ Present results:
 ```
 Structural Scanner — [date]
 
-Signal detection: [X]/6 detectors found tension
+Signal detection: [X]/7 detectors found tension
 Domains flagged: [list]
 After screening: [N] advanced, [N] deferred, [N] dismissed
 

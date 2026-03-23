@@ -6,12 +6,13 @@ Run first-principles research on structural macro themes before they become thes
 
 ## When to Invoke
 
-This skill fires in four ways:
+This skill fires in five ways:
 
 1. **Flagged by Skill 7 from data patterns.** During thesis generation, if a pattern involves physical constraints, supply-side bottlenecks, multi-year cycles, or structural market dislocations, Skill 7 flags it: "This pattern warrants structural research before thesis generation. Invoke Skill 11."
 2. **Flagged by Skill 7 from analyst-sourced candidates.** When Skill 7 Function A identifies an external analyst framework or structural view that isn't captured by an existing thesis or the weekly synthesis, it flags an investigation candidate that auto-triggers this skill. The analyst's view is the starting point for research, not the conclusion — this skill independently validates or invalidates the analyst's framework.
 3. **Flagged by Skill 7 from structural scanner candidates.** When Skill 13 (Structural Scanner) advances a domain through its Phase 2 screening, it writes a candidate brief to `outputs/structural/candidates/`. Skill 7 reads these candidates and routes ones requiring full research to this skill. The scanner candidate file contains the quantified imbalance, base rate evidence from historical analogues, and bear case inputs — use these as the starting point for Phase 1 framing, not as conclusions. The scanner's Phase 2 subagent already did base-rate research; this skill adds the first-principles depth (binding constraints, supply-demand quantification, steelmanned contrarian case) that the scanner doesn't provide.
-4. **Manual invocation.** The user identifies a structural theme worth investigating. No weekly chain dependency required.
+4. **Flagged by Skill 14 from decade-horizon blind spots.** When Skill 14 (Decade Horizon Strategic Map) identifies a blind spot in the thesis book with timeline <3 years and available data, it flags it for Skill 11 investigation via `outputs/strategic/blind-spots/`. These enter Skill 7's investigation queue alongside other candidates and share the 5-investigation cap. The blind spot file contains the mega-force context, causal chain, and consensus assessment — use these as the strategic framing, then apply the same first-principles research methodology as for any other candidate.
+5. **Manual invocation.** The user identifies a structural theme worth investigating. No weekly chain dependency required.
 
 This skill does NOT run weekly. Most weeks produce zero structural research briefs. That's correct — structural themes emerge infrequently.
 

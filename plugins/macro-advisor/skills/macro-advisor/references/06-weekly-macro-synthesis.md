@@ -51,14 +51,14 @@ Read the following files from the current week's output directory. The file nami
 4. Geopolitical & Policy Scanner output (Skill 4)
 5. Market Positioning & Sentiment output (Skill 5)
 
-Also read last week's synthesis output (if it exists) for trend context and prior regime assessment.
+Also read the **prior week's** synthesis output (if it exists) for trend context and prior regime assessment. "Prior week" means the most recent synthesis file from a **previous ISO week number** — i.e., the highest `YYYY-Www` where Www is strictly less than the current week. If the current week is W12, the prior synthesis is the W11 file (or W10, W09, etc.). **Never treat the current week's own file as "prior."** Same-week reruns are updates to the current week's assessment, not a new week of data.
 
 **Note: Skill 13 (Structural Scanner) output is NOT read here.** The synthesis is a cyclical regime assessment — it answers "where are we in the cycle right now?" Structural imbalances (multi-year supply-demand gaps, capex underinvestment, demographic shifts) enter the system through a separate pipeline: Skill 13 → Skill 11 → Skill 7. This separation is intentional. The regime assessment should reflect current-cycle data, not be anchored by structural findings that operate on a different timescale. If a structural finding (e.g., energy supply tightness) is also showing up in the cyclical data (e.g., rising energy prices affecting the inflation axis), the synthesis will pick it up through the normal data flow from Skills 1-5 — it doesn't need the scanner's framing to do so.
 
 ## Execution Steps
 
 1. Read all five collection skill outputs for the current week
-2. Read prior week's synthesis (if available) for continuity
+2. Read prior week's synthesis (if available) for continuity — "prior week" means the most recent `YYYY-Www` synthesis where Www < current week. Never read the current week's own file as prior.
 3. Extract the key signal from each skill:
    - Skill 1: Policy direction and liquidity regime implication
    - Skill 2: Liquidity regime classification (the most important input)
@@ -90,10 +90,16 @@ When inputs conflict (e.g., liquidity expanding but growth decelerating), flag t
 
 ### Regime Assessment
 **Current Quadrant:** [Goldilocks / Overheating / Disinflationary Slowdown / Stagflation]
-**Weeks in current regime:** [N — count consecutive weeks in this quadrant]
+**Weeks in current regime:** [N — count consecutive ISO weeks in this quadrant, based on the prior-week synthesis chain. If this is a same-week rerun, carry forward the same count from the current week's previous run — do not increment.]
 **Direction:** [Stable / Moving toward ___]
 **Confidence:** [High / Medium / Low]
 **Change from last week:** [No change / Shifted from ___ to ___]
+
+**Regime coordinates (for dashboard visualization):**
+- Growth score: [continuous value from -1.0 to +1.0, derived from the growth data. Map from the underlying indicators: ISM manufacturing (weight 0.3), unemployment direction (0.2), NFP trend (0.2), retail sales trend (0.15), GDP tracking (0.15). Normalize: +1.0 = all indicators strongly improving, -1.0 = all indicators strongly deteriorating, 0 = mixed/flat. This is NOT a binary quadrant assignment — it's a continuous measure of where within the quadrant the economy sits.]
+- Inflation score: [continuous value from -1.0 to +1.0, derived from the inflation data. Map from: core PCE direction (weight 0.3), PPI direction (0.2), breakeven inflation trend (0.2), wage growth trend (0.15), commodity price direction (0.15). Normalize: +1.0 = inflation clearly accelerating, -1.0 = inflation clearly decelerating, 0 = stable/ambiguous.]
+
+**Coordinate-label consistency check (mandatory):** After assigning both scores, verify that the sign of each score matches the regime label. The mapping is: Goldilocks = growth positive, inflation negative. Overheating = growth positive, inflation positive. Stagflation = growth negative, inflation positive. Disinflationary Slowdown = growth negative, inflation negative. If your scores land in a different quadrant than your label, you must do one of two things: (1) revise the scores to reflect the data more accurately, explaining what you got wrong on the first pass, or (2) revise the regime label, explaining why the data actually points to the other quadrant. You may NOT leave them contradicting silently. A score near zero (between -0.15 and +0.15) on either axis is exempt from this check — it means the signal is genuinely ambiguous on that dimension, which is useful information. Report the exemption explicitly: "Growth score near zero — signal ambiguous, consistent with either [X] or [Y] regime."
 
 [2-3 sentence narrative explanation of the regime classification. Why this quadrant? What's the dominant signal?]
 
@@ -112,16 +118,16 @@ When inputs conflict (e.g., liquidity expanding but growth decelerating), flag t
 ### Cross-Asset Implications (ETF-Focused)
 Express all allocation views using specific ETFs. The reader trades ETFs on Monday morning.
 
-| Asset Class | Stance | ETF Expression | Rationale |
-|-------------|--------|---------------|-----------|
-| US Equities | [Bull/Neutral/Bear] | [SPY/QQQ/IWM/VTV — be specific] | [one sentence] |
-| Int'l Developed | [stance] | [EFA/VEA] | [one sentence] |
-| Emerging Markets | [stance] | [EEM/VWO] | [one sentence] |
-| Duration | [Long/Neutral/Short] | [TLT vs. SHV/BIL/SGOV] | [one sentence] |
-| Credit | [OW/N/UW] | [HYG/LQD or avoid] | [one sentence] |
-| Gold | [stance] | [GLD/IAU] | [one sentence] |
-| Commodities | [stance] | [USO/DJP/GSG] | [one sentence] |
-| Cash | [% allocation] | [SGOV/BIL] | [one sentence] |
+| Asset Class | Stance | ETF Expression | Rationale | Timing |
+|-------------|--------|---------------|-----------|--------|
+| US Equities | [Bull/Neutral/Bear] | [SPY/QQQ/IWM/VTV — be specific] | [one sentence] | [tactical (weeks) / structural (months) + reassessment trigger] |
+| Int'l Developed | [stance] | [EFA/VEA] | [one sentence] | [timing + trigger] |
+| Emerging Markets | [stance] | [EEM/VWO] | [one sentence] | [timing + trigger] |
+| Duration | [Long/Neutral/Short] | [TLT vs. SHV/BIL/SGOV] | [one sentence] | [timing + trigger] |
+| Credit | [OW/N/UW] | [HYG/LQD or avoid] | [one sentence] | [timing + trigger] |
+| Gold | [stance] | [GLD/IAU] | [one sentence] | [timing + trigger] |
+| Commodities | [stance] | [USO/DJP/GSG] | [one sentence] | [timing + trigger] |
+| Cash | [% allocation] | [SGOV/BIL] | [one sentence] | [timing + trigger] |
 
 ### Sector View
 
@@ -178,7 +184,7 @@ Note: Analyst views are a contrarian/confirmation check, not a regime model inpu
 ---
 meta:
   skill: weekly-macro-synthesis
-  skill_version: "1.1"
+  skill_version: "1.2"
   run_date: "[ISO date]"
   inputs_read:
     central_bank_watch: [true/false — was this week's output available?]
@@ -192,7 +198,9 @@ meta:
     confidence: [high/medium/low]
     inputs_available: [number out of 5]
     regime_changed: [true/false]
-    regime_weeks_held: [number — consecutive weeks in current regime]
+    regime_weeks_held: [number — consecutive ISO weeks in current regime. Count from the prior-week chain, not from number of runs. Same-week reruns do not increment this counter.]
+    growth_score: [number, -1.0 to 1.0]
+    inflation_score: [number, -1.0 to 1.0]
   notes: "[any issues — e.g., 'positioning data unavailable, synthesis based on 4 of 5 inputs']"
 ---
 ```

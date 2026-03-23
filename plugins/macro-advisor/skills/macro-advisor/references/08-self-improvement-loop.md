@@ -112,7 +112,7 @@ Impact: [what conclusion would have changed]
 
 Read `outputs/structural/last-scan.json` every week, even if the scanner didn't run this cycle. Check:
 
-1. **Emptiness ratio:** `signals_with_no_finding / total_signals_checked`. A healthy ratio is 2-4 findings out of 6 detectors. If the scanner consistently finds tension in all 6 signals (emptiness = 0), the detection thresholds are too loose — propose an amendment to tighten them. If it consistently finds 0-1 findings, thresholds may be too tight or the data sources may be stale.
+1. **Emptiness ratio:** `signals_with_no_finding / total_signals_checked`. A healthy ratio is 2-5 findings out of 7 detectors (includes technology displacement as Signal 7). If the scanner consistently finds tension in all 7 signals (emptiness = 0), the detection thresholds are too loose — propose an amendment to tighten them. If it consistently finds 0-1 findings, thresholds may be too tight or the data sources may be stale.
 
 2. **Kill rate:** `historical_kill_rate.survived_skill_11 / total_candidates_generated`. A healthy kill rate is 40-60%. If >80% of scanner candidates survive Skill 11 research, the scanner's bar is too low — it's advancing weak candidates. If <20% survive, the scanner is generating noise. Either way, flag for threshold review.
 
@@ -121,6 +121,18 @@ Read `outputs/structural/last-scan.json` every week, even if the scanner didn't 
 4. **Domain recurrence:** Check `last-scan.json` for domains flagged 3+ consecutive cycles. If the quantified gap is not growing, the scanner may be stuck on a narrative rather than tracking a worsening imbalance. Flag for review.
 
 5. **Sector clustering:** If the scanner's findings cluster in one area for 3+ consecutive runs (e.g., all energy, all commodities), flag as potential signal-set bias. Do not force diversification — but note the clustering.
+
+### 2g-iii. Decade Horizon Health (from Skill 14 meta + last-horizon.json)
+
+Read `outputs/strategic/last-horizon.json` if it exists. This is a quarterly check — most weeks this data is unchanged. Check:
+
+1. **Force stability:** How many mega-forces changed between the last two quarterly runs? If >1 force changes per quarter (added/removed/fundamentally revised), the selection criteria may be too loose. Mega-forces should persist for years.
+
+2. **Blind spot conversion rate:** `historical_conversion.became_active_theses / total_blind_spots_flagged`. A healthy rate is 20-40% over 4 quarters when blind spots are flagged. If blind spots never convert, the horizon map may be too abstract. If they all convert, it's duplicating the scanner. Note: zero blind spots in a given quarter is valid — it means thesis book coverage is adequate. Flag for review only if the skill reports zero blind spots for 3+ consecutive quarters, which may indicate the coverage comparison is too loose.
+
+3. **Consensus vs. novel ratio:** What percentage of identified blind spots were second/third-order impacts vs. first-order consensus views? Target >50% novel. If the horizon map is dominated by consensus first-order impacts, it's not adding value beyond what the market already prices.
+
+4. **Horizon-scanner alignment:** When both Skill 14 and Skill 13 run, do the horizon's blind spots align with scanner findings? Convergence suggests the system is internally consistent. Divergence isn't necessarily bad — the two skills look at different things — but persistent total divergence may indicate one layer is miscalibrated.
 
 ### 2h. Analytical Accuracy (Prior Week Scorecard)
 

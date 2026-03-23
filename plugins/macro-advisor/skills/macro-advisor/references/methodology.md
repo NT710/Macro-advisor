@@ -49,16 +49,17 @@ Skill 3:  Macro Data Tracker (PMIs, employment, inflation, GDP, surprises)
 Skill 4:  Geopolitical & Policy Scanner (trade, fiscal, regulatory, energy)
 Skill 5:  Market Positioning & Sentiment (COT, flows, VIX, AAII, Fear & Greed)
 Skill 10: External Analyst Monitor (8 analysts: Steno, Gromen, Peccatiello, MacroVoices, Marks, Alden, Gavekal, Alpine Macro)
-Skill 13: Structural Scanner (bi-weekly: supply-demand gaps, capex underinvestment, structural imbalances — data-first with subagent deep research)
-Skill 6:  Weekly Macro Synthesis (reads Skills 1-5 + Skill 10 — NOT Skill 13; structural findings enter via thesis pipeline → regime assessment + sector view + 6/12M forecast)
+Skill 14: Decade Horizon Strategic Map (quarterly: 3-5 mega-forces, causal chain mapping, thesis book blind spot analysis)
+Skill 13: Structural Scanner (bi-weekly: 7 signal detectors including technology displacement — data-first with subagent deep research)
+Skill 6:  Weekly Macro Synthesis (reads Skills 1-5 + Skill 10 — NOT Skills 13/14; structural findings enter via thesis pipeline → regime assessment + sector view + 6/12M forecast)
 Skill 7:  Thesis Generator & Monitor (3 sources: data-pattern + analyst-sourced + scanner candidates; combined 5-investigation cap for Skill 11)
-Skill 11: Structural Research (first-principles research — 4 trigger paths: data-pattern, analyst, scanner, manual)
-Skill 8:  Self-Improvement Loop (observe → inspect → amend → evaluate + accuracy scoring + Skill 13 health: kill rate, emptiness, provenance ratio)
+Skill 11: Structural Research (first-principles research — 5 trigger paths: data-pattern, analyst, scanner, decade-horizon blind spots, manual)
+Skill 8:  Self-Improvement Loop (observe → inspect → amend → evaluate + accuracy scoring + Skill 13 health: kill rate, emptiness, provenance ratio + Skill 14 health: force stability, blind spot conversion)
 Skill 12: Thesis Presentation (renders theses into visual reports + briefing cards + chart specs)
 Skill 9:  Monday Morning Briefing (reads synthesis + theses + presentation cards + improvement → HTML dashboard)
 ```
 
-Order: 0→1→2→3→4→5→10→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
+Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
 
 ### Data Foundation
 
@@ -255,7 +256,7 @@ Every series includes a **percentile rank** vs. the full history fetched — "wh
 Note: VIX, CBOE Skew, Put/Call ratio, money market fund assets, and CFTC COT positioning (9 key contracts) are now in the structured data snapshot. These were previously web-search-only gaps.
 
 #### Dynamic ETF Discovery
-`etf_lookup.py` searches a curated universe of ~100 liquid ETFs on Yahoo Finance, verifies real price data, and returns ticker + AUM + performance. Used by the thesis generator when it needs a thematic ETF not in the static reference table. Only verified ETFs are recommended — never guessed.
+`etf_lookup.py` uses two-layer search: (1) keyword match against a curated universe of ~160 liquid ETFs covering equities, fixed income, FX/currency, volatility, commodities, and alternatives, (2) live Yahoo Finance search API as fallback for themes not in the curated list. All results are verified with real price data, liquidity checks (>10K avg daily volume), and freshness checks (<7 days old). Never recommends unverified tickers. Skill 7 runs a counter-thesis search (opposing direction) alongside the thesis search to force engagement with the other side of the trade, and checks entry timing against recent price momentum.
 
 ### External Analyst Monitoring
 
@@ -341,7 +342,7 @@ Historical week selector allows browsing past briefings and improvement reports.
 All recommendations use specific ETF tickers. Equivalents in the user's preferred currency are primary (verified via Yahoo Finance). USD tickers shown in parentheses when no local-currency version exists. The user's preferred currency is set in `config/user-config.json`.
 
 Reference tables: `skills/references/etf-reference.md` (broad allocation, thematic/sector, currency-specific equivalents).
-Dynamic discovery: `scripts/etf_lookup.py` searches ~100 liquid ETFs and verifies real price data before recommending.
+Dynamic discovery: `scripts/etf_lookup.py` — two-layer search (~160 curated + Yahoo Finance fallback) with verification and liquidity guardrails. Counter-thesis search and entry timing checks live in Skill 7.
 
 ### Sizing
 
@@ -453,9 +454,10 @@ Macro Advisor/
 │           ├── 08-self-improvement-loop.md
 │           ├── 09-monday-briefing.md
 │           ├── 10-analyst-monitor.md       (v2.0 — 8 analysts, analyst-sourced thesis candidates)
-│           ├── 11-structural-research.md   (v1.2 — 4 trigger paths including scanner candidates, on-demand FRED, evidence independence)
+│           ├── 11-structural-research.md   (v1.3 — 5 trigger paths including scanner candidates + decade-horizon blind spots, on-demand FRED, evidence independence)
 │           ├── 12-thesis-presentation.md   (v1.1 — visual reports + briefing cards, resolved chart data)
-│           └── 13-structural-scanner.md   (v1.0 — bi-weekly structural imbalance detection, data-first with subagent research)
+│           ├── 13-structural-scanner.md   (v1.1 — bi-weekly, 7 signal detectors including technology displacement, data-first with subagent research)
+│           └── 14-decade-horizon.md       (v1.0 — quarterly mega-force mapping, causal chains, thesis book blind spot analysis)
 ├── hooks/
 │   └── hooks.json                  (session start hook — reads user config)
 ├── scripts/
@@ -478,13 +480,15 @@ Macro Advisor/
 │   ├── theses/closed/              (closed thesis files with outcomes)
 │   ├── theses/presentations/       (Skill 12 rendered reports + chart specs)
 │   ├── briefings/                  (weekly briefing MD + HTML dashboard)
+│   ├── strategic/                  (Skill 14 quarterly horizon maps + last-horizon.json)
+│   ├── strategic/blind-spots/      (BLINDSPOT- files for Skill 13/7/11 consumption)
 │   ├── structural/                 (Skill 13 scan results + last-scan.json)
 │   ├── structural/candidates/      (advancing scanner candidates for Skill 7 → Skill 11)
 │   ├── improvement/                (improvement reports + amendment-tracker.md + accuracy-tracker.md)
 │   └── backtest/                   (regime backtest results JSON + HTML report)
 ├── commands/
 │   ├── setup.md                    (first-run configuration with workspace folder check)
-│   ├── run-weekly.md               (manual execution trigger for full 13-skill chain)
+│   ├── run-weekly.md               (manual execution trigger for full 14-skill chain)
 │   ├── investigate-theme.md        (on-demand theme research)
 │   ├── activate-thesis.md          (draft thesis activation)
 │   ├── structural-scan.md          (manual structural scanner run)

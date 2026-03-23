@@ -34,7 +34,7 @@ Read this file before executing any skill. These rules override all other instru
 
 4. **Thesis ETF expressions must trace the causal chain.** Every thesis has first, second, and third-order effects. Derive the chain from the current data and regime — do NOT pre-load specific causal patterns. An oil price move in one context has completely different second-order effects than the same move in a different context.
 
-5. **Dynamic ETF discovery.** When a thesis needs a thematic ETF not in the reference table, run `python scripts/etf_lookup.py --theme "[keywords]"`. Only recommend ETFs the script has verified with real price data.
+5. **Dynamic ETF discovery.** When a thesis needs a thematic ETF not in the reference table, run `python scripts/etf_lookup.py --theme "[keywords]"`. The script does two-layer search: (1) keyword match against ~160 curated ETFs including FX, volatility, and precision rates, (2) live Yahoo Finance search as fallback. Only recommend ETFs the script has verified with real price data, sufficient liquidity (>10K avg daily volume), and fresh pricing (<7 days old). Skill 7 must also run a counter-thesis search to force engagement with the opposing trade (see Skill 7 ETF Expression guidance).
 
 ## Language and Accessibility
 

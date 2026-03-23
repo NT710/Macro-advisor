@@ -31,7 +31,7 @@ The system's methodology, architecture, and design decisions are documented in `
 
 ## Scheduled Tasks
 
-- `trading-engine-sunday` runs Sundays at 19:00 CET. Full chain: T0→T1→T2→T3→T4→T5→T6→T7 + Dashboard.
+- `trading-engine-sunday` runs Sundays at 19:00 CET. Full chain: T0→T1→T2→T3→T4→T5→T6→T7→T8 + Dashboard.
 - `trading-engine-wednesday` runs Wednesdays at 18:00 CET. Defense only: T0→T1→T2→T3(defense)→T4→T5.
 
 ## Principles

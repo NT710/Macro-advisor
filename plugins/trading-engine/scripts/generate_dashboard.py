@@ -2,13 +2,17 @@
 """
 Trading Dashboard Generator (Alpine Report Edition)
 
-Produces a self-contained HTML file with three tabs:
-  1. P&L — portfolio value chart, return metrics with sparklines, attribution
-  2. Trades — trade log with sort/filter, closed trades
-  3. Improvements — system health, pending amendment proposals, evaluated amendments
+Produces a self-contained HTML file with multiple tabs:
+  1. Overview — portfolio metrics, sparklines, attribution
+  2. Positions — current holdings with layers, thesis, scaling state
+  3. Trades & Reasoning — trade log, closed trades, weekly reasoning
+  4. Performance — attribution, win rates, risk metrics, benchmarking
+  5. External — external portfolio comparison, exposure deltas, kill switch propagation
+  6. Improvements — system health, pending amendments, history
+  7. Rules — risk constraints, execution discipline, rule documentation
 
 Uses Jinja2 template at scripts/trading-dashboard-template.html.
-Design tokens are in scripts/design_tokens.py (local copy, duplicated in macro-advisor).
+CSS variables are inlined; Chart.js is injected before </head>.
 
 Usage:
     python generate_dashboard.py \
@@ -16,6 +20,10 @@ Usage:
         --trades outputs/trades/ \
         --performance outputs/performance/ \
         --improvement outputs/improvement/ \
+        --external outputs/external/ \
+        --config outputs/config/ \
+        --rules RULES.md \
+        --reasoning outputs/trades/reasoning/ \
         --output outputs/dashboard/
 """
 
@@ -31,12 +39,6 @@ from pathlib import Path
 import html as html_lib
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-
-# ---------------------------------------------------------------------------
-# Import local design tokens
-# ---------------------------------------------------------------------------
-
-from design_tokens import CSS_VARIABLES, FONT_FACE_CSS
 
 
 def load_json(path):
@@ -336,6 +338,277 @@ def parse_latest_improvement_report(improvement_dir):
     return report
 
 
+def parse_reasoning_files(reasoning_dir):
+    """Parse weekly reasoning markdown files from trades/reasoning directory."""
+    reasoning_entries = []
+    if not reasoning_dir or not os.path.exists(reasoning_dir):
+        return reasoning_entries
+
+    try:
+        for f in sorted(Path(reasoning_dir).glob("*-reasoning.md"), reverse=True):
+            try:
+                with open(f, "r") as fh:
+                    content = fh.read()
+
+                entry = {
+                    "week_date": None,
+                    "regime_context": "",
+                    "kill_switch_exits": [],
+                    "new_positions": [],
+                    "adjustments": [],
+                    "skipped": [],
+                    "risk_state_after": {},
+                }
+
+                # Extract week date from header
+                week_match = re.search(r"## Trading Engine Reasoning — Week of\s*(.+?)(?:\n|$)", content)
+                if week_match:
+                    entry["week_date"] = week_match.group(1).strip()
+
+                # Extract regime context
+                regime_match = re.search(r"### Regime Context\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if regime_match:
+                    entry["regime_context"] = regime_match.group(1).strip()
+
+                # Extract kill switch exits
+                ks_match = re.search(r"### Kill Switch Exits\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if ks_match:
+                    ks_block = ks_match.group(1)
+                    for line in ks_block.split("\n"):
+                        if line.strip().startswith("- "):
+                            line = line.strip()[2:]
+                            if line.lower() != "none this week":
+                                parts = line.split(":", 1)
+                                if len(parts) == 2:
+                                    entry["kill_switch_exits"].append({
+                                        "symbol": parts[0].strip(),
+                                        "reason": parts[1].strip()
+                                    })
+
+                # Extract new positions
+                new_pos_match = re.search(r"### New Positions\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if new_pos_match:
+                    new_pos_block = new_pos_match.group(1)
+                    # Find each position block marked with **[SYMBOL] — [Name]**
+                    pos_blocks = re.findall(r"\*\*([A-Z0-9]+)\s*—\s*(.+?)\*\*\n(.+?)(?=\n\*\*|\n###|\Z)", new_pos_block, re.DOTALL)
+                    for symbol, name, pos_content in pos_blocks:
+                        pos_dict = {
+                            "symbol": symbol.strip(),
+                            "name": name.strip(),
+                            "target_pct": None,
+                            "this_run_pct": None,
+                            "reason": "",
+                            "devil_advocate_base": "",
+                            "devil_advocate_specific": "",
+                            "bear_case_probability": None,
+                            "order_type": "",
+                            "expression_sizing": []
+                        }
+
+                        # Parse position details
+                        target_m = re.search(r"- Target:\s*(.+?)%", pos_content)
+                        if target_m:
+                            pos_dict["target_pct"] = _num(target_m.group(1).strip())
+
+                        this_m = re.search(r"- This Run:\s*(.+?)%", pos_content)
+                        if this_m:
+                            pos_dict["this_run_pct"] = _num(this_m.group(1).strip())
+
+                        reason_m = re.search(r"- Reason:\s*(.+?)(?=\n-|\Z)", pos_content, re.DOTALL)
+                        if reason_m:
+                            pos_dict["reason"] = reason_m.group(1).strip()
+
+                        da_base_m = re.search(r"- Devil's Advocate \(Base\):\s*(.+?)(?=\n-|\Z)", pos_content, re.DOTALL)
+                        if da_base_m:
+                            pos_dict["devil_advocate_base"] = da_base_m.group(1).strip()
+
+                        da_spec_m = re.search(r"- Devil's Advocate \(Specific\):\s*(.+?)(?=\n-|\Z)", pos_content, re.DOTALL)
+                        if da_spec_m:
+                            pos_dict["devil_advocate_specific"] = da_spec_m.group(1).strip()
+
+                        bear_m = re.search(r"- Bear Case Probability:\s*(.+?)%", pos_content)
+                        if bear_m:
+                            pos_dict["bear_case_probability"] = _num(bear_m.group(1).strip())
+
+                        order_m = re.search(r"- Order:\s*(.+?)(?=\n|\Z)", pos_content)
+                        if order_m:
+                            pos_dict["order_type"] = order_m.group(1).strip()
+
+                        # Parse expression sizing table if present
+                        sizing_match = re.search(r"#### Expression Sizing\s*\n\|.+?\|.+?\|\n\|[-:\|]+\|(.+?)(?=\n###|\n\*\*|\Z)", pos_content, re.DOTALL)
+                        if sizing_match:
+                            sizing_block = sizing_match.group(1)
+                            for sizing_line in sizing_block.split("\n"):
+                                if sizing_line.strip().startswith("|"):
+                                    cols = [c.strip() for c in sizing_line.split("|")[1:-1]]
+                                    if len(cols) >= 5:
+                                        pos_dict["expression_sizing"].append({
+                                            "etf": cols[0],
+                                            "conviction": cols[1],
+                                            "size": _num(cols[2]),
+                                            "decision": cols[3],
+                                            "reasoning": cols[4]
+                                        })
+
+                        entry["new_positions"].append(pos_dict)
+
+                # Extract adjustments
+                adj_match = re.search(r"### Adjustments\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if adj_match:
+                    adj_block = adj_match.group(1)
+                    for line in adj_block.split("\n"):
+                        if line.strip().startswith("- "):
+                            entry["adjustments"].append(line.strip()[2:])
+
+                # Extract skipped
+                skip_match = re.search(r"### Skipped\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if skip_match:
+                    skip_block = skip_match.group(1)
+                    for line in skip_block.split("\n"):
+                        if line.strip().startswith("- "):
+                            line = line.strip()[2:]
+                            if line.lower() != "none this week":
+                                parts = line.split(":", 1)
+                                if len(parts) == 2:
+                                    entry["skipped"].append({
+                                        "symbol": parts[0].strip(),
+                                        "reason": parts[1].strip()
+                                    })
+
+                # Extract risk state after execution
+                risk_match = re.search(r"### Risk State After Execution\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                if risk_match:
+                    risk_block = risk_match.group(1)
+                    cash_m = re.search(r"- Cash:\s*(.+?)%", risk_block)
+                    if cash_m:
+                        entry["risk_state_after"]["cash_pct"] = _num(cash_m.group(1).strip())
+
+                    largest_m = re.search(r"- Largest Position:\s*(.+?)(?=\n|\Z)", risk_block)
+                    if largest_m:
+                        entry["risk_state_after"]["largest_position"] = largest_m.group(1).strip()
+
+                    thesis_m = re.search(r"- Thesis Overlay:\s*(.+?)%", risk_block)
+                    if thesis_m:
+                        entry["risk_state_after"]["thesis_overlay_pct"] = _num(thesis_m.group(1).strip())
+
+                    dd_m = re.search(r"- Current Drawdown:\s*(.+?)%", risk_block)
+                    if dd_m:
+                        entry["risk_state_after"]["drawdown_pct"] = _num(dd_m.group(1).strip())
+
+                reasoning_entries.append(entry)
+
+            except (json.JSONDecodeError, FileNotFoundError):
+                continue
+
+    except Exception:
+        pass
+
+    return reasoning_entries
+
+
+def _parse_numbered_rules(block, extract_limit=False):
+    """Parse numbered markdown rules into list of dicts with name+description (and optional limit_value)."""
+    items = []
+    # Split on numbered list items: "1. **Bold name.** Description..."
+    parts = re.split(r'\n\d+\.\s+', '\n' + block)
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+        # Try to extract bold name: **Name** or **Name:**
+        bold_match = re.match(r'\*\*(.+?)\*\*[:\.]?\s*(.*)', part, re.DOTALL)
+        if bold_match:
+            name = bold_match.group(1).strip().rstrip('.')
+            desc = bold_match.group(2).strip()
+            # Clean up multi-line descriptions
+            desc = re.sub(r'\s+', ' ', desc)
+        else:
+            # No bold — use first sentence as name
+            sentences = part.split('. ', 1)
+            name = sentences[0].strip()
+            desc = sentences[1].strip() if len(sentences) > 1 else ""
+            desc = re.sub(r'\s+', ' ', desc)
+
+        item = {"name": name, "description": desc}
+
+        if extract_limit:
+            # Try to extract a limit value like "15%", "10%", "25%", "5%"
+            limit_match = re.search(r'(\d+(?:\.\d+)?%)', name + ' ' + desc)
+            item["limit_value"] = limit_match.group(1) if limit_match else "—"
+            # Also check for boolean limits
+            if not limit_match:
+                if 'no leverage' in (name + ' ' + desc).lower():
+                    item["limit_value"] = "None (1x only)"
+                elif 'no short' in (name + ' ' + desc).lower():
+                    item["limit_value"] = "Long only"
+
+        items.append(item)
+    return items
+
+
+def parse_rules_md(rules_path):
+    """Parse RULES.md for risk constraints, execution discipline, anti-bias rules, external rules."""
+    rules = {
+        "risk_constraints": [],
+        "execution": [],
+        "anti_bias": [],
+        "external": [],
+    }
+
+    if not rules_path or not os.path.exists(rules_path):
+        return rules
+
+    try:
+        with open(rules_path, "r") as f:
+            content = f.read()
+
+        # Extract sections by ## headers. Handle parenthetical suffixes in header.
+        def extract_section(header_pattern):
+            match = re.search(header_pattern + r'\s*\n(.+?)(?=\n## |\Z)', content, re.DOTALL)
+            return match.group(1).strip() if match else ""
+
+        risk_block = extract_section(r'## Risk Constraints[^\n]*')
+        exec_block = extract_section(r'## Execution Discipline[^\n]*')
+        bias_block = extract_section(r'## Anti-Confirmation-Bias Rules[^\n]*')
+        ext_block = extract_section(r'## External Portfolio Rules[^\n]*')
+
+        rules["risk_constraints"] = _parse_numbered_rules(risk_block, extract_limit=True)
+        rules["execution"] = _parse_numbered_rules(exec_block)
+        rules["anti_bias"] = _parse_numbered_rules(bias_block)
+        rules["external"] = _parse_numbered_rules(ext_block)
+
+    except Exception:
+        pass
+
+    return rules
+
+
+def parse_regime_templates(regime_path):
+    """Load and transform regime templates from JSON."""
+    regimes = {}
+    data = load_json(regime_path)
+
+    if isinstance(data, dict):
+        for regime_name, regime_data in data.items():
+            if isinstance(regime_data, dict):
+                weights = {}
+                for asset_key, asset_info in regime_data.items():
+                    if asset_key.endswith("_description") or asset_key.endswith("_total") or asset_key in ("etf", "rationale"):
+                        continue
+                    if isinstance(asset_info, dict):
+                        weight = asset_info.get("weight", asset_info.get("pct"))
+                        if weight is not None:
+                            label = asset_key.replace("_", " ").title()
+                            weights[label] = _num(weight)
+                    else:
+                        label = asset_key.replace("_", " ").title()
+                        weights[label] = _num(asset_info, 0)
+                if weights:
+                    regimes[regime_name] = weights
+
+    return regimes
+
+
 def _build_improvements_tab(report, amendments):
     """Build the HTML for the Improvements tab."""
 
@@ -516,8 +789,13 @@ def _build_improvements_tab(report, amendments):
     return health_html + proposals_html + eval_html + recs_html
 
 
-def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, improvement_dir=None):
+def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, improvement_dir=None,
+                       external_dir=None, config_dir=None, rules_path=None, reasoning_dir=None):
     """Generate the HTML dashboard using Jinja2 template."""
+
+    # Determine reasoning directory
+    if reasoning_dir is None and trades_dir:
+        reasoning_dir = os.path.join(trades_dir, "reasoning")
 
     # Load data
     perf_report = load_json(os.path.join(performance_dir, "latest-performance-report.json"))
@@ -529,6 +807,9 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         closed_trades = []
     snapshots = load_snapshots(portfolio_dir)
 
+    # Load latest snapshot
+    latest_snapshot = load_json(os.path.join(portfolio_dir, "latest-snapshot.json"))
+
     # Load improvement data
     amendments = []
     improvement_report = {
@@ -539,6 +820,21 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     if improvement_dir:
         amendments = parse_amendment_tracker(improvement_dir)
         improvement_report = parse_latest_improvement_report(improvement_dir)
+
+    # Load reasoning files
+    weekly_reasoning = parse_reasoning_files(reasoning_dir)
+
+    # Load rules
+    rules_data = {}
+    risk_limits_json = {}
+    regime_templates = {}
+    if rules_path:
+        rules_data = parse_rules_md(rules_path)
+    if config_dir:
+        risk_limits_path = os.path.join(config_dir, "risk-limits.json")
+        risk_limits_json = load_json(risk_limits_path)
+        regime_path = os.path.join(config_dir, "regime-templates.json")
+        regime_templates = parse_regime_templates(regime_path)
 
     # Extract performance metrics
     returns = perf_report.get("returns", {})
@@ -555,6 +851,48 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     current_dd_raw = _num(risk.get("current_drawdown_pct"))
     wr_rate_raw = win_rate_data.get("win_rate")
     wr_total = _num(win_rate_data.get("total_closed"), 0)
+
+    # Extract latest snapshot metrics
+    account = latest_snapshot.get("account", {})
+    cash_pct = 0
+    thesis_overlay_pct = 0
+    largest_position = None
+    largest_position_pct = 0
+    positions = []
+
+    if account:
+        portfolio_value = _num(account.get("portfolio_value"))
+        cash = _num(account.get("cash"))
+        if portfolio_value and cash:
+            cash_pct = (cash / portfolio_value) * 100
+
+    # Process positions
+    if isinstance(latest_snapshot.get("positions"), list):
+        for pos in latest_snapshot.get("positions", []):
+            symbol = pos.get("symbol", "")
+            name = pos.get("name", "")
+            qty = _num(pos.get("qty"))
+            avg_entry = _num(pos.get("avg_entry_price"))
+            current_price = _num(pos.get("current_price"))
+            market_value = _num(pos.get("market_value"))
+            alloc_pct = _num(pos.get("allocation_pct"))
+
+            positions.append({
+                "symbol": symbol,
+                "name": name,
+                "qty": qty,
+                "avg_entry": fmt_money(avg_entry),
+                "current_price": fmt_money(current_price),
+                "market_value": fmt_money(market_value),
+                "allocation_pct": f"{alloc_pct:.1f}%" if alloc_pct else "0%",
+                "layer": pos.get("layer", ""),
+                "thesis": pos.get("thesis", ""),
+                "scaling_state": pos.get("scaling_state", "")
+            })
+
+            if largest_position is None or alloc_pct > largest_position_pct:
+                largest_position = symbol
+                largest_position_pct = alloc_pct
 
     # Build chart data from snapshots
     chart_labels = []
@@ -590,6 +928,78 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
             winrate_history.append(wins / len(chunk) * 100 if chunk else 0)
     sparkline_winrate = generate_sparkline(winrate_history[-26:], color="#34d399") if len(winrate_history) >= 2 else ""
 
+    # Parse attribution from performance report or fall back to trade_count_by_layer
+    attr_layer = {}
+    if "by_layer" in attribution:
+        for layer_name, layer_data in attribution.get("by_layer", {}).items():
+            attr_layer[layer_name] = {
+                "positions": layer_data.get("positions", 0),
+                "allocation_pct": layer_data.get("allocation_pct", 0),
+                "week_return": layer_data.get("week_return", 0),
+                "contribution": layer_data.get("contribution", 0),
+            }
+    else:
+        # Fall back to trade_count_by_layer
+        for layer_name, count in attribution.get("trade_count_by_layer", {}).items():
+            attr_layer[layer_name] = {
+                "positions": count,
+                "allocation_pct": 0,
+                "week_return": 0,
+                "contribution": 0,
+            }
+
+    # Load external portfolio data
+    ext_has_data = False
+    ext_positions = []
+    ext_total_value = 0
+    ext_base_currency = "USD"
+    ext_position_count = 0
+    ext_stale_count = 0
+    ext_value_history = []
+    ext_exposure = {}
+    paper_exposure = {}
+    ext_thesis_overlap = []
+    ext_allocation_deltas = []
+    ext_non_investable_deltas = []
+    ext_non_investable_summary = ""
+    ext_kill_switch_propagation = []
+    ext_approaching_kill_switches = []
+    ext_staleness_warnings = []
+
+    if external_dir and os.path.exists(external_dir):
+        ext_has_data = True
+        # Load latest prices
+        latest_prices = load_json(os.path.join(external_dir, "outputs/external/latest-prices.json"))
+        if latest_prices and "positions" in latest_prices:
+            ext_positions = latest_prices["positions"]
+            ext_position_count = len(ext_positions)
+            ext_total_value = _num(latest_prices.get("total_value"))
+            ext_base_currency = latest_prices.get("base_currency", "USD")
+            ext_stale_count = sum(1 for p in ext_positions if p.get("price_stale") or p.get("manual_valuation"))
+
+        # Load value history
+        value_history_data = load_json(os.path.join(external_dir, "outputs/external/external-value-history.json"))
+        if value_history_data:
+            ext_value_history = value_history_data
+
+        # Load exposure
+        ext_exposure_data = load_json(os.path.join(external_dir, "outputs/external/latest-exposure.json"))
+        if ext_exposure_data:
+            ext_exposure = ext_exposure_data
+
+        # Load thesis overlap
+        thesis_overlap = load_json(os.path.join(external_dir, "outputs/external/latest-thesis-overlap.json"))
+        if thesis_overlap and "overlaps" in thesis_overlap:
+            ext_thesis_overlap = thesis_overlap["overlaps"]
+
+        # Load kill switches
+        kill_switches = load_json(os.path.join(external_dir, "outputs/external/latest-kill-switches.json"))
+        if kill_switches:
+            if "propagations" in kill_switches:
+                ext_kill_switch_propagation = kill_switches["propagations"]
+            if "approaching" in kill_switches:
+                ext_approaching_kill_switches = kill_switches["approaching"]
+
     # Load Jinja2 template
     script_dir = Path(__file__).parent
     template_path = script_dir / "trading-dashboard-template.html"
@@ -619,17 +1029,28 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     )
     env.filters["fmt_money"] = lambda v: fmt_money(v)
     env.filters["fmt_pct"] = lambda v: fmt_pct(v)
+    env.filters["tojson"] = json.dumps
 
     template = env.get_template("trading-dashboard-template.html")
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    # Read version from plugin.json
+    plugin_version = ""
+    plugin_json_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.claude-plugin', 'plugin.json')
+    try:
+        with open(plugin_json_path, "r") as f:
+            plugin_data = json.load(f)
+        plugin_version = plugin_data.get("version", "")
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
 
     # Render improvements tab HTML (reuse existing builder)
     improvements_html = _build_improvements_tab(improvement_report, amendments)
 
     html = template.render(
         generated=now,
-        css_variables=CSS_VARIABLES,
+        version=plugin_version,
         font_data_uri=font_data_uri,
         chart_js=chart_js,
         # Drawdown alert
@@ -654,15 +1075,56 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         chart_labels_json=json.dumps(chart_labels),
         chart_values_json=json.dumps(chart_values),
         # Attribution
-        attr_layer=attribution.get("trade_count_by_layer", {}),
+        attr_layer=attr_layer,
         # Win rate summary
         wr_total=int(wr_total),
         avg_win=fmt_money(win_rate_data.get("avg_win")),
         avg_loss=fmt_money(win_rate_data.get("avg_loss")),
         profit_factor=f"{win_rate_data['profit_factor']:.2f}" if win_rate_data.get("profit_factor") is not None else "—",
+        # Positions
+        positions=positions,
+        position_count=len(positions),
+        cash_pct=f"{cash_pct:.1f}%",
+        thesis_overlay_pct=f"{thesis_overlay_pct:.1f}%",
+        largest_position_name=largest_position or "—",
+        largest_position_pct=f"{largest_position_pct:.1f}%",
         # Trade tables
         trade_log=trade_log,
         closed_trades=closed_trades,
+        # Weekly reasoning
+        weekly_reasoning=weekly_reasoning,
+        # Performance metrics
+        perf_attribution=list(attr_layer.values()),
+        perf_thesis=[],
+        perf_winrate_by_category={},
+        perf_winrate_by_mechanism={},
+        perf_da_accuracy={},
+        perf_risk_metrics={},
+        perf_benchmark={},
+        # External portfolio
+        ext_has_data=ext_has_data,
+        ext_positions=ext_positions,
+        ext_total_value=fmt_money(ext_total_value),
+        ext_base_currency=ext_base_currency,
+        ext_position_count=ext_position_count,
+        ext_stale_count=ext_stale_count,
+        ext_value_history=ext_value_history,
+        ext_exposure=ext_exposure,
+        paper_exposure=paper_exposure,
+        ext_thesis_overlap=ext_thesis_overlap,
+        ext_allocation_deltas=ext_allocation_deltas,
+        ext_non_investable_deltas=ext_non_investable_deltas,
+        ext_non_investable_summary=ext_non_investable_summary,
+        ext_kill_switch_propagation=ext_kill_switch_propagation,
+        ext_approaching_kill_switches=ext_approaching_kill_switches,
+        ext_staleness_warnings=ext_staleness_warnings,
+        # Rules
+        rules_risk_constraints=rules_data.get("risk_constraints", []),
+        rules_execution=rules_data.get("execution", ""),
+        rules_anti_bias=rules_data.get("anti_bias", ""),
+        rules_external=rules_data.get("external", ""),
+        risk_limits_json=risk_limits_json,
+        regime_templates=regime_templates,
         # Improvements
         improvements_html=improvements_html,
         proposal_count=len(improvement_report.get("proposals", [])),
@@ -695,10 +1157,24 @@ def main():
     parser.add_argument("--trades", required=True, help="Trade logs directory")
     parser.add_argument("--performance", required=True, help="Performance reports directory")
     parser.add_argument("--improvement", default=None, help="Improvement reports directory")
+    parser.add_argument("--external", default=None, help="External portfolio data directory")
+    parser.add_argument("--config", default=None, help="Config files directory (risk-limits.json, regime-templates.json)")
+    parser.add_argument("--rules", default=None, help="Path to RULES.md file")
+    parser.add_argument("--reasoning", default=None, help="Weekly reasoning markdown files directory")
     parser.add_argument("--output", required=True, help="Output directory for dashboard HTML")
 
     args = parser.parse_args()
-    generate_dashboard(args.portfolio, args.trades, args.performance, args.output, args.improvement)
+    generate_dashboard(
+        args.portfolio,
+        args.trades,
+        args.performance,
+        args.output,
+        improvement_dir=args.improvement,
+        external_dir=args.external,
+        config_dir=args.config,
+        rules_path=args.rules,
+        reasoning_dir=args.reasoning,
+    )
 
 
 if __name__ == "__main__":

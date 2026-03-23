@@ -5,7 +5,27 @@ allowed-tools: Read, Write, Edit, Bash, AskUserQuestion
 
 Run the first-time setup for the Macro Advisor system. Execute each step sequentially. Do not skip steps. Do not proceed until each step is confirmed working.
 
-## Step 0: Verify Workspace Folder
+## Step 0: Introduction
+
+Before any setup steps, present the value proposition to the user. Use AskUserQuestion with this message:
+
+"**Institutional-Grade Macro Research. Every Week. On Your Desktop.**
+
+**What it does.** Every Sunday (or whichever day you choose), the system reads a large set of economic data series, identifies the current macro regime, and produces a full investment research report. The kind of output that firms like BCA Research and Alpine Macro charge $15,000+ a year for. Except this runs on your machine, scores its own accuracy, and gets sharper over time.
+
+**What you get.** A weekly regime call: where we are in the cycle, which direction it's turning, what to own and what to avoid. Investment theses with stated assumptions, explicit kill switches, and ETF expressions in your currency. A structural scanner that catches slow-building imbalances before they surface. A quarterly strategic map of the decade-scale forces shaping the investment landscape. Cross-referencing against leading independent macro analysts. And a self-correcting methodology that tracks every call it makes.
+
+**What it takes.** One free API key (FRED). Five minutes to set up. Runs autonomously in about 15 minutes."
+
+Options: Let's set it up, Tell me more about how it works, Not right now
+
+**If "Tell me more":** Explain briefly: hard data first (no guessing), then regime classification, then investment theses with mandatory kill switches, a structural scanner for multi-year imbalances, a quarterly decade-horizon map, analyst cross-referencing, and accuracy tracking that scores every call the following week. Each layer feeds the next. The output is a weekly briefing with regime assessment, positioning recommendations, and active thesis updates. Then re-ask if they want to proceed.
+
+**If "Not right now":** Say "No problem. Run `/macro-advisor:setup` whenever you're ready." End the command.
+
+**If "Let's set it up":** Continue to Step 1.
+
+## Step 0b: Verify Workspace Folder
 
 Before anything else, check that the user has selected a workspace folder in Cowork. The workspace folder is where all outputs, config, and data persist between sessions. Without it, everything is written to a temporary directory that vanishes.
 
@@ -195,12 +215,16 @@ If `browser_access` is true, add a reminder:
 
 ## Step 11: Trading Engine Introduction
 
-After setup is complete, introduce the Trading Engine:
+After setup is complete, introduce the Trading Engine using AskUserQuestion:
 
-"Your Macro Advisor is ready. One more thing worth knowing about:
+"Your Macro Advisor is ready.
 
-**The Trading Engine** is a companion plugin in this marketplace that can paper-trade your macro theses automatically on Alpaca. It reads the regime assessments and investment theses your Macro Advisor produces, translates them into portfolio positions with mandatory devil's advocate reasoning for every trade, executes on Alpaca paper trading, and tracks P&L. Nothing trades with real money — it's a paper trading sandbox for testing whether the macro framework's thesis calls actually make money over time.
+There's a companion plugin that paper-trades the theses this system produces — so you find out whether the macro calls actually translate into returns. Devil's advocate on every trade, mid-week defense checks, full P&L attribution. You can also overlay your real holdings to see how they align with the system's views.
 
-If you'd like to try it, run `/trading-engine:setup` — it takes about 5 minutes (you'll need a free Alpaca paper trading account). The Trading Engine is scheduled to run 2 hours after the Macro Advisor so it always has fresh data to work with."
+Paper trading only. No real money. 5 minutes to set up with a free Alpaca account."
 
-This step is informational only — do not block setup completion on it. If the user wants to set up the trading engine, they can do so at any time.
+Options: Set up the Trading Engine now, I'll do it later
+
+**If "Set up now":** Tell the user to run `/trading-engine:setup`.
+
+**If "I'll do it later":** Say "No problem. Run `/trading-engine:setup` whenever you're ready." End the command.

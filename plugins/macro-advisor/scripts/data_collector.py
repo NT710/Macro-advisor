@@ -210,6 +210,173 @@ def safe_float(val):
         return None
 
 
+# ---------------------------------------------------------------------------
+# PLAUSIBLE RANGE VALIDATION
+# ---------------------------------------------------------------------------
+# Guards against garbage data propagating through the system. If a source
+# returns a value outside these bounds, it's flagged as anomalous — not
+# silently dropped, not silently accepted. Downstream skills see the flag
+# and can decide how to handle it.
+#
+# Ranges are deliberately wide: they catch glitches (VIX = 500, S&P = 0,
+# negative unemployment) without filtering legitimate extremes. Every bound
+# is set wider than any historically observed value for that series.
+#
+# Format: "series_key": (min, max, description)
+#   - min/max are inclusive. None means unbounded on that side.
+#   - description is for the anomaly report — human-readable context.
+#
+# These ranges should be reviewed annually or after major market dislocations.
+# ---------------------------------------------------------------------------
+
+PLAUSIBLE_RANGES = {
+    # --- FRED: Rates (percentages) ---
+    # Fed funds has been 0-20% historically (Volcker peak ~20%, ZIRP floor 0)
+    "DFF":    (-0.5, 25.0, "Fed funds rate"),
+    "DGS2":   (-1.0, 20.0, "2Y Treasury yield"),
+    "DGS5":   (-1.0, 20.0, "5Y Treasury yield"),
+    "DGS10":  (-1.0, 20.0, "10Y Treasury yield"),
+    "DGS30":  (-1.0, 20.0, "30Y Treasury yield"),
+    "T10Y2Y": (-5.0, 5.0,  "10Y-2Y spread"),
+    "T10Y3M": (-5.0, 5.0,  "10Y-3M spread"),
+
+    # --- FRED: Credit spreads (percentage points, not bps) ---
+    # HY OAS peaked ~20% in 2008. IG peaked ~6%.
+    "BAMLH0A0HYM2":   (0.0, 25.0, "HY OAS"),
+    "BAMLC0A0CM":      (0.0, 10.0, "IG OAS"),
+    "BAMLH0A0HYM2EY":  (0.0, 30.0, "HY effective yield"),
+
+    # --- FRED: Financial conditions (index values) ---
+    # NFCI centered at 0, historically -1 to +4 (GFC peak)
+    "NFCI":     (-2.0, 6.0,  "Chicago Fed NFCI"),
+    "ANFCI":    (-2.0, 6.0,  "Adjusted NFCI"),
+    "STLFSI4":  (-3.0, 10.0, "St. Louis financial stress"),
+
+    # --- FRED: Inflation (index levels or percentages) ---
+    "T5YIE":   (-3.0, 8.0,  "5Y breakeven inflation"),
+    "T10YIE":  (-2.0, 6.0,  "10Y breakeven inflation"),
+    "MICH":    (0.0, 20.0,  "Michigan inflation expectations"),
+
+    # --- FRED: Employment ---
+    "UNRATE":  (0.0, 30.0,  "Unemployment rate"),         # US peak ~25% in Depression, ~15% COVID
+    "ICSA":    (0.0, 7000.0, "Initial claims (thousands)"),  # COVID peak ~6.9M
+    "CCSA":    (0.0, 25000.0, "Continuing claims (thousands)"),  # COVID peak ~23M
+
+    # --- FRED: Growth indicators ---
+    "UMCSENT": (0.0, 120.0, "Michigan consumer sentiment"),  # historical range ~50-112
+    "RSAFS":   (100000.0, 1000000.0, "Retail sales (millions)"),  # ~$500B-700B/mo range
+
+    # --- FRED: Fed balance sheet (millions USD) ---
+    "WALCL":    (500000.0, 15000000.0, "Fed total assets"),     # $0.5T to $15T
+    "WTREGEN":  (0.0, 2000000.0, "Treasury General Account"),  # max ~$1.8T
+    "RRPONTSYD": (0.0, 3000000.0, "Reverse repo facility"),    # max ~$2.5T
+    "WRESBAL":  (0.0, 5000000.0, "Reserve balances"),
+
+    # --- FRED: Money supply (billions USD) ---
+    "M2SL":    (1000.0, 30000.0, "M2 money stock (monthly, billions)"),
+    "WM2NS":   (1000.0, 30000.0, "M2 money stock (weekly, billions)"),
+
+    # --- FRED: Regional Fed manufacturing surveys (diffusion indices) ---
+    # These are diffusion indices, historically about -50 to +50
+    "GACDISA066MSFRBNY":  (-80.0, 80.0, "Empire State mfg survey"),
+    "GACDFSA066MSFRBPHI": (-80.0, 80.0, "Philly Fed mfg survey"),
+    "BACTSAMFRBDAL":      (-80.0, 80.0, "Dallas Fed mfg survey"),
+
+    # --- FRED: Activity index ---
+    "CFNAIMA3": (-5.0, 3.0, "Chicago Fed national activity 3mo MA"),
+
+    # --- Yahoo: Equity indices ---
+    "^GSPC":    (500.0, 15000.0,  "S&P 500"),      # currently ~5000-6000, wide bounds
+    "^NDX":     (1000.0, 40000.0, "Nasdaq 100"),
+    "^RUT":     (300.0, 5000.0,   "Russell 2000"),
+    "^STOXX50E": (500.0, 8000.0,  "Euro Stoxx 50"),
+
+    # --- Yahoo: Volatility ---
+    "^VIX":     (5.0, 100.0, "VIX"),               # VIX peaked ~82 in March 2020
+    "^SKEW":    (90.0, 175.0, "CBOE Skew Index"),   # historical range ~100-160
+
+    # --- Yahoo: Commodities ---
+    "GC=F":     (500.0, 5000.0,  "Gold futures"),    # currently ~$2000-3000
+    "CL=F":     (-10.0, 200.0,   "Crude WTI"),       # went negative briefly in 2020
+    "HG=F":     (1.0, 10.0,      "Copper futures"),
+    "SI=F":     (5.0, 60.0,      "Silver futures"),
+    "NG=F":     (0.5, 15.0,      "Natural gas"),
+    "BZ=F":     (5.0, 200.0,     "Brent crude"),
+
+    # --- Yahoo: Currencies ---
+    "EURUSD=X":  (0.7, 1.7,   "EUR/USD"),
+    "JPY=X":     (70.0, 200.0, "USD/JPY"),
+    "CHF=X":     (0.5, 1.5,    "USD/CHF"),
+    "GBPUSD=X":  (0.8, 2.2,   "GBP/USD"),
+    "CNY=X":     (5.0, 10.0,   "USD/CNY"),
+    "DX-Y.NYB":  (60.0, 140.0, "DXY"),
+
+    # --- Yahoo: Bond/Credit ETFs (price, not yield) ---
+    "TLT":  (50.0, 200.0, "TLT 20Y Treasury ETF"),
+    "HYG":  (50.0, 110.0, "HYG High Yield ETF"),
+    "LQD":  (70.0, 150.0, "LQD IG Corporate ETF"),
+    "BKLN": (10.0, 30.0,  "BKLN Leveraged Loan ETF"),
+    "SHV":  (90.0, 120.0, "SHV Short Treasury ETF"),
+
+    # --- Yahoo: Regional/EM ETFs ---
+    "EEM": (15.0, 70.0,  "EEM Emerging Markets ETF"),
+    "EFA": (30.0, 100.0, "EFA EAFE ETF"),
+}
+
+
+def validate_data_ranges(fred_data, yahoo_data):
+    """Check all fetched values against plausible ranges.
+
+    Returns a list of anomaly dicts. Empty list = all values in range.
+    Each anomaly includes enough context for downstream skills to decide
+    whether to trust the number or flag it.
+    """
+    anomalies = []
+    fd = fred_data.get("data", {}) if fred_data else {}
+    yd = yahoo_data.get("data", {}) if yahoo_data else {}
+
+    for series_key, (lo, hi, desc) in PLAUSIBLE_RANGES.items():
+        # Check FRED data
+        if series_key in fd:
+            val = fd[series_key].get("latest_value")
+            date = fd[series_key].get("latest_date", "unknown")
+            if val is not None:
+                if (lo is not None and val < lo) or (hi is not None and val > hi):
+                    anomalies.append({
+                        "source": "FRED",
+                        "series": series_key,
+                        "description": desc,
+                        "value": val,
+                        "date": date,
+                        "expected_range": [lo, hi],
+                        "severity": "high" if (
+                            (lo is not None and val < lo * 0.5) or
+                            (hi is not None and val > hi * 2)
+                        ) else "medium",
+                    })
+
+        # Check Yahoo data
+        if series_key in yd:
+            val = yd[series_key].get("latest_value")
+            date = yd[series_key].get("latest_date", "unknown")
+            if val is not None:
+                if (lo is not None and val < lo) or (hi is not None and val > hi):
+                    anomalies.append({
+                        "source": "Yahoo",
+                        "series": series_key,
+                        "description": desc,
+                        "value": val,
+                        "date": date,
+                        "expected_range": [lo, hi],
+                        "severity": "high" if (
+                            (lo is not None and val < lo * 0.5) or
+                            (hi is not None and val > hi * 2)
+                        ) else "medium",
+                    })
+
+    return anomalies
+
+
 def fetch_fred_data(api_key, lookback_days=182):
     """Fetch all FRED series with trailing history."""
     try:
@@ -1897,6 +2064,18 @@ def main():
     derived = compute_derived_metrics(fred_data, yahoo_data)
     print(f"  Derived: {len(derived)} metrics computed")
 
+    # 8b. Range validation — catch garbage data before it propagates
+    print("Validating data ranges...")
+    data_anomalies = validate_data_ranges(fred_data, yahoo_data)
+    if data_anomalies:
+        print(f"  WARNING: {len(data_anomalies)} value(s) outside plausible range:")
+        for a in data_anomalies:
+            print(f"    - {a['source']} {a['series']} ({a['description']}): "
+                  f"{a['value']} (expected {a['expected_range'][0]}–{a['expected_range'][1]}) "
+                  f"[{a['severity']}]")
+    else:
+        print("  All values within plausible ranges")
+
     # 9. Snapshot
     print("Building summary snapshot...")
     snapshot = build_summary_snapshot(fred_data, yahoo_data, derived, cot_data, ecb_data, eurostat_data,
@@ -1916,8 +2095,13 @@ def main():
         "eia": eia_data,
         "bis": bis_data,
         "derived": derived,
+        "data_anomalies": data_anomalies,
         "snapshot": snapshot,
     }
+
+    # Embed anomalies in the snapshot too — this is what skills read first
+    if data_anomalies:
+        snapshot["data_anomalies"] = data_anomalies
 
     full_path = output_dir / f"{week}-data-full.json"
     snapshot_path = output_dir / f"{week}-snapshot.json"
@@ -1944,6 +2128,7 @@ def main():
     print(f"Series fetched: {total} (FRED: {total_fred}, Yahoo: {total_yahoo}, COT: {total_cot}, ECB: {total_ecb}, Eurostat: {total_eurostat}, EIA: {total_eia}, BIS: {total_bis})")
     print(f"Errors: {total_err}")
     print(f"Derived metrics: {len(derived)}")
+    print(f"Range anomalies: {len(data_anomalies)}" + (" ⚠" if data_anomalies else ""))
     print(f"Success rate: {total / max(total + total_err, 1) * 100:.1f}%")
     print(f"Files: {full_path.name}, {snapshot_path.name}")
 

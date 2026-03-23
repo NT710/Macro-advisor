@@ -47,12 +47,13 @@ This plugin is part of the Macro Advisor marketplace. After adding the marketpla
 | `/trading-engine:setup` | First-run: install alpaca-py, configure API keys, schedule runs |
 | `/trading-engine:run-trading` | Run the full trading chain manually |
 | `/trading-engine:implement-improvements` | Review and approve/defer T7 amendment proposals |
+| `/trading-engine:update-external-positions` | Add, remove, or update your real-world holdings for T8 overlay |
 
 ## Schedule
 
 | Task | Day | Time | Chain |
 |------|-----|------|-------|
-| Sunday full run | Sunday | 19:00 CET | T0→T1→T2→T3→T4→T5→T6→T7 + Dashboard |
+| Sunday full run | Sunday | 19:00 CET | T0→T1→T2→T3→T4→T5→T6→T7→T8 + Dashboard |
 | Wednesday check | Wednesday | 18:00 CET | T0→T1→T2→T3(defense)→T4→T5 |
 
 ## License

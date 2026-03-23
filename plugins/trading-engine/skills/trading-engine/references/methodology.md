@@ -47,9 +47,10 @@ Skill T4: Order Executor         (trade plan → Alpaca API orders)
 Skill T5: Trade Logger           (execution results → permanent audit trail)
 Skill T6: Performance Tracker    (P&L, attribution, drawdown, win rates)
 Skill T7: Self-Improvement Loop  (observe → inspect → amend → evaluate)
+Skill T8: External Portfolio     (user's real holdings → exposure overlay, optional)
 ```
 
-**Sunday full run:** T0→T1→T2→T3→T4→T5→T6→T7
+**Sunday full run:** T0→T1→T2→T3→T4→T5→T6→T7→T8
 **Wednesday defense check:** T0→T1→T2→T3(defense only)→T4→T5
 
 ### Data Flow
@@ -73,7 +74,9 @@ T6: Performance Tracker → weekly performance report
     ↓
 T7: Self-Improvement Loop → improvement report + amendment proposals
     ↓
-Dashboard Generator → HTML dashboard (P&L + Trades tabs)
+T8: External Portfolio Overlay → exposure comparison + thesis alignment + kill switch alerts (optional, Sunday only)
+    ↓
+Dashboard Generator → HTML dashboard (P&L + Trades + Improvements + External Portfolio tabs)
 ```
 
 ---
@@ -160,7 +163,7 @@ Persistent state files:
 
 | Task | Day | Time (CET) | Chain | Purpose |
 |------|-----|------------|-------|---------|
-| Sunday full run | Sunday | 19:00 | T0→T1→T2→T3→T4→T5→T6→T7 | Full analysis + trading |
+| Sunday full run | Sunday | 19:00 | T0→T1→T2→T3→T4→T5→T6→T7→T8 | Full analysis + trading + external portfolio |
 | Wednesday check | Wednesday | 18:00 | T0→T1→T2→T3(defense)→T4→T5 | Kill switches + drawdown only |
 
 The Sunday run starts 3 hours after the macro advisor (16:00 CET) to ensure fresh macro outputs are available.
@@ -187,7 +190,8 @@ Trading/
 │   │   ├── T4-order-executor.md
 │   │   ├── T5-trade-logger.md
 │   │   ├── T6-performance-tracker.md
-│   │   └── T7-self-improvement-loop.md
+│   │   ├── T7-self-improvement-loop.md
+│   │   └── T8-external-portfolio-overlay.md
 ├── scripts/
 │   ├── assets/
 │   │   ├── chart.min.js             (bundled Chart.js for offline dashboards)
@@ -196,6 +200,7 @@ Trading/
 │   ├── generate_dashboard.py        (HTML dashboard with P&L + trades tabs)
 │   ├── performance_calculator.py    (P&L, attribution, Sharpe)
 │   ├── trade_executor.py            (alpaca-py API wrapper)
+│   ├── external_portfolio.py        (yfinance wrapper for external positions)
 │   ├── trading-dashboard-template.html (Jinja2 HTML template for dashboard)
 │   ├── test_dashboard.py            (unit tests for dashboard generator)
 │   └── requirements.txt
@@ -212,8 +217,46 @@ Trading/
 │   ├── trades/                      (trade log, execution records, reasoning logs)
 │   ├── performance/                 (weekly performance reports)
 │   ├── improvement/                 (amendment tracker, performance tracker)
+│   ├── external/                    (external portfolio snapshots, exposure, value history)
 │   └── dashboard/                   (HTML trading dashboard — generated after each run)
 ```
+
+---
+
+## External Portfolio Overlay (T8)
+
+An optional module that tracks the user's real-world holdings and maps them against the paper portfolio and active theses. Configured during setup — if the user opts out, T8 is skipped entirely.
+
+### Design Principle: Information, Not Influence
+
+T8 is strictly read-only with respect to T1-T7. External positions never affect signal parsing, reconciliation, trade reasoning, performance tracking, or self-improvement. The paper portfolio is a clean sandbox that expresses macro research without contamination from the user's existing holdings. T8 produces a separate informational overlay — it shows the map between model and reality, but the model doesn't know about reality.
+
+### What T8 Produces
+
+1. **Portfolio valuation** — live pricing via yfinance, FX conversion to base currency, P&L tracking (when entry price was provided).
+2. **Exposure aggregation** — sector, geography, asset class, and currency breakdowns. For ETFs with sector weightings data, distributes allocation proportionally (e.g., QQQ at 20% of portfolio contributes 10% to tech if QQQ is 50% tech). For individual stocks, uses yfinance sector/industry directly.
+3. **Paper portfolio comparison** — side-by-side exposure across all four dimensions with delta computation.
+4. **Thesis alignment scan** — maps external holdings to active theses by exposure characteristics (sector, geography, macro factor), not by ticker or asset class. This means a gold miner equity matches a "long gold" thesis even if the paper portfolio expresses it via a commodity ETF. Identifies positions with overlapping and opposing exposure.
+5. **Kill switch propagation** — when a thesis is invalidated, notifies the user about external positions with overlapping exposure to the invalidated thesis.
+6. **Allocation delta analysis** — largest exposure differences between paper and external, filtered to the user's investable asset classes only. Paper exposure in non-investable asset classes is reported as a single structural summary line, not as gaps to close. Framed as descriptive comparison, not as recommendations.
+
+### Data Sources
+
+- User input at setup: ticker, quantity, entry price (optional), entry date (optional), account label (optional)
+- yfinance: current prices, FX rates, sector weightings, asset class splits, top holdings, classification metadata
+- Paper portfolio state from T0/T6
+- Active theses from macro advisor outputs (same source T1 reads)
+
+### Asset Classification
+
+Automatic via yfinance. For individual stocks: sector, industry, country, currency are reliable and require no user input. For ETFs: category, sector weightings, asset class split (stock/bond/other), and top holdings are pulled from fund data. The system only asks the user for classification when yfinance returns insufficient data — typically obscure local funds or recently listed securities.
+
+### Limitations
+
+- No dividends, splits, or corporate actions tracking. Valuation is price × quantity.
+- No risk metrics (VaR, Sharpe) for the external portfolio. This is an exposure tool, not a risk management tool.
+- No trade recommendations. It shows gaps and alignment. The user acts.
+- Classification of exotic assets (private equity, real estate, options) is manual and approximate.
 
 ---
 

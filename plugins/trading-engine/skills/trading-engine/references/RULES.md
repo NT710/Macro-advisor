@@ -50,6 +50,20 @@ Read this file before executing any skill. These rules override all other instru
 
 5. **Sizing follows reasoning, not expression order.** The trade reasoner evaluates every ETF expression in a thesis — first, second, or third-order — on its own merits. There is no mechanical formula mapping expression order to position size. The reasoner must articulate conviction reasoning for each expression it includes. A third-order expression can be sized larger than a first-order one if the thesis logic and macro context support it. Expressions are skipped when the reasoning doesn't support them, not because of their order.
 
+## External Portfolio Rules
+
+1. **T8 is informational only.** External portfolio data never flows back into T1-T7. The paper portfolio does not know about, reference, or adjust for the user's real holdings.
+
+2. **Separate value tracking.** Paper portfolio P&L and external portfolio P&L are never combined, blended, or presented as a single number. They are always shown as distinct datasets.
+
+3. **No trade recommendations.** T8 shows exposure gaps and thesis alignment. It does not recommend specific trades, position sizes, or timing for the user's real portfolio. The framing is always: "here's what the data shows" not "here's what you should do."
+
+4. **Kill switch alerts are informational.** When a thesis is invalidated, T8 flags aligned external positions. It does not assume the user should sell — the user's real portfolio has constraints (tax, lockup, risk tolerance) the system doesn't know about.
+
+5. **Deltas only show investable asset classes.** Allocation deltas between paper and external are only computed for asset classes the user marked as investable. Paper exposure in non-investable asset classes (e.g., commodities when the user only trades equities and bonds) is reported as a single structural summary line — not as per-position gaps, not as actionable divergences.
+
+6. **Thesis alignment matches on exposure, not instrument.** T8 checks sector/geography/factor overlap between external holdings and thesis direction. The asset class of the instrument is irrelevant — a gold miner equity overlaps with a "long gold" thesis even if the paper portfolio expresses it via a commodity ETF. This prevents false comfort ("no thesis overlap") when the user's equity holdings carry the same macro exposure through a different wrapper.
+
 ## Interface with Macro Advisor
 
 1. **Read-only.** The trading engine reads macro advisor outputs. It never writes to, modifies, or provides feedback to the macro advisor directories.

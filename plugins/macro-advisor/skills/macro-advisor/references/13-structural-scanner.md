@@ -223,6 +223,59 @@ Web search: "permitting timeline increase [current year]", "construction lead ti
 
 **What this catches:** The invisible constraint. When it takes 5 years to get a permit that used to take 2, the supply response to price signals is 3 years slower than the market assumes.
 
+### Signal 7: Technology Displacement
+
+This signal is the mirror image of Signals 1-6. Those detect supply constraints — things running out. This detects demand destruction — things being made obsolete. The question: "Where is a technology crossing an adoption or cost threshold that will structurally destroy demand for an incumbent industry within the next decade?"
+
+**Why this matters for macro positioning:** Technology displacement creates simultaneous long and short opportunities. The adopting sector faces supply constraints (which Signals 1-6 may catch). The displaced sector faces demand destruction (which nothing else in the scanner detects). The market typically prices the adoption side early and the displacement side late — because incumbents have revenue today and nobody wants to call the timing on decline.
+
+**Step 1 — Adoption curve quantitative scan:**
+Web search: "technology adoption rate [current year]", "S-curve adoption inflection [current year]", "market penetration rate by technology"
+- Identify technologies between 10-30% adoption — this is the S-curve inflection zone where adoption accelerates non-linearly
+- Pull adoption percentage AND growth rate. A technology at 20% adoption growing at 40% CAGR has different structural implications than one at 20% growing at 5%
+- Focus on technologies with physical-world implications (energy, transport, manufacturing, infrastructure) — not pure software cycles, which resolve too fast to be structural
+
+**Adoption data discipline:** Adoption percentages must come from institutional or industry sources (IEA, BloombergNEF, IDC, government statistics), not from technology vendors or advocacy organizations. When two credible sources disagree on adoption rate by >5 percentage points, report both figures and use the lower one for threshold decisions. "Adoption" means installed base or active use, not units shipped or orders placed — distinguish these explicitly.
+
+**Quantitative thresholds:**
+- Adoption rate 10-30% AND CAGR >20% → flag for displacement analysis
+- Cost parity crossover within past 24 months (new technology now cheaper per unit than incumbent) → flag
+- Regulatory forcing function with binding timeline (e.g., ICE vehicle bans, emissions standards, building codes) → flag the displaced sector
+
+**Expected signal frequency:** Structural technology displacements at the S-curve inflection point are rare — perhaps 2-3 per decade reach macro-relevant scale. If Signal 7 flags a new displacement every cycle, the thresholds are too loose or the analyst is being drawn to technology narratives. A healthy pattern is Signal 7 returning empty most cycles, with periodic updates on previously flagged displacements when new adoption data arrives.
+
+**Step 2 — Incumbent resilience check FIRST (mandatory — prevents narrative-driven displacement calls):**
+Run this BEFORE mapping the displacement chain. The purpose is to prevent investing analytical effort into a compelling narrative that the data doesn't support. If the incumbent is thriving, the displacement hasn't started — regardless of how impressive the adoption curve looks.
+
+**Step 2 reasoning:** An LLM will find displacement chain mapping intellectually engaging. By the time you've traced three orders of displacement, you're psychologically invested in the finding. Checking resilience first — before the chain is mapped — keeps the analyst honest. If Step 2 returns DEFER or DISMISS, skip Step 3 entirely.
+
+Web search: "[incumbent industry] resilience", "[incumbent] demand growing [current year]", "[technology] adoption slower than expected"
+- Check whether the incumbent's demand is actually declining, flat, or still growing
+- Check whether the technology's cost advantage holds at scale or only in specific use cases
+- Check for substitution limits — technical constraints that prevent the new technology from fully replacing the incumbent (e.g., battery energy density limits for long-haul aviation, intermittency limits for baseload power)
+
+**Step 2 decision gate:**
+- Incumbent demand flat or declining AND cost parity crossed → PROCEED to Step 3
+- Incumbent demand still growing → note as EMERGING. Do not proceed. Re-check next cycle
+- Strong substitution limits found → DEFER with specific note on what limits displacement. Skip Step 3
+
+**Step 3 — Displacement chain mapping (only for technologies that passed Step 2):**
+For each technology where the incumbent resilience check confirmed actual demand impact, trace the displacement chain:
+
+1. **Direct displacement** (first-order): What product, service, or commodity does this technology directly replace? Quantify the addressable market of the incumbent. Web search: "[incumbent industry] market size", "[technology] vs [incumbent] total cost of ownership"
+2. **Supply chain displacement** (second-order): What industries exist primarily to serve the incumbent? (e.g., auto parts for ICE vehicles, coal logistics for coal power, commercial real estate for office-based work). Quantify the revenue at risk. Web search: "[incumbent] supply chain", "[incumbent] adjacent industries revenue"
+3. **Behavioral displacement** (third-order): What patterns of economic activity change when adoption reaches majority? (e.g., if remote work reaches 40%, what happens to business travel, urban commercial real estate, commuter rail?) These are the hardest to quantify but often the largest macro effects.
+
+**Output decision:**
+- Adoption in inflection zone AND Step 2 confirmed decline AND chain identifies macro-relevant sectors → flag as structural displacement candidate
+- Chain reveals displacement confined to single niche → DEFER. Not yet macro-relevant
+
+**What this catches:** The demand destruction side of structural shifts. Signals 1-6 find "what's running out." Signal 7 finds "what's being made unnecessary." Together they see both sides of the same structural transitions — the scanner can flag copper supply constraints (Signal 3) AND ICE vehicle demand destruction (Signal 7) as parts of the same electrification mega-force, rather than only seeing the supply side.
+
+**What this does NOT do:** Signal 7 does not generate theses about technology winners. "AI will be huge" is not a structural scanner finding. The scanner's job is to find measurable imbalances with >12-month resolution timelines. Signal 7 finds the *losers* — the incumbent industries facing structural demand decline. The *winners* get captured by Signals 1-6 (the supply constraints created by new demand) or by the Decade Horizon Map (Skill 14), which provides the strategic context for why these shifts are happening.
+
+**Staleness rule:** Technology adoption data updates quarterly at fastest. If the adoption percentages and cost curves have not materially changed since the last scan AND no new regulatory forcing function was announced, record: "Signal 7: No NEW displacement threshold crossed — prior findings still valid, data unchanged." This counts as empty for the emptiness ratio.
+
 ### Phase 1 Output
 
 For each signal detector that returns a hit, write a brief flag:
@@ -236,9 +289,11 @@ Data source: [where the number came from]
 Why >12 months: [what makes this structural, not cyclical]
 ```
 
-**CRITICAL: The "nothing found" outcome is valid and expected.** If a signal detector returns no hits, write: "Signal [N]: No structural tension detected this cycle." Move on. Do NOT force a finding. At least 2 of the 6 detectors should return no finding on any given cycle — if all 6 fire every time, the detection thresholds are too loose.
+**CRITICAL: The "nothing found" outcome is valid and expected.** If a signal detector returns no hits, write: "Signal [N]: No structural tension detected this cycle." Move on. Do NOT force a finding. At least 2 of the 7 detectors should return no finding on any given cycle — if all 7 fire every time, the detection thresholds are too loose.
 
 **CONVERGENT SIGNALS:** If two or more detectors flag the same domain (e.g., Signal 1 finds copper capacity utilization at 87% AND Signal 3 finds copper inventory drawdown), count them as convergent evidence on ONE domain, not as separate findings. Convergence strengthens the candidate but does not inflate the signal hit rate. For the emptiness ratio, convergent signals count as one hit across however many detectors fired.
+
+**DISPLACEMENT-SUPPLY CONVERGENCE:** Signal 7 may flag the same underlying structural force as Signals 1-6 but from the opposite side (e.g., Signal 3 flags copper supply constraints while Signal 7 flags ICE vehicle displacement — both driven by electrification). When this happens, note the convergence explicitly. These are high-value findings because they identify structural transitions where both the long side (supply-constrained adopter) and the short side (demand-destroyed incumbent) are investable. Route both sides to the same Skill 11 investigation rather than splitting into separate research briefs.
 
 ---
 
@@ -395,7 +450,7 @@ If the contrarian search finds nothing credible, note: "Contrarian search found 
   "domains_dismissed": ["list of dismissed domains"],
   "candidates_generated": 0,
   "signals_with_no_finding": 0,
-  "total_signals_checked": 6
+  "total_signals_checked": 7
 }
 ```
 
@@ -406,9 +461,9 @@ If the contrarian search finds nothing credible, note: "Contrarian search found 
 This skill is designed to find structural imbalances, which means it enters every cycle expecting to find problems. An LLM with this mandate will find problems everywhere — real or imagined. The following mitigations are mandatory, not optional.
 
 ### 1. The Emptiness Requirement
-After all signal detectors run, count how many returned "no structural tension detected." If ZERO detectors returned empty, something is wrong — pause and re-evaluate whether the detection thresholds are too loose. A healthy ratio is 2-4 findings out of 6 detectors. Finding tension everywhere means the filter isn't filtering.
+After all signal detectors run, count how many returned "no structural tension detected." If ZERO detectors returned empty, something is wrong — pause and re-evaluate whether the detection thresholds are too loose. A healthy ratio is 2-5 findings out of 7 detectors. Finding tension everywhere means the filter isn't filtering.
 
-Report in the output: "Signal hit rate: [X]/6 detectors flagged tension. [Y] returned no finding."
+Report in the output: "Signal hit rate: [X]/7 detectors flagged tension. [Y] returned no finding."
 
 ### 2. The Contrarian Pass (Phase 4)
 Already described above. Non-optional. Every candidate gets a deliberate search for the opposite conclusion.
@@ -459,7 +514,7 @@ meta:
   run_date: "[ISO date]"
   run_type: "[scheduled | manual | first-run]"
   execution:
-    signals_checked: 6
+    signals_checked: 7
     signals_with_findings: [number]
     signals_empty: [number]
     domains_flagged_phase1: [number]
@@ -470,7 +525,7 @@ meta:
     additional_fred_series_pulled: ["list of series IDs"]
     recurring_domains: ["list with consecutive cycle counts"]
   confirmation_bias:
-    emptiness_ratio: "[X]/6 — [healthy/suspicious]"
+    emptiness_ratio: "[X]/7 — [healthy/suspicious]"
     contrarian_pass_completed: [true/false]
     sector_clustering: "[area or 'diverse']"
     historical_kill_rate: "[survived/total] = [%]"

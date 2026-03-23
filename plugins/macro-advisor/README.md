@@ -48,8 +48,9 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 | Command | Description |
 |---------|-------------|
 | `/macro-advisor:setup` | First-run configuration |
-| `/macro-advisor:run-weekly` | Run the full 13-skill analysis cycle manually |
+| `/macro-advisor:run-weekly` | Run the full 14-skill analysis cycle manually |
 | `/macro-advisor:investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
+| `/macro-advisor:structural-scan` | Run the structural scanner manually (bi-weekly, 7 signal detectors) |
 | `/macro-advisor:activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
 | `/macro-advisor:update-etfs` | Refresh ETF mapping with current market offerings |
 | `/macro-advisor:implement-improvements` | Review and apply self-improvement amendments proposed by the system |
@@ -63,17 +64,17 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 
 ## How It Works
 
-The system runs 13 skills in sequence, each building on the previous:
+The system runs 14 skills in sequence, each building on the previous:
 
 ```
 Data Collection → Central Bank Watch → Liquidity Monitor → Macro Tracker →
 Geopolitical Scanner → Positioning & Sentiment → Analyst Monitor →
-Structural Scanner (bi-weekly) → Weekly Synthesis → Thesis Generator →
-Structural Research (if triggered) → Self-Improvement → Thesis Presentation →
-Monday Briefing
+Decade Horizon (quarterly) → Structural Scanner (bi-weekly) →
+Weekly Synthesis → Thesis Generator → Structural Research (if triggered) →
+Self-Improvement → Thesis Presentation → Monday Briefing
 ```
 
-The thesis generator draws from three sources: data patterns from the weekly synthesis, analyst-sourced candidates from the analyst monitor, and structural scanner candidates from the bi-weekly structural scan. Structural candidates are routed through first-principles research (Skill 11) before becoming theses.
+The thesis generator draws from three sources: data patterns from the weekly synthesis, analyst-sourced candidates from the analyst monitor, and structural scanner candidates from the bi-weekly structural scan. The decade horizon map (quarterly) provides strategic context by mapping mega-forces across the next decade and identifying blind spots in the thesis book. Structural candidates are routed through first-principles research (Skill 11) before becoming theses.
 
 Full methodology is documented in `skills/macro-advisor/references/methodology.md`.
 
