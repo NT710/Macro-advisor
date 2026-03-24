@@ -1,0 +1,2126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Engine — {{ generated }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+{% if font_data_uri %}
+@font-face {
+    font-family: 'MonospaceCustom';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('{{ font_data_uri }}') format('woff2');
+}
+{% endif %}
+
+:root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --surface2: #1a1a1a;
+    --surface3: #222222;
+    --border: #2a2a2a;
+    --border-bright: #3a3a3a;
+    --text: #d4d4d4;
+    --text-muted: #737373;
+    --text-dim: #525252;
+    --accent: #f59e0b;
+    --amber: #f59e0b;
+    --amber-dim: #92400e;
+    --green: #22c55e;
+    --green-dim: #166534;
+    --red: #ef4444;
+    --red-dim: #991b1b;
+    --blue: #3b82f6;
+    --blue-dim: #1e3a5f;
+    --cyan: #06b6d4;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --white: #fafafa;
+    --mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    font-size: 12px;
+}
+
+.container {
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+}
+
+header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--amber);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+header .timestamp {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--mono);
+}
+
+/* ============================================================
+   ALERT
+   ============================================================ */
+.alert {
+    margin: 0;
+    padding: 12px 20px;
+    background: rgba(239, 68, 68, 0.1);
+    border-left: 3px solid var(--red);
+    color: var(--red);
+    font-size: 11px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+.tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    flex-wrap: wrap;
+}
+
+.tab {
+    padding: 10px 12px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: color 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    position: relative;
+}
+
+.tab:after {
+    content: '|';
+    margin-left: 12px;
+    color: var(--border);
+}
+
+.tab:last-child:after {
+    content: '';
+}
+
+.tab:hover {
+    color: var(--text);
+}
+
+.tab.active {
+    color: var(--amber);
+    border-bottom-color: var(--amber);
+}
+
+.tab-content {
+    display: none;
+    padding: 20px;
+    overflow-y: auto;
+    min-height: calc(100vh - 180px);
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* ============================================================
+   METRICS STRIP
+   ============================================================ */
+.metrics-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0;
+    margin-bottom: 24px;
+    border: 1px solid var(--border);
+    border-right: none;
+}
+
+.metric-item {
+    padding: 16px 12px;
+    border-right: 1px solid var(--border);
+}
+
+.metric-item:last-child {
+    border-right: none;
+}
+
+.metric-item .label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.metric-item .value {
+    font-size: 18px;
+    font-weight: 600;
+    font-family: var(--mono);
+    color: var(--white);
+}
+
+.metric-item .sparkline-container {
+    margin-top: 6px;
+    height: 20px;
+}
+
+/* ============================================================
+   PANELS & SECTIONS
+   ============================================================ */
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.section {
+    margin-bottom: 20px;
+    overflow-x: auto;
+}
+
+.section h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}
+
+.section h4 {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+    margin-top: 12px;
+}
+
+.divider {
+    height: 1px;
+    background: var(--border);
+    border: none;
+    margin: 16px 0;
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    margin-bottom: 12px;
+}
+
+th {
+    text-align: left;
+    padding: 8px 10px;
+    color: var(--text-muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--border);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: var(--surface2);
+}
+
+td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+tr:hover {
+    background: var(--surface2);
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.name-cell {
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 200px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* ============================================================
+   SORT BUTTONS & INTERACTIVE
+   ============================================================ */
+th button.sort-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+th button.sort-btn:hover {
+    color: var(--text);
+}
+
+th button.sort-btn .sort-indicator {
+    color: var(--text-muted);
+    font-size: 9px;
+}
+
+th button.sort-btn .sort-indicator.active {
+    color: var(--accent);
+}
+
+.filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.filter-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 11px;
+    font-family: var(--mono);
+    outline: none;
+}
+
+.filter-input::placeholder {
+    color: var(--text-muted);
+}
+
+.filter-input:focus {
+    border-color: var(--accent);
+    background: var(--surface2);
+}
+
+.trade-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* ============================================================
+   VALUE COLORS & BADGES
+   ============================================================ */
+.positive { color: var(--green); }
+.negative { color: var(--red); }
+.neutral { color: var(--text-muted); }
+
+.buy-cell { color: var(--green); font-weight: 600; }
+.sell-cell { color: var(--red); font-weight: 600; }
+
+.badge {
+    display: inline-block;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: 2px;
+    white-space: nowrap;
+}
+
+.badge-green { background: var(--green-dim); color: var(--green); }
+.badge-red { background: var(--red-dim); color: var(--red); }
+.badge-amber { background: var(--amber-dim); color: var(--amber); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); }
+.badge-cyan { background: var(--cyan); color: var(--bg); }
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+.empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-muted);
+}
+
+/* ============================================================
+   KPI GRID
+   ============================================================ */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px;
+}
+
+.kpi-card .label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.kpi-card .value {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--white);
+}
+
+/* ============================================================
+   CHART CONTAINER
+   ============================================================ */
+.chart-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.chart-container h4 {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+}
+
+canvas {
+    max-height: 300px;
+}
+
+/* ============================================================
+   DRAWDOWN ALERT
+   ============================================================ */
+.drawdown-alert {
+    border-left: 3px solid var(--red);
+    background: rgba(239, 68, 68, 0.08);
+    padding: 12px;
+    margin-bottom: 16px;
+    color: var(--red);
+    font-size: 11px;
+}
+
+/* ============================================================
+   ACCORDION (WEEKLY REASONING, THESIS OVERLAP)
+   ============================================================ */
+.accordion-item {
+    border: 1px solid var(--border);
+    margin-bottom: 8px;
+    background: var(--surface);
+}
+
+.accordion-header {
+    padding: 10px 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+}
+
+.accordion-header:hover {
+    background: var(--surface3);
+}
+
+.accordion-header .toggle {
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+.accordion-header.active .toggle {
+    color: var(--accent);
+}
+
+.accordion-body {
+    display: none;
+    padding: 12px;
+}
+
+.accordion-body.active {
+    display: block;
+}
+
+/* ============================================================
+   KILL SWITCH
+   ============================================================ */
+.kill-switch-item {
+    background: rgba(239, 68, 68, 0.08);
+    border-left: 3px solid var(--red);
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 11px;
+}
+
+/* ============================================================
+   HORIZONTAL BAR CHART (EXPOSURE)
+   ============================================================ */
+.exposure-bar {
+    margin-bottom: 12px;
+}
+
+.exposure-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.exposure-label .name {
+    color: var(--text);
+}
+
+.exposure-label .pct {
+    color: var(--text-muted);
+}
+
+.exposure-bars {
+    display: flex;
+    gap: 4px;
+    height: 16px;
+}
+
+.exposure-bars .bar {
+    background: var(--blue);
+    border-radius: 2px;
+    min-width: 2px;
+}
+
+.exposure-bars .bar.external {
+    background: var(--cyan);
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 900px) {
+    .metrics-strip {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .kpi-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 600px) {
+    .metrics-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .kpi-grid {
+        grid-template-columns: 1fr;
+    }
+
+    header {
+        flex-direction: column;
+        gap: 8px;
+        text-align: left;
+    }
+
+    .tabs {
+        overflow-x: auto;
+        padding-right: 40px;
+    }
+}
+</style>
+</head>
+<body>
+<div class="container">
+
+    {# ================================================================
+       HEADER
+       ================================================================ #}
+    <header>
+        <h1>⦿ TRADING ENGINE {% if version %}<span style="font-size: 11px; font-weight: 400; color: var(--text-muted); margin-left: 8px;">v{{ version }}</span>{% endif %}</h1>
+        <span class="timestamp">{{ generated }}</span>
+    </header>
+
+    {# ================================================================
+       DRAWDOWN ALERT (GLOBAL)
+       ================================================================ #}
+    {% if drawdown_alert %}
+    <div class="alert">
+        ⚠ DRAWDOWN ALERT — Portfolio at {{ current_drawdown }}% below high water mark. Circuit breaker triggers at 10%.
+    </div>
+    {% endif %}
+
+    {# ================================================================
+       TAB NAVIGATION
+       ================================================================ #}
+    <div class="tabs" role="tablist">
+        <button class="tab active" role="tab" aria-selected="true" data-tab="overview" id="tab-btn-overview" aria-controls="tab-overview">Overview</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="positions" id="tab-btn-positions" aria-controls="tab-positions">Positions</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="trades" id="tab-btn-trades" aria-controls="tab-trades">Trades & Reasoning</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="performance" id="tab-btn-performance" aria-controls="tab-performance">Performance</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="external" id="tab-btn-external" aria-controls="tab-external">External</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="improvements" id="tab-btn-improvements" aria-controls="tab-improvements">Improvements</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="rules" id="tab-btn-rules" aria-controls="tab-rules">Rules</button>
+    </div>
+
+    {# ================================================================
+       TAB 1: OVERVIEW
+       ================================================================ #}
+    <div id="tab-overview" class="tab-content active" role="tabpanel" aria-labelledby="tab-btn-overview">
+
+        {# KPI Strip #}
+        <div class="metrics-strip">
+            <div class="metric-item">
+                <div class="label">Portfolio Value</div>
+                <div class="value">{{ portfolio_value }}</div>
+                {% if sparkline_portfolio %}<div class="sparkline-container">{{ sparkline_portfolio }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Total P&L</div>
+                <div class="value {{ 'positive' if total_pl_raw > 0 else 'negative' if total_pl_raw < 0 else '' }}">{{ total_pl }}</div>
+                {% if sparkline_pl %}<div class="sparkline-container">{{ sparkline_pl }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Return</div>
+                <div class="value {{ 'positive' if total_return_raw > 0 else 'negative' if total_return_raw < 0 else '' }}">{{ total_return }}</div>
+            </div>
+            <div class="metric-item">
+                <div class="label">Sharpe Ratio</div>
+                <div class="value">{{ sharpe }}</div>
+            </div>
+            <div class="metric-item">
+                <div class="label">Win Rate</div>
+                <div class="value {{ 'positive' if win_rate_raw and win_rate_raw > 50 else '' }}">{{ win_rate }}</div>
+                {% if sparkline_winrate %}<div class="sparkline-container">{{ sparkline_winrate }}</div>{% endif %}
+            </div>
+            <div class="metric-item">
+                <div class="label">Max Drawdown</div>
+                <div class="value negative">{{ max_drawdown }}</div>
+            </div>
+        </div>
+
+        {# Equity Curve #}
+        {% if chart_labels %}
+        <div class="chart-container">
+            <h4>Portfolio Equity Curve</h4>
+            <canvas id="valueChart" height="80"></canvas>
+        </div>
+        {% else %}
+        <div class="panel empty-state">
+            <p>No portfolio snapshots recorded. Run the trading engine to populate equity curve.</p>
+        </div>
+        {% endif %}
+
+        <hr class="divider">
+
+        {# Attribution & Win Rate Summary #}
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+
+            <div class="section">
+                <h3>Attribution by Layer</h3>
+                {% if attr_layer %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Layer</th>
+                            <th>Positions</th>
+                            <th>Allocation</th>
+                            <th>Week Return</th>
+                            <th>Contribution</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for layer_name, layer_data in attr_layer.items() %}
+                        <tr>
+                            <td>{{ layer_name }}</td>
+                            <td>{{ layer_data.positions }}</td>
+                            <td>{{ layer_data.allocation_pct | fmt_pct }}</td>
+                            <td class="{{ 'positive' if layer_data.week_return | float > 0 else 'negative' }}">{{ layer_data.week_return | fmt_pct }}</td>
+                            <td class="{{ 'positive' if layer_data.contribution | float > 0 else 'negative' }}">{{ layer_data.contribution | fmt_pct }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty-state">No layer attribution data yet.</p>
+                {% endif %}
+            </div>
+
+            <div class="section">
+                <h3>Win Rate Summary</h3>
+                {% if wr_total and wr_total > 0 %}
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="label">Closed Trades</div>
+                        <div class="value">{{ wr_total }}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="label">Win Rate</div>
+                        <div class="value {{ 'positive' if win_rate_raw and win_rate_raw > 50 else '' }}">{{ win_rate }}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="label">Avg Win</div>
+                        <div class="value positive">{{ avg_win }}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="label">Avg Loss</div>
+                        <div class="value negative">{{ avg_loss }}</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="label">Profit Factor</div>
+                        <div class="value">{{ profit_factor }}</div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="empty-state">No closed trades. Win rate calculates after first round-trip.</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <hr class="divider">
+
+        {# Risk Snapshot #}
+        <div class="section">
+            <h3>Risk Metrics</h3>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="label">Cash %</div>
+                    <div class="value">{{ cash_pct | fmt_pct }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Thesis Overlay %</div>
+                    <div class="value">{{ thesis_overlay_pct | fmt_pct }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Largest Position</div>
+                    <div class="value">{{ largest_position_name | default('—', true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Largest Position %</div>
+                    <div class="value">{{ largest_position_pct | fmt_pct }}</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    {# ================================================================
+       TAB 2: POSITIONS
+       ================================================================ #}
+    <div id="tab-positions" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-positions">
+
+        <div class="section">
+            <h3>Current Holdings ({{ position_count }} positions)</h3>
+            {% if positions %}
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th><button class="sort-btn" data-col="0" data-type="text">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th>Name</th>
+                        <th><button class="sort-btn" data-col="2" data-type="num">Qty <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="3" data-type="num">Entry <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="4" data-type="num">Current <span class="sort-indicator">⇅</span></button></th>
+                        <th><button class="sort-btn" data-col="5" data-type="num">Market Value <span class="sort-indicator">⇅</span></button></th>
+                        <th>Allocation %</th>
+                        <th>Layer</th>
+                        <th>Thesis</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="positionsTable">
+                {% for p in positions %}
+                    <tr data-symbol="{{ p.symbol | default('', true) }}">
+                        <td><strong>{{ p.symbol }}</strong></td>
+                        <td class="name-cell">{{ p.name }}</td>
+                        <td>{{ p.qty }}</td>
+                        <td>{{ p.avg_entry }}</td>
+                        <td>{{ p.current_price }}</td>
+                        <td>{{ p.market_value }}</td>
+                        <td>{{ p.allocation_pct }}</td>
+                        <td>{% if p.layer %}<span class="badge badge-blue">{{ p.layer }}</span>{% else %}—{% endif %}</td>
+                        <td>{{ p.thesis | default('—', true) }}</td>
+                        <td><span class="badge badge-green">{{ p.scaling_state | default('ACTIVE', true) }}</span></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="panel empty-state">
+                <p>No open positions.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+
+        <div class="kpi-grid">
+            <div class="kpi-card">
+                <div class="label">Cash %</div>
+                <div class="value">{{ cash_pct | fmt_pct }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="label">Thesis Overlay %</div>
+                <div class="value">{{ thesis_overlay_pct | fmt_pct }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="label">Largest Position</div>
+                <div class="value">{{ largest_position_name | default('—', true) }}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="label">Largest Position %</div>
+                <div class="value">{{ largest_position_pct | fmt_pct }}</div>
+            </div>
+        </div>
+
+    </div>
+
+    {# ================================================================
+       TAB 3: TRADES & REASONING
+       ================================================================ #}
+    <div id="tab-trades" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-trades">
+
+        {# Trade Log Filter #}
+        <div class="filter-bar">
+            <input type="text" class="filter-input" id="tradeFilter" placeholder="Filter by ticker or side..." aria-label="Filter trades">
+            <span class="trade-count" id="tradeCount">{{ trade_log | length }} trades</span>
+        </div>
+
+        <hr class="divider">
+
+        {# Active Trades #}
+        <div class="section">
+            <h3>Active Trades</h3>
+            {% if trade_log %}
+            <div style="overflow-x: auto;">
+            <table id="activeTradesTable">
+                <thead>
+                    <tr>
+                        <th><button class="sort-btn" data-col="0" data-type="date">Date <span class="sort-indicator active">▼</span></button></th>
+                        <th>Run</th>
+                        <th><button class="sort-btn" data-col="2" data-type="text">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th>Name</th>
+                        <th><button class="sort-btn" data-col="4" data-type="text">Side <span class="sort-indicator">⇅</span></button></th>
+                        <th>Qty</th>
+                        <th>Fill Price</th>
+                        <th>Type</th>
+                        <th>Layer</th>
+                        <th>Thesis</th>
+                        <th>Status</th>
+                        <th>Reason</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for t in trade_log %}
+                    <tr data-ticker="{{ t.symbol | default('', true) }}" data-side="{{ t.side | default('', true) }}">
+                        <td>{{ t.date[:10] if t.date else '—' }}</td>
+                        <td>{{ t.run_type | default('', true) }}</td>
+                        <td><strong>{{ t.symbol }}</strong></td>
+                        <td class="name-cell">{{ t.name }}</td>
+                        <td class="{{ 'buy-cell' if t.side == 'BUY' else 'sell-cell' }}">{{ (t.side | default('', true)) | upper }}</td>
+                        <td>{{ t.qty }}</td>
+                        <td>{{ t.fill_price | fmt_money }}</td>
+                        <td>{{ t.order_type | default('', true) }}</td>
+                        <td><span class="badge badge-blue">{{ t.layer | default('', true) }}</span></td>
+                        <td>{{ t.thesis | default('—', true) }}</td>
+                        <td>
+                        {% set st = (t.status | default('', true) | lower) %}
+                        {% if st in ('filled', 'open', 'active') %}
+                            <span class="badge badge-green">{{ t.status | upper }}</span>
+                        {% elif st in ('cancelled', 'canceled', 'expired', 'closed') %}
+                            <span class="badge badge-red">{{ t.status | upper }}</span>
+                        {% elif st in ('new', 'pending', 'partially_filled') %}
+                            <span class="badge badge-cyan">{{ t.status | upper }}</span>
+                        {% elif st == 'rejected' %}
+                            <span class="badge" style="background: rgba(239,68,68,0.15); color: #ef4444;">{{ t.status | upper }}</span>
+                        {% else %}
+                            <span class="badge badge-amber">{{ t.status }}</span>
+                        {% endif %}
+                        </td>
+                        <td style="white-space: normal; min-width: 180px;">{{ t.reason if t.reason else '—' }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="panel empty-state">
+                <p>No active trades recorded.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+
+        {# Closed Trades #}
+        <div class="section">
+            <h3>Closed Trades</h3>
+            {% if closed_trades %}
+            <div style="overflow-x: auto;">
+            <table id="closedTradesTable">
+                <thead>
+                    <tr>
+                        <th><button class="sort-btn" data-col="0" data-type="text">Ticker <span class="sort-indicator">⇅</span></button></th>
+                        <th>Name</th>
+                        <th>Entry Date</th>
+                        <th>Exit Date</th>
+                        <th><button class="sort-btn" data-col="4" data-type="num">Days <span class="sort-indicator">⇅</span></button></th>
+                        <th>Entry Price</th>
+                        <th>Exit Price</th>
+                        <th><button class="sort-btn" data-col="7" data-type="num">P&L <span class="sort-indicator">⇅</span></button></th>
+                        <th>P&L %</th>
+                        <th>Layer</th>
+                        <th>Close Reason</th>
+                        <th>Bear Case Hit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ct in closed_trades %}
+                    {% set pl = ct.realized_pl | default(0, true) | float %}
+                    {% set pl_pct = ct.realized_pl_pct | default(0, true) | float %}
+                    <tr data-ticker="{{ ct.symbol }}" data-side="">
+                        <td><strong>{{ ct.symbol }}</strong></td>
+                        <td class="name-cell">{{ ct.name }}</td>
+                        <td>{{ ct.entry_date | default('—', true) }}</td>
+                        <td>{{ ct.exit_date | default('—', true) }}</td>
+                        <td>{{ ct.holding_days | default('—', true) }}</td>
+                        <td>{{ ct.entry_price | fmt_money }}</td>
+                        <td>{{ ct.exit_price | fmt_money }}</td>
+                        <td class="{{ 'positive' if pl > 0 else 'negative' if pl < 0 else '' }}">{{ pl | fmt_money }}</td>
+                        <td class="{{ 'positive' if pl_pct > 0 else 'negative' if pl_pct < 0 else '' }}">{{ pl_pct | fmt_pct }}</td>
+                        <td><span class="badge badge-blue">{{ ct.layer | default('', true) }}</span></td>
+                        <td>{{ ct.close_reason | default('—', true) }}</td>
+                        <td>
+                        {% if ct.bear_case_realized == true %}
+                            <span class="badge badge-red">YES</span>
+                        {% elif ct.bear_case_realized == false %}
+                            <span class="badge badge-green">NO</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="panel empty-state">
+                <p>No closed trades. Positions close when stop-loss or take-profit triggers.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+
+        {# Weekly Reasoning Accordion #}
+        <div class="section">
+            <h3>Weekly Reasoning</h3>
+            {% if weekly_reasoning %}
+                {% for week in weekly_reasoning %}
+                <div class="accordion-item">
+                    <div class="accordion-header" onclick="toggleAccordion(this)">
+                        <div>
+                            <strong>{{ week.week_date }}</strong> —
+                            <span style="color: var(--text-muted);">Regime: {{ week.regime_context }}</span>
+                        </div>
+                        <span class="toggle">▶</span>
+                    </div>
+                    <div class="accordion-body">
+
+                        {% if week.kill_switch_exits %}
+                        <h4>Kill Switch Exits</h4>
+                        {% for ks in week.kill_switch_exits %}
+                        <div class="kill-switch-item">
+                            <strong>{{ ks.symbol }}</strong> — {{ ks.reason }}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if week.new_positions %}
+                        <h4>New Positions</h4>
+                        {% for np in week.new_positions %}
+                        <div style="margin-bottom: 12px; padding: 8px; background: var(--surface2); border-left: 2px solid var(--green);">
+                            <strong>{{ np.symbol }} — {{ np.name }}</strong><br>
+                            <span style="font-size: 10px; color: var(--text-muted);">Target: {{ np.target_pct | fmt_pct }} | This Run: {{ np.this_run_pct | fmt_pct }}</span><br>
+                            <div style="margin-top: 4px; font-size: 10px;">{{ np.reason }}</div>
+                            <div style="margin-top: 4px; padding: 4px; background: var(--bg); font-size: 10px; color: var(--text-muted);">
+                                <strong>Devil's Advocate:</strong> {{ np.devil_advocate_base }}
+                                {% if np.devil_advocate_specific %}— {{ np.devil_advocate_specific }}{% endif %}<br>
+                                <strong>Bear Case Prob:</strong> {{ np.bear_case_probability | fmt_pct }}
+                            </div>
+                            {% if np.expression_sizing %}
+                            <table style="margin-top: 6px; width: 100%; font-size: 10px;">
+                                <thead>
+                                    <tr style="background: var(--bg);">
+                                        <th style="padding: 4px; text-align: left;">ETF</th>
+                                        <th style="padding: 4px; text-align: left;">Conviction</th>
+                                        <th style="padding: 4px; text-align: left;">Size</th>
+                                        <th style="padding: 4px; text-align: left;">Decision</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                {% for es in np.expression_sizing %}
+                                    <tr>
+                                        <td style="padding: 4px;">{{ es.etf }}</td>
+                                        <td style="padding: 4px;">{{ es.conviction }}</td>
+                                        <td style="padding: 4px;">{{ es.size | fmt_pct }}</td>
+                                        <td style="padding: 4px;">
+                                            {% if es.decision == 'INCLUDE' %}
+                                                <span class="badge badge-green">{{ es.decision }}</span>
+                                            {% elif es.decision == 'SKIP' %}
+                                                <span class="badge badge-amber">{{ es.decision }}</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if week.adjustments %}
+                        <h4>Adjustments</h4>
+                        <ul style="margin-left: 12px; font-size: 11px;">
+                        {% for adj in week.adjustments %}
+                            <li>{{ adj }}</li>
+                        {% endfor %}
+                        </ul>
+                        {% endif %}
+
+                        {% if week.skipped %}
+                        <h4>Skipped Positions</h4>
+                        {% for sk in week.skipped %}
+                        <div style="margin-bottom: 8px; padding: 6px; background: var(--bg); font-size: 10px;">
+                            <strong>{{ sk.symbol }}</strong> — {{ sk.reason }}
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if week.risk_state_after %}
+                        <h4>Risk State After Run</h4>
+                        <table style="width: 100%; font-size: 10px;">
+                            <tr>
+                                <td style="padding: 4px;"><strong>Cash %:</strong> {{ week.risk_state_after.cash_pct | fmt_pct }}</td>
+                                <td style="padding: 4px;"><strong>Largest Pos:</strong> {{ week.risk_state_after.largest_position }}</td>
+                                <td style="padding: 4px;"><strong>Thesis Overlay %:</strong> {{ week.risk_state_after.thesis_overlay_pct | fmt_pct }}</td>
+                                <td style="padding: 4px;"><strong>Drawdown %:</strong> <span class="negative">{{ week.risk_state_after.drawdown_pct | fmt_pct }}</span></td>
+                            </tr>
+                        </table>
+                        {% endif %}
+
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="panel empty-state">
+                <p>No weekly reasoning recorded yet.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    {# ================================================================
+       TAB 4: PERFORMANCE
+       ================================================================ #}
+    <div id="tab-performance" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-performance">
+
+        {# Layer Attribution #}
+        {% if perf_attribution %}
+        <div class="section">
+            <h3>Layer Attribution</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Layer</th>
+                        <th>Positions</th>
+                        <th>Allocation %</th>
+                        <th>Week Return</th>
+                        <th>Contribution</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for attr in perf_attribution %}
+                    <tr>
+                        <td><strong>{{ attr.layer }}</strong></td>
+                        <td>{{ attr.positions }}</td>
+                        <td>{{ attr.allocation_pct | fmt_pct }}</td>
+                        <td class="{{ 'positive' if attr.week_return | float > 0 else 'negative' }}">{{ attr.week_return | fmt_pct }}</td>
+                        <td class="{{ 'positive' if attr.contribution | float > 0 else 'negative' }}">{{ attr.contribution | fmt_pct }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Thesis Performance #}
+        {% if perf_thesis %}
+        <div class="section">
+            <h3>Thesis Status</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Thesis</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Weeks Active</th>
+                        <th>Unrealized P&L</th>
+                        <th>Mechanism</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for th in perf_thesis %}
+                    <tr>
+                        <td><strong>{{ th.thesis_name }}</strong></td>
+                        <td><span class="badge badge-cyan">{{ th.thesis_type }}</span></td>
+                        <td>
+                        {% if th.status == 'ACTIVE' %}
+                            <span class="badge badge-green">ACTIVE</span>
+                        {% elif th.status == 'CLOSED' %}
+                            <span class="badge badge-red">CLOSED</span>
+                        {% else %}
+                            <span class="badge badge-amber">{{ th.status }}</span>
+                        {% endif %}
+                        </td>
+                        <td>{{ th.weeks_active }}</td>
+                        <td class="{{ 'positive' if th.unrealized_pl | float > 0 else 'negative' }}">{{ th.unrealized_pl | fmt_money }}</td>
+                        <td>{{ th.mechanism_type }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Win Rate by Category #}
+        {% if perf_winrate_by_category %}
+        <div class="section">
+            <h3>Win Rate by Category</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Wins</th>
+                        <th>Losses</th>
+                        <th>Win Rate</th>
+                        <th>Avg Win</th>
+                        <th>Avg Loss</th>
+                        <th>Profit Factor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for cat, stats in perf_winrate_by_category.items() %}
+                    <tr>
+                        <td><strong>{{ cat }}</strong></td>
+                        <td>{{ stats.wins | default(0, true) }}</td>
+                        <td>{{ stats.losses | default(0, true) }}</td>
+                        <td class="{{ 'positive' if stats.win_rate | float > 50 else '' }}">{{ stats.win_rate | fmt_pct }}</td>
+                        <td class="positive">{{ stats.avg_win | fmt_pct }}</td>
+                        <td class="negative">{{ stats.avg_loss | fmt_pct }}</td>
+                        <td>{{ stats.profit_factor }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Win Rate by Mechanism #}
+        {% if perf_winrate_by_mechanism %}
+        <div class="section">
+            <h3>Win Rate by Mechanism</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mechanism</th>
+                        <th>Trades</th>
+                        <th>Win Rate</th>
+                        <th>Avg P&L %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for mech, stats in perf_winrate_by_mechanism.items() %}
+                    <tr>
+                        <td><strong>{{ mech }}</strong></td>
+                        <td>{{ stats.trades | default(0, true) }}</td>
+                        <td class="{{ 'positive' if stats.win_rate | float > 50 else '' }}">{{ stats.win_rate | fmt_pct }}</td>
+                        <td class="{{ 'positive' if stats.avg_pl_pct | float > 0 else 'negative' }}">{{ stats.avg_pl_pct | fmt_pct }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Devil's Advocate Accuracy #}
+        {% if perf_da_accuracy %}
+        <div class="section">
+            <h3>Devil's Advocate Accuracy</h3>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="label">Total Entries</div>
+                    <div class="value">{{ perf_da_accuracy.total_entries | default(0, true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Bear Case Realized</div>
+                    <div class="value negative">{{ perf_da_accuracy.bear_realized | default(0, true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Bear Case Not Realized</div>
+                    <div class="value positive">{{ perf_da_accuracy.bear_not_realized | default(0, true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Unarticulated Losses</div>
+                    <div class="value">{{ perf_da_accuracy.unarticulated_losses | default(0, true) }}</div>
+                </div>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Risk Metrics #}
+        {% if perf_risk_metrics %}
+        <div class="section">
+            <h3>Risk Metrics</h3>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="label">VaR (95%)</div>
+                    <div class="value negative">{{ perf_risk_metrics.var_95 | default('—', true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Concentration</div>
+                    <div class="value">{{ perf_risk_metrics.concentration | fmt_pct }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Sector Conc.</div>
+                    <div class="value">{{ perf_risk_metrics.sector_concentration | fmt_pct }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Thesis Overlay %</div>
+                    <div class="value">{{ perf_risk_metrics.thesis_overlay_pct | fmt_pct }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">DD Breaches</div>
+                    <div class="value negative">{{ perf_risk_metrics.drawdown_breaches | default(0, true) }}</div>
+                </div>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Benchmark Comparison #}
+        {% if perf_benchmark %}
+        <div class="section">
+            <h3>Benchmark Comparison</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Benchmark</th>
+                        <th>Return</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Trading Engine</strong></td>
+                        <td class="{{ 'positive' if perf_benchmark.engine_return | float > 0 else 'negative' }}">{{ perf_benchmark.engine_return | fmt_pct }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>SPY</strong></td>
+                        <td class="{{ 'positive' if perf_benchmark.spy_return | float > 0 else 'negative' }}">{{ perf_benchmark.spy_return | fmt_pct }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Alpha vs SPY</strong></td>
+                        <td class="{{ 'positive' if perf_benchmark.alpha_spy | float > 0 else 'negative' }}">{{ perf_benchmark.alpha_spy | fmt_pct }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>60/40 Balanced</strong></td>
+                        <td class="{{ 'positive' if perf_benchmark.balanced_return | float > 0 else 'negative' }}">{{ perf_benchmark.balanced_return | fmt_pct }}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Alpha vs 60/40</strong></td>
+                        <td class="{{ 'positive' if perf_benchmark.alpha_balanced | float > 0 else 'negative' }}">{{ perf_benchmark.alpha_balanced | fmt_pct }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+    </div>
+
+    {# ================================================================
+       TAB 5: EXTERNAL
+       ================================================================ #}
+    <div id="tab-external" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-external">
+
+        {% if ext_has_data %}
+
+        <div style="padding: 12px; background: rgba(6, 182, 212, 0.08); border-left: 3px solid var(--cyan); margin-bottom: 16px; font-size: 11px;">
+            <strong>EXTERNAL PORTFOLIO — Informational Only</strong><br>
+            <span style="color: var(--text-muted);">This portfolio is tracked separately and does not affect trading engine decisions. Data shown for context and correlation analysis.</span>
+        </div>
+
+        {# External Holdings #}
+        <div class="section">
+            <h3>Holdings ({{ ext_position_count }} positions{% if ext_stale_count %}, {{ ext_stale_count }} stale{% endif %})</h3>
+            {% if ext_positions %}
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Name</th>
+                        <th>Qty</th>
+                        <th>Entry Price</th>
+                        <th>Current Price</th>
+                        <th>P&L %</th>
+                        <th>Value ({{ ext_base_currency }})</th>
+                        <th>Allocation %</th>
+                        <th>Account</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ep in ext_positions %}
+                    <tr>
+                        <td><strong>{{ ep.ticker }}</strong></td>
+                        <td class="name-cell">{{ ep.name }}</td>
+                        <td>{{ ep.quantity | default(ep.qty, true) }}</td>
+                        <td>{{ ep.entry_price | fmt_money }}</td>
+                        <td>{{ ep.current_price | fmt_money }}</td>
+                        <td class="{{ 'positive' if ep.pl_pct | default(0, true) | float > 0 else 'negative' }}">{{ ep.pl_pct | fmt_pct }}</td>
+                        <td>{{ ep.value_base | fmt_money }}</td>
+                        <td>{{ ep.allocation_pct | fmt_pct }}</td>
+                        <td>{% if ep.account %}<span class="badge badge-blue">{{ ep.account }}</span>{% else %}—{% endif %}</td>
+                        <td>
+                        {% if ep.price_stale %}
+                            <span class="badge" style="background: var(--red-dim); color: var(--red);">STALE</span>
+                        {% else %}
+                            <span class="badge badge-green">OK</span>
+                        {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+            {% else %}
+            <div class="panel empty-state">
+                <p>No external positions configured.</p>
+            </div>
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+
+        {# External Equity Curve #}
+        {% if ext_value_history %}
+        <div class="chart-container">
+            <h4>External Portfolio Value History</h4>
+            <canvas id="extValueChart" height="80"></canvas>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# ---- Overlay-based sections (parsed from weekly external overlay markdown) ---- #}
+
+        {# Exposure by Asset Class #}
+        {% if ext_overlay.exposure_by_asset_class %}
+        <div class="section">
+            <h3>Exposure by Asset Class</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_asset_class[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_asset_class %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure by Geography #}
+        {% if ext_overlay.exposure_by_geography %}
+        <div class="section">
+            <h3>Exposure by Geography</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_geography[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_geography %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure by Sector #}
+        {% if ext_overlay.exposure_by_sector %}
+        <div class="section">
+            <h3>Exposure by Sector (Equities)</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_sector[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_sector %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Thesis Alignment from Overlay #}
+        {% if ext_overlay.thesis_alignments %}
+        <div class="section">
+            <h3>Thesis Alignment Scan</h3>
+            {% for ta in ext_overlay.thesis_alignments %}
+            <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div>
+                        <strong>{{ ta.thesis_name }}</strong>
+                        <span class="badge badge-green" style="margin-left: 8px;">{{ ta.status }}</span>
+                        {% if ta.kill_switch %}
+                        <span style="color: var(--text-muted); margin-left: 8px; font-size: 10px;">Kill Switch: {{ ta.kill_switch }}</span>
+                        {% endif %}
+                    </div>
+                    <span class="toggle">▶</span>
+                </div>
+                <div class="accordion-body">
+                    {% if ta.direction %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Direction:</strong> {{ ta.direction }}</div>
+                    {% endif %}
+                    {% if ta.overlapping %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Overlapping Exposure:</strong> {{ ta.overlapping }}</div>
+                    {% endif %}
+                    {% if ta.opposing %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Opposing Exposure:</strong> {{ ta.opposing }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Gap Analysis from Overlay #}
+        {% if ext_overlay.gap_analysis %}
+        <div class="section">
+            <h3>Gap Analysis</h3>
+            {% for gap in ext_overlay.gap_analysis %}
+            <div style="margin-bottom: 12px; padding: 10px; background: var(--surface2); border-left: 3px solid var(--amber);">
+                <strong style="font-size: 11px;">{{ gap.title }}</strong>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">{{ gap.description }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Non-Investable Summary from Overlay #}
+        {% if ext_overlay.non_investable_summary %}
+        <div class="section">
+            <h3>Non-Investable Exposure (Informational)</h3>
+            <p style="font-size: 11px; color: var(--text-muted); padding: 10px; background: var(--surface2);">{{ ext_overlay.non_investable_summary }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Kill Switch Status from Overlay #}
+        {% if ext_overlay.kill_switch_status %}
+        <div class="section">
+            <h3>Kill Switch Propagation</h3>
+            <p style="font-size: 11px; padding: 10px; background: var(--surface2);">{{ ext_overlay.kill_switch_status }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Summary from Overlay #}
+        {% if ext_overlay.summary %}
+        <div class="section">
+            <h3>Weekly Summary</h3>
+            <p style="font-size: 11px; color: var(--text); padding: 10px; background: var(--surface2); line-height: 1.6;">{{ ext_overlay.summary }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure Comparison (JSON-based — requires both ext_exposure and paper_exposure) #}
+        {% if ext_exposure and paper_exposure %}
+        <div class="section">
+            <h3>Allocation Comparison: By Sector</h3>
+            {% if ext_exposure.by_sector and paper_exposure.by_sector %}
+                {% set sectors = (ext_exposure.by_sector.keys() | list) + (paper_exposure.by_sector.keys() | list) | unique | list %}
+                {% for sector in sectors | sort %}
+                    {% set ext_pct = ext_exposure.by_sector.get(sector, 0) | float %}
+                    {% set paper_pct = paper_exposure.by_sector.get(sector, 0) | float %}
+                    <div class="exposure-bar">
+                        <div class="exposure-label">
+                            <span class="name">{{ sector }}</span>
+                            <span class="pct">Paper: {{ (paper_pct * 100) | round(1) }}% | Ext: {{ (ext_pct * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="exposure-bars">
+                            <div class="bar" style="flex: {{ paper_pct * 100 or 0.5 }};"></div>
+                            <div class="bar external" style="flex: {{ ext_pct * 100 or 0.5 }};"></div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h3>Allocation Comparison: By Geography</h3>
+            {% if ext_exposure.by_geography and paper_exposure.by_geography %}
+                {% set geographies = (ext_exposure.by_geography.keys() | list) + (paper_exposure.by_geography.keys() | list) | unique | list %}
+                {% for geo in geographies | sort %}
+                    {% set ext_pct = ext_exposure.by_geography.get(geo, 0) | float %}
+                    {% set paper_pct = paper_exposure.by_geography.get(geo, 0) | float %}
+                    <div class="exposure-bar">
+                        <div class="exposure-label">
+                            <span class="name">{{ geo }}</span>
+                            <span class="pct">Paper: {{ (paper_pct * 100) | round(1) }}% | Ext: {{ (ext_pct * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="exposure-bars">
+                            <div class="bar" style="flex: {{ paper_pct * 100 or 0.5 }};"></div>
+                            <div class="bar external" style="flex: {{ ext_pct * 100 or 0.5 }};"></div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <h3>Allocation Comparison: By Asset Class</h3>
+            {% if ext_exposure.by_asset_class and paper_exposure.by_asset_class %}
+                {% set asset_classes = (ext_exposure.by_asset_class.keys() | list) + (paper_exposure.by_asset_class.keys() | list) | unique | list %}
+                {% for ac in asset_classes | sort %}
+                    {% set ext_pct = ext_exposure.by_asset_class.get(ac, 0) | float %}
+                    {% set paper_pct = paper_exposure.by_asset_class.get(ac, 0) | float %}
+                    <div class="exposure-bar">
+                        <div class="exposure-label">
+                            <span class="name">{{ ac }}</span>
+                            <span class="pct">Paper: {{ (paper_pct * 100) | round(1) }}% | Ext: {{ (ext_pct * 100) | round(1) }}%</span>
+                        </div>
+                        <div class="exposure-bars">
+                            <div class="bar" style="flex: {{ paper_pct * 100 or 0.5 }};"></div>
+                            <div class="bar external" style="flex: {{ ext_pct * 100 or 0.5 }};"></div>
+                        </div>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+
+        <hr class="divider">
+        {% endif %}
+
+        {# Thesis Overlap #}
+        {% if ext_thesis_overlap %}
+        <div class="section">
+            <h3>Thesis Overlap</h3>
+            {% for overlap in ext_thesis_overlap %}
+            <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div>
+                        <strong>{{ overlap.thesis_name }}</strong>
+                        <span style="color: var(--text-muted);">{{ overlap.direction }}</span>
+                        {% if overlap.kill_switch_status == 'TRIGGERED' %}
+                        <span class="badge badge-red">KILL SWITCH</span>
+                        {% endif %}
+                    </div>
+                    <span class="toggle">▶</span>
+                </div>
+                <div class="accordion-body">
+                    {% if overlap.overlapping %}
+                    <h4>Overlapping Positions</h4>
+                    <ul style="margin-left: 12px; font-size: 11px;">
+                    {% for pos in overlap.overlapping %}
+                        <li>{{ pos }}</li>
+                    {% endfor %}
+                    </ul>
+                    {% endif %}
+                    {% if overlap.opposing %}
+                    <h4>Opposing Positions</h4>
+                    <ul style="margin-left: 12px; font-size: 11px;">
+                    {% for pos in overlap.opposing %}
+                        <li>{{ pos }}</li>
+                    {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Allocation Deltas #}
+        {% if ext_allocation_deltas %}
+        <div class="section">
+            <h3>Allocation Deltas (Investable)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Exposure</th>
+                        <th>Paper %</th>
+                        <th>External %</th>
+                        <th>Delta</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for delta in ext_allocation_deltas %}
+                    <tr>
+                        <td><strong>{{ delta.exposure }}</strong></td>
+                        <td>{{ delta.paper_pct | fmt_pct }}</td>
+                        <td>{{ delta.external_pct | fmt_pct }}</td>
+                        <td class="{{ 'positive' if delta.delta | float > 0 else 'negative' if delta.delta | float < 0 else '' }}">{{ delta.delta | fmt_pct }}</td>
+                        <td>{{ delta.source }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Non-Investable Deltas #}
+        {% if ext_non_investable_deltas %}
+        <div class="section">
+            <h3>Allocation Deltas (Non-Investable)</h3>
+            <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">{{ ext_non_investable_summary }}</p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Exposure</th>
+                        <th>Paper %</th>
+                        <th>External %</th>
+                        <th>Delta</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for delta in ext_non_investable_deltas %}
+                    <tr>
+                        <td><strong>{{ delta.exposure }}</strong></td>
+                        <td>{{ delta.paper_pct | fmt_pct }}</td>
+                        <td>{{ delta.external_pct | fmt_pct }}</td>
+                        <td class="{{ 'positive' if delta.delta | float > 0 else 'negative' if delta.delta | float < 0 else '' }}">{{ delta.delta | fmt_pct }}</td>
+                        <td>{{ delta.source }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Kill Switch Propagation #}
+        {% if ext_kill_switch_propagation %}
+        <div class="section">
+            <h3>Kill Switch Propagation</h3>
+            {% for ks in ext_kill_switch_propagation %}
+            <div class="kill-switch-item">
+                <strong>{{ ks.thesis_name }}</strong> — {{ ks.condition }}<br>
+                <span style="font-size: 10px; color: var(--text-muted);">Invalidated: {{ ks.date_invalidated }} | Action: {{ ks.paper_action }}</span>
+                {% if ks.affected_positions %}
+                <div style="margin-top: 4px; font-size: 10px;">
+                    <strong>Affected:</strong> {{ ks.affected_positions | join(', ') }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Approaching Kill Switches #}
+        {% if ext_approaching_kill_switches %}
+        <div class="section">
+            <h3>Approaching Kill Switches ⚠</h3>
+            {% for ks in ext_approaching_kill_switches %}
+            <div style="background: rgba(245, 158, 11, 0.08); border-left: 3px solid var(--amber); padding: 10px 12px; margin-bottom: 8px; font-size: 11px;">
+                <strong>{{ ks.thesis_name }}</strong> — {{ ks.condition }}<br>
+                <span style="color: var(--text-muted);">Approaching trigger at: {{ ks.date_invalidated }}</span>
+                {% if ks.affected_positions %}
+                <div style="margin-top: 4px; font-size: 10px;">
+                    <strong>Would affect:</strong> {{ ks.affected_positions | join(', ') }}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Staleness Warnings #}
+        {% if ext_staleness_warnings %}
+        <div class="section">
+            <h3>Data Quality Warnings</h3>
+            <ul style="margin-left: 12px; font-size: 11px; color: var(--text-muted);">
+            {% for warning in ext_staleness_warnings %}
+                <li>{{ warning }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="panel empty-state">
+            <p>No external portfolio configured. External holdings will appear here once configured in settings.</p>
+        </div>
+        {% endif %}
+
+    </div>
+
+    {# ================================================================
+       TAB 6: IMPROVEMENTS
+       ================================================================ #}
+    <div id="tab-improvements" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-improvements">
+        {{ improvements_html }}
+    </div>
+
+    {# ================================================================
+       TAB 7: DEPLOYMENT RULES
+       ================================================================ #}
+    <div id="tab-rules" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-rules">
+
+        <div style="font-size: 10px; color: var(--text-muted); margin-bottom: 16px;">
+            Rules are read-only and enforced at execution time. Contact your administrator to modify.
+        </div>
+
+        {# Risk Constraints #}
+        {% if rules_risk_constraints %}
+        <div class="section">
+            <h3>Risk Constraints</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Constraint</th>
+                        <th>Description</th>
+                        <th>Limit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for constraint in rules_risk_constraints %}
+                    <tr>
+                        <td><strong>{{ constraint.name }}</strong></td>
+                        <td style="font-size: 10px;">{{ constraint.description }}</td>
+                        <td><code style="background: var(--bg); padding: 2px 4px;">{{ constraint.limit_value }}</code></td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Execution Rules #}
+        {% if rules_execution %}
+        <div class="section">
+            <h3>Execution Rules</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rule</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rule in rules_execution %}
+                    <tr>
+                        <td><strong>{{ rule.name }}</strong></td>
+                        <td style="font-size: 10px;">{{ rule.description }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Anti-Bias Rules #}
+        {% if rules_anti_bias %}
+        <div class="section">
+            <h3>Anti-Bias Rules</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rule</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rule in rules_anti_bias %}
+                    <tr>
+                        <td><strong>{{ rule.name }}</strong></td>
+                        <td style="font-size: 10px;">{{ rule.description }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# External Portfolio Rules #}
+        {% if rules_external %}
+        <div class="section">
+            <h3>External Portfolio Rules</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rule</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for rule in rules_external %}
+                    <tr>
+                        <td><strong>{{ rule.name }}</strong></td>
+                        <td style="font-size: 10px;">{{ rule.description }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Regime Templates #}
+        {% if regime_templates %}
+        <div class="section">
+            <h3>Regime Allocation Templates</h3>
+            {% for regime_name, allocations in regime_templates.items() %}
+            <div style="margin-bottom: 16px;">
+                <h4>{{ regime_name }}</h4>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Allocation %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for asset, pct in allocations.items() %}
+                        <tr>
+                            <td>{{ asset }}</td>
+                            <td>{{ pct }}%</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+    </div>
+
+</div>
+
+{# ================================================================
+   JAVASCRIPT
+   ================================================================ #}
+<script>
+/* Tab switching */
+document.querySelectorAll('.tab').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var tab = this.getAttribute('data-tab');
+        document.querySelectorAll('.tab-content').forEach(function(el) { el.classList.remove('active'); });
+        document.querySelectorAll('.tab').forEach(function(el) {
+            el.classList.remove('active');
+            el.setAttribute('aria-selected', 'false');
+        });
+        document.getElementById('tab-' + tab).classList.add('active');
+        this.classList.add('active');
+        this.setAttribute('aria-selected', 'true');
+    });
+    btn.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); }
+    });
+});
+
+/* Accordion toggle */
+function toggleAccordion(header) {
+    header.classList.toggle('active');
+    var body = header.nextElementSibling;
+    if (body && body.classList.contains('accordion-body')) {
+        body.classList.toggle('active');
+    }
+}
+
+/* Trade filter */
+(function() {
+    var filterInput = document.getElementById('tradeFilter');
+    var countEl = document.getElementById('tradeCount');
+    if (!filterInput) return;
+
+    var activeRows = document.querySelectorAll('#activeTradesTable tbody tr[data-ticker]');
+    var closedRows = document.querySelectorAll('#closedTradesTable tbody tr[data-ticker]');
+    var allRows = Array.prototype.slice.call(activeRows).concat(Array.prototype.slice.call(closedRows));
+    var totalCount = allRows.length;
+
+    filterInput.addEventListener('input', function() {
+        var q = this.value.toLowerCase().trim();
+        var shown = 0;
+        allRows.forEach(function(row) {
+            var ticker = (row.getAttribute('data-ticker') || '').toLowerCase();
+            var side = (row.getAttribute('data-side') || '').toLowerCase();
+            var match = !q || ticker.indexOf(q) !== -1 || side.indexOf(q) !== -1;
+            row.style.display = match ? '' : 'none';
+            if (match) shown++;
+        });
+        if (q && shown < totalCount) {
+            countEl.textContent = shown + ' of ' + totalCount + ' trades';
+        } else {
+            countEl.textContent = totalCount + ' trades';
+        }
+    });
+})();
+
+/* Column sorting */
+(function() {
+    document.querySelectorAll('.sort-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var table = this.closest('table');
+            var tbody = table.querySelector('tbody');
+            var colIdx = parseInt(this.getAttribute('data-col'));
+            var type = this.getAttribute('data-type');
+            var currentSort = this.getAttribute('aria-sort');
+            var newSort = currentSort === 'ascending' ? 'descending' : 'ascending';
+
+            table.querySelectorAll('.sort-btn').forEach(function(b) {
+                b.setAttribute('aria-sort', 'none');
+                b.querySelector('.sort-indicator').textContent = '⇅';
+                b.querySelector('.sort-indicator').classList.remove('active');
+            });
+
+            this.setAttribute('aria-sort', newSort);
+            var indicator = this.querySelector('.sort-indicator');
+            indicator.textContent = newSort === 'ascending' ? '▲' : '▼';
+            indicator.classList.add('active');
+
+            var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-ticker], tr[data-symbol]'));
+            rows.sort(function(a, b) {
+                var aVal = a.children[colIdx] ? a.children[colIdx].textContent.trim() : '';
+                var bVal = b.children[colIdx] ? b.children[colIdx].textContent.trim() : '';
+                if (type === 'num') {
+                    aVal = parseFloat(aVal.replace(/[$,%+]/g, '')) || 0;
+                    bVal = parseFloat(bVal.replace(/[$,%+]/g, '')) || 0;
+                } else if (type === 'date') {
+                    aVal = aVal || '0';
+                    bVal = bVal || '0';
+                }
+                var cmp;
+                if (type === 'num') {
+                    cmp = aVal - bVal;
+                } else {
+                    cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+                }
+                return newSort === 'ascending' ? cmp : -cmp;
+            });
+            rows.forEach(function(row) { tbody.appendChild(row); });
+        });
+    });
+})();
+
+/* Portfolio value chart (Chart.js) */
+(function() {
+    var ctx = document.getElementById('valueChart');
+    if (!ctx) return;
+    var labels = {{ chart_labels_json }};
+    var values = {{ chart_values_json }};
+    if (labels.length === 0) return;
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Portfolio Value',
+                data: values,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: labels.length > 20 ? 0 : 3,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return '$' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#737373', maxTicksLimit: 10 },
+                    grid: { color: '#2a2a2a' }
+                },
+                y: {
+                    ticks: {
+                        color: '#737373',
+                        callback: function(value) { return '$' + value.toLocaleString(); }
+                    },
+                    grid: { color: '#2a2a2a' }
+                }
+            }
+        }
+    });
+})();
+
+/* External value history chart (Chart.js) */
+(function() {
+    var ctx = document.getElementById('extValueChart');
+    if (!ctx) return;
+    var data = {{ ext_value_history | tojson }};
+    if (!data || data.length === 0) return;
+
+    var labels = data.map(function(d) { return d.date; });
+    var values = data.map(function(d) { return d.total_value_base; });
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'External Portfolio Value',
+                data: values,
+                borderColor: '#06b6d4',
+                backgroundColor: 'rgba(6, 182, 212, 0.08)',
+                fill: true,
+                tension: 0.3,
+                pointRadius: labels.length > 20 ? 0 : 3,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return '$' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#737373', maxTicksLimit: 10 },
+                    grid: { color: '#2a2a2a' }
+                },
+                y: {
+                    ticks: {
+                        color: '#737373',
+                        callback: function(value) { return '$' + value.toLocaleString(); }
+                    },
+                    grid: { color: '#2a2a2a' }
+                }
+            }
+        }
+    });
+})();
+</script>
+
+</body>
+</html>
