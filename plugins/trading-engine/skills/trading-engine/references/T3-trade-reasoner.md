@@ -9,9 +9,35 @@ T3 receives position sizes but NOT unrealized P&L. It cannot see whether a posit
 ## Inputs
 
 1. **Reconciliation** — `outputs/portfolio/latest-reconciliation.json` (from T2)
-2. **Signals** — `outputs/portfolio/latest-signals.json` (from T1)
+2. **Signals** — `outputs/portfolio/latest-signals.json` (from T1). This includes the `regime_forecast` block containing the macro advisor's 6-month and 12-month regime probability distributions, key assumptions, confidence levels, and conditional triggers.
 3. **Risk limits** — `${CLAUDE_PLUGIN_ROOT}/config/risk-limits.json`
 4. **Trade log** — most recent entries from `outputs/trades/` (to check scaling state — how much of a target position we've already built)
+
+## Regime Forecast Context
+
+T3 has access to the macro advisor's 6-month and 12-month regime forecasts via `signals.regime_forecast`. This data is **informational context for reasoning, not a mechanical input to allocation.** T2 builds the target allocation from the current regime template. T3 uses the forecast to make better judgment calls about the trades T2 proposes.
+
+The macro advisor's regime model is built on three underlying forces: **Growth** (rising or falling), **Inflation** (rising or falling), and **Liquidity** (loosening or tightening). The regime quadrant is the output of where these forces sit. The forecast block includes both the current state of each driver (score, direction, key data) and their projected trajectories at each horizon. When reasoning about individual positions, think in terms of these underlying drivers — not just the regime label. A position's sensitivity to growth, inflation, or liquidity tells you more about its durability than whether the regime name changes.
+
+The forecast should inform T3's reasoning in three specific ways:
+
+**1. Durability-aware sizing.** When deciding how aggressively to scale a regime-driven position, consider the expected shelf life of the current regime — and specifically, which underlying driver is expected to shift. A position that only works in the current regime should be sized more conservatively if the forecast gives that regime low persistence probability. A position that works across both the current regime and the most likely future regime can be sized at full conviction.
+
+Use the driver trajectories to assess position-level durability. A position sensitive to inflation (like GSG) has a short shelf life if the inflation driver is forecast to normalize (oil returning to $70-80). A position sensitive to growth deceleration (like defensive equities) retains value even if the regime shifts from Stagflation to Disinflationary Slowdown, because the growth driver continues in the same direction. A position sensitive to liquidity (like short-duration bonds) depends on the Fed path — if liquidity is forecast to shift from tightening to easing, the position's rationale weakens on the 6-month horizon even if it's correct today.
+
+Example: If the current regime is Stagflation and the 6-month forecast gives 50% probability to Disinflationary Slowdown, gold (which holds up in both regimes because it responds to both inflation fear AND growth fear) deserves full conviction sizing. But a commodities position like GSG (which works in Stagflation because inflation is rising, but suffers in Disinflationary Slowdown because the inflation driver normalizes) might warrant a more cautious scaling pace — not a skip, but slower steps.
+
+**2. Devil's advocate enrichment.** The forecast's conditional triggers should appear in the devil's advocate reasoning for relevant positions. If the forecast says "Hormuz resolution within 6-8 weeks shifts regime to Disinflationary Slowdown," that is a concrete, testable bear case for every position that depends on the current Stagflation regime persisting.
+
+**3. Cross-regime position awareness.** When choosing between multiple positions competing for turnover budget, prefer positions that carry value across the current regime AND the forecast's most likely next regime. This is a tiebreaker, not an override — a high-conviction current-regime-only position still beats a low-conviction cross-regime one.
+
+**What this is NOT:**
+- It is NOT a reason to build positions for a future regime that hasn't arrived. The target allocation comes from T2, which uses the current regime template. T3 does not second-guess T2's target.
+- It is NOT a probability-weighted blending formula. There is no mechanical rule like "reduce position by (1 - persistence probability)."
+- It is NOT a reason to skip positions. If the reconciliation says the portfolio needs GSG, the forecast doesn't override that. It may affect *pace* (scale slower if the regime looks short-lived) but not *direction* (skip entirely).
+- It does NOT change the priority stack. Kill switches, drawdown, regime change rotation — all still come first. Forecast awareness is a lens on how to execute, not what to execute.
+
+**In the reasoning log:** When the forecast materially influences a sizing or scaling decision, note it explicitly. Example: "GSG scaled at 40% of target instead of 50% — 6-month forecast gives Stagflation only 35% persistence, GSG has minimal value in Disinflationary Slowdown base case." This makes the judgment auditable and lets the improvement loop (T7) track whether forecast-informed sizing decisions outperform or underperform purely current-regime sizing.
 
 ## Decision Framework
 

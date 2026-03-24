@@ -182,13 +182,150 @@ Note: Analyst views are a contrarian/confirmation check, not a regime model inpu
 - When inputs conflict, name the conflict. Don't resolve it by ignoring one input.
 - Prior week comparison is mandatory when prior synthesis exists
 
+## Structured Data Sidecar (synthesis-data.json)
+
+**After writing the markdown synthesis, also write a companion JSON file** to `outputs/synthesis/YYYY-Www-synthesis-data.json` (e.g., `2026-W13-synthesis-data.json`). This file is the machine-readable source of truth for the dashboard and trading engine. It eliminates the need for downstream consumers to parse markdown.
+
+The JSON must contain **all** structured data from the synthesis. The markdown file continues to be the human-readable research note — it can evolve its format freely. The JSON is the stable contract.
+
+```json
+{
+  "week": "2026-W13",
+  "date": "2026-03-24",
+
+  "regime": {
+    "quadrant": "Stagflation",
+    "weeks_held": 4,
+    "direction": "Stable",
+    "confidence": "High",
+    "change_from_last_week": "No change",
+    "growth_score": -0.28,
+    "inflation_score": 0.42,
+    "regime_change_probability": "10%"
+  },
+
+  "narrative": {
+    "regime_assessment": "[The 2-3 sentence narrative from the Regime Assessment section — why this quadrant, what's the dominant signal]",
+    "liquidity_picture": "[2-3 sentences from the Liquidity Picture section]",
+    "growth_picture": "[2-3 sentences from the Growth Picture section]",
+    "policy_picture": "[2-3 sentences from the Policy Picture section]",
+    "positioning_picture": "[2-3 sentences from the Positioning Picture section]",
+    "what_changed": "[The 1-3 things from What Changed This Week]",
+    "what_to_watch": "[From What to Watch Next Week]",
+    "signal_vs_noise": "[From Signal vs. Noise]",
+    "analyst_check": "[Summary from External Analyst Check, or null if unavailable]"
+  },
+
+  "forecasts": [
+    {
+      "horizon": "6-month",
+      "regime": "Disinflationary Slowdown",
+      "probability": 0.60,
+      "alternative_regime": "Stagflation",
+      "alternative_probability": 0.35,
+      "growth_score_range": [0.10, -0.30],
+      "inflation_score_range": [-0.10, 0.30],
+      "key_assumption": "[what has to hold true]",
+      "what_would_change_it": "[specific development that shifts trajectory]",
+      "confidence": "Moderate-High",
+      "conditional_triggers": ["oil resolution below $80", "Fed rhetoric shift"]
+    },
+    {
+      "horizon": "12-month",
+      "regime": "Goldilocks",
+      "probability": 0.45,
+      "alternative_regime": "Disinflationary Slowdown",
+      "alternative_probability": 0.40,
+      "growth_score_range": [0.15, 0.40],
+      "inflation_score_range": [-0.20, 0.10],
+      "key_assumption": "[what has to hold true]",
+      "what_would_change_it": "[specific development]",
+      "confidence": "Moderate",
+      "conditional_triggers": ["cyclical recovery post-disinflation", "policy normalization"]
+    }
+  ],
+
+  "forecast_table": [
+    {
+      "time_horizon": "W13 (current)",
+      "regime": "STAGFLATION",
+      "growth_score": "-0.28",
+      "inflation_score": "+0.42",
+      "key_driver": "Oil elevated; sticky core inflation; policy trapped",
+      "confidence": "HIGH"
+    },
+    {
+      "time_horizon": "W14-16 (2 weeks)",
+      "regime": "STAGFLATION (most likely)",
+      "growth_score": "-0.20 to -0.40",
+      "inflation_score": "+0.35 to +0.50",
+      "key_driver": "Watch oil stabilization; 2-week confirmation rule",
+      "confidence": "HIGH"
+    }
+  ],
+
+  "drivers": {
+    "growth": {
+      "score": -0.28,
+      "direction": "weakening",
+      "key_data": ["NFP -92K", "unemployment 4.4%", "CFNAI -0.01"]
+    },
+    "inflation": {
+      "score": 0.42,
+      "direction": "sticky",
+      "key_data": ["Core CPI 2.47%", "Core PCE +0.364% MoM", "breakevens stable"]
+    },
+    "liquidity": {
+      "score_description": "structurally loose",
+      "nfci": -0.4857,
+      "nfci_percentile": 96,
+      "nfci_streak_weeks": 25,
+      "direction": "stable-loose",
+      "key_data": ["Fed balance sheet $6.66T expanding", "M2 contraction bias -0.81% 4w", "HY OAS 319bp tightening"]
+    }
+  },
+
+  "meta": {
+    "skill": "weekly-macro-synthesis",
+    "skill_version": "1.3",
+    "run_date": "[ISO date]",
+    "inputs_read": {
+      "central_bank_watch": true,
+      "liquidity_credit": true,
+      "macro_data": true,
+      "geopolitical": true,
+      "positioning": true,
+      "prior_synthesis": true
+    },
+    "quality": {
+      "self_score": 0.85,
+      "confidence": "high",
+      "inputs_available": 5,
+      "regime_changed": false
+    },
+    "notes": ""
+  }
+}
+```
+
+**Rules for the JSON sidecar:**
+1. Write it to the same `outputs/synthesis/` directory as the markdown file, using the same week prefix.
+2. All narrative fields must contain the **actual text** from the synthesis — not placeholders. Copy the narrative paragraphs verbatim from the corresponding sections.
+3. The `forecast_table` array must contain **every row** from the Regime Forecast Summary Table in the markdown. Do not truncate.
+4. The `forecasts` array captures the detailed 6-month and 12-month forecast reasoning (regime, probability, assumptions, triggers). This is the structured version of the "Regime Forecast — 6 and 12 Months" section.
+5. The `drivers` block captures the current state of the three underlying forces. This feeds dashboard visualizations and the trading engine's driver-level reasoning.
+6. If a section is unavailable (e.g., analyst monitor didn't run), set the value to `null`, not an empty string.
+7. The YAML front matter in the markdown file continues to exist for backward compatibility. The JSON sidecar supersedes it for all downstream consumers.
+
 ## Meta Block
+
+The YAML meta block at the end of the markdown file is retained for backward compatibility. New runs should ensure the JSON sidecar is the authoritative source.
 
 ```yaml
 ---
 meta:
   skill: weekly-macro-synthesis
-  skill_version: "1.2"
+  skill_version: "1.3"
   run_date: "[ISO date]"
   inputs_read:
     central_bank_watch: [true/false — was this week's output available?]

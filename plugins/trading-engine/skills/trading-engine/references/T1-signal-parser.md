@@ -36,9 +36,20 @@ If STALE, stop here and output an empty signal set with the staleness warning.
 
 ## Extraction Process
 
+### Preferred source: synthesis-data.json
+
+Before parsing the markdown synthesis, check for a structured JSON sidecar at `{macro_advisor_outputs}/synthesis/YYYY-Www-synthesis-data.json` (same week prefix as the synthesis markdown). If this file exists, use it as the primary data source for Steps 1, 1b, and parts of Step 2. The JSON sidecar contains pre-structured regime data, forecasts, driver readings, and narrative content — eliminating the need to parse markdown.
+
+When the JSON sidecar is available:
+- **Step 1 (Regime Signal):** Read directly from `sidecar.regime` (quadrant, confidence, direction, weeks_held).
+- **Step 1b (Regime Forecast):** Read directly from `sidecar.forecasts` (regime, probability, score ranges, assumptions, triggers) and `sidecar.drivers` (growth/inflation/liquidity readings). The `sidecar.forecast_table` array contains the full forecast summary table.
+- **Step 2 (Cross-Asset and Sector):** Still read from the briefing-data.json or synthesis markdown — the sidecar covers regime and forecasts, not thesis-level detail.
+
+If the JSON sidecar does not exist (older synthesis from before this feature), fall back to markdown parsing as described below.
+
 ### Step 1: Regime Signal
 
-From the weekly synthesis (or briefing), extract:
+From the weekly synthesis (or briefing, or synthesis-data.json sidecar), extract:
 
 ```json
 {
@@ -52,6 +63,73 @@ From the weekly synthesis (or briefing), extract:
   }
 }
 ```
+
+### Step 1b: Regime Forecast
+
+From the weekly synthesis "Regime Forecast — 6 and 12 Months" section, extract the forward-looking regime view. This data is informational context for T3's reasoning — it does not feed into T2's target allocation.
+
+The macro advisor's regime model is built on three underlying forces: **Growth**, **Inflation**, and **Liquidity**. The regime quadrant is an output of where these forces sit and where they're heading. The forecast extraction must capture both the regime label AND the underlying driver trajectories — the drivers are what make the forecast actionable for T3's position-level reasoning.
+
+```json
+{
+  "regime_forecast": {
+    "current_drivers": {
+      "growth": {
+        "score": -0.35,
+        "direction": "decelerating",
+        "key_data": ["LEI -1.3% 6-month", "CFNAI -0.01", "payrolls -92K", "unemployment 4.4% rising"]
+      },
+      "inflation": {
+        "score": 0.52,
+        "direction": "rising",
+        "driver": "supply-side (oil shock)",
+        "key_data": ["WTI $98.32 (+48% monthly)", "5Y breakeven 2.63%", "Michigan expectations 4.0%"]
+      },
+      "liquidity": {
+        "state": "loose but tightening at margin",
+        "direction": "transitioning to controlled tightening",
+        "key_data": ["NFCI -0.4857 (96th pct loose)", "HY spreads 324bps widening from 306", "M2 4-week -0.81%"]
+      }
+    },
+    "6_month": {
+      "most_likely": {"regime": "quadrant name", "probability_pct": 50},
+      "secondary": {"regime": "quadrant name", "probability_pct": 35},
+      "tail": {"regime": "quadrant name", "probability_pct": 15},
+      "key_assumption": "one sentence — the central scenario that drives the base case",
+      "confidence": "High|Medium-High|Medium|Low-Medium|Low",
+      "conditional_triggers": [
+        "specific event or data point that would shift probabilities — extract each 'What would change it' bullet"
+      ],
+      "driver_trajectories": {
+        "growth": "where growth is heading and why — extract from synthesis Growth Picture and forecast assumptions",
+        "inflation": "where inflation is heading and why — extract the primary driver (demand-pull vs supply-push) and what resolves or sustains it",
+        "liquidity": "where liquidity is heading — Fed policy path, credit conditions trajectory, balance sheet direction"
+      }
+    },
+    "12_month": {
+      "most_likely": {"regime": "quadrant name", "probability_pct": 40},
+      "secondary": {"regime": "quadrant name", "probability_pct": 35},
+      "tail": {"regime": "quadrant name", "probability_pct": 25},
+      "key_assumption": "one sentence",
+      "confidence": "High|Medium-High|Medium|Low-Medium|Low",
+      "conditional_triggers": [],
+      "driver_trajectories": {
+        "growth": "12-month growth path",
+        "inflation": "12-month inflation path",
+        "liquidity": "12-month liquidity path"
+      }
+    }
+  }
+}
+```
+
+Parsing rules:
+- **Current drivers:** Extract the growth score and inflation score from the "Regime coordinates" section of the synthesis. Extract direction and key data points from the Growth Picture, the inflation discussion in the Regime Assessment, and the Liquidity Picture. These are the starting point — T3 needs to know where the forces are *now* to understand where they're *going*.
+- **Driver trajectories:** For each horizon, extract the synthesis's view on where each force is heading. The growth trajectory comes from the forecast's key assumption and the Growth Picture's forward signals. The inflation trajectory comes from the forecast's oil/energy assumptions and the inflation data trend. The liquidity trajectory comes from the Policy Picture's Fed path and the Liquidity Picture's credit conditions trend. Write these as concise narrative sentences, not data dumps.
+- **Current driver data:** Extract 3-5 of the most regime-relevant data points for each force. Prefer hard data (FRED series, official releases) over sentiment indicators. These give T3 specific numbers to reference in reasoning.
+- Extract probability percentages as integers. If the synthesis gives a range (e.g., "25-30%"), use the midpoint.
+- The `conditional_triggers` array should contain every specific scenario the synthesis identifies as capable of shifting the probability distribution. These are critical — they tell T3 what data to watch for regime transition signals.
+- If the synthesis does not contain a regime forecast section (older format or missing), set `regime_forecast` to `null` and note this in the `conflicts` array. Do not fabricate forecasts.
 
 ### Step 2: Asset Allocation Signals
 
@@ -149,6 +227,7 @@ Produce a single JSON file: `outputs/portfolio/latest-signals.json`
     "status": "FRESH|STALE"
   },
   "regime": { ... },
+  "regime_forecast": { ... },
   "asset_signals": [ ... ],
   "sector_signals": [ ... ],
   "thesis_signals": [ ... ],
@@ -184,6 +263,7 @@ meta:
   run_date: "[ISO date]"
   source_freshness_days: [number]
   regime_extracted: [true/false]
+  regime_forecast_extracted: [true/false]
   thesis_count: [number]
   thesis_tradeable: [number]
   kill_switch_alerts: [number]

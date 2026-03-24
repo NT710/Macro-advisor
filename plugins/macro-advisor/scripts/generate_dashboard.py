@@ -632,8 +632,139 @@ def format_thesis_html(md_text):
     return '\n'.join(output_lines)
 
 
+def _regime_name_from_string(text):
+    """Normalize a regime name from various formats to the canonical dashboard name."""
+    lower = text.lower().strip()
+    if "goldilocks" in lower:
+        return "Goldilocks"
+    elif "overheating" in lower:
+        return "Overheating"
+    elif "stagflation" in lower and "dis" not in lower:
+        return "Stagflation"
+    elif "disinflation" in lower or "slowdown" in lower:
+        return "Disinflationary Slowdown"
+    return "Unknown"
+
+
+def _regime_coords(regime_name):
+    """Map regime name to (x, y) chart coordinates."""
+    coords = {
+        "Goldilocks": (0.5, -0.5),
+        "Overheating": (0.5, 0.5),
+        "Disinflationary Slowdown": (-0.5, -0.5),
+        "Stagflation": (-0.5, 0.5),
+        "Unknown": (0, 0),
+    }
+    return coords.get(regime_name, (0, 0))
+
+
+def _build_forecast_table_md(forecast_table):
+    """Convert a forecast_table JSON array into a markdown table string."""
+    if not forecast_table:
+        return ""
+    headers = ["Time Horizon", "Regime", "Growth Score", "Inflation Score", "Key Driver", "Confidence"]
+    rows = []
+    for row in forecast_table:
+        rows.append(f'| **{row.get("time_horizon", "")}** | {row.get("regime", "")} | {row.get("growth_score", "")} | {row.get("inflation_score", "")} | {row.get("key_driver", "")} | {row.get("confidence", "")} |')
+    header_line = "| " + " | ".join(headers) + " |"
+    sep_line = "|" + "|".join(["---"] * len(headers)) + "|"
+    return "\n".join([header_line, sep_line] + rows)
+
+
+def parse_regime_from_json(json_data):
+    """Extract regime data from the synthesis-data.json sidecar.
+
+    Returns the same dict shape as parse_regime_from_synthesis for drop-in compatibility.
+    """
+    regime_block = json_data.get("regime", {})
+    narrative_block = json_data.get("narrative", {})
+    forecasts = json_data.get("forecasts", [])
+    forecast_table = json_data.get("forecast_table", [])
+
+    regime = _regime_name_from_string(regime_block.get("quadrant", "Unknown"))
+    direction = regime_block.get("direction", "Stable")
+    confidence = regime_block.get("confidence", "Medium")
+    weeks_held = str(regime_block.get("weeks_held", "")) if regime_block.get("weeks_held") else ""
+
+    # Use actual growth/inflation scores for chart coordinates when available
+    gs = regime_block.get("growth_score")
+    inf = regime_block.get("inflation_score")
+    if gs is not None and inf is not None:
+        x = max(-1.0, min(1.0, float(gs)))
+        y = max(-1.0, min(1.0, float(inf)))
+    else:
+        x, y = _regime_coords(regime)
+
+    # Extract 6-month and 12-month forecast regimes
+    forecast_6m = "Unknown"
+    forecast_12m = "Unknown"
+    forecast_6m_x, forecast_6m_y = 0, 0
+    forecast_12m_x, forecast_12m_y = 0, 0
+
+    for fc in forecasts:
+        horizon = fc.get("horizon", "").lower()
+        fc_regime = _regime_name_from_string(fc.get("regime", "Unknown"))
+        # Use midpoint of score ranges for chart positioning when available
+        gs_range = fc.get("growth_score_range")
+        inf_range = fc.get("inflation_score_range")
+        if gs_range and inf_range and len(gs_range) == 2 and len(inf_range) == 2:
+            fc_x = max(-1.0, min(1.0, (float(gs_range[0]) + float(gs_range[1])) / 2))
+            fc_y = max(-1.0, min(1.0, (float(inf_range[0]) + float(inf_range[1])) / 2))
+        else:
+            fc_x, fc_y = _regime_coords(fc_regime)
+
+        if "6" in horizon and forecast_6m == "Unknown":
+            forecast_6m = fc_regime
+            forecast_6m_x, forecast_6m_y = fc_x, fc_y
+        elif "12" in horizon and forecast_12m == "Unknown":
+            forecast_12m = fc_regime
+            forecast_12m_x, forecast_12m_y = fc_x, fc_y
+
+    # Build narrative text from JSON narrative block
+    regime_narrative = narrative_block.get("regime_assessment", "") or ""
+
+    # Build forecast section as markdown from the forecast_table array
+    forecast_section_md = _build_forecast_table_md(forecast_table)
+
+    # What changed
+    what_changed_md = narrative_block.get("what_changed", "") or ""
+
+    # Build the full narrative sections for the regime tab (liquidity, growth, policy, positioning)
+    # These are rendered below the main narrative in the regime panel
+    extra_narratives = []
+    for key, label in [("liquidity_picture", "Liquidity"), ("growth_picture", "Growth"),
+                       ("policy_picture", "Policy"), ("positioning_picture", "Positioning")]:
+        text = narrative_block.get(key, "")
+        if text:
+            extra_narratives.append(f"**{label}:** {text}")
+    if extra_narratives:
+        regime_narrative = regime_narrative + "\n\n" + "\n\n".join(extra_narratives) if regime_narrative else "\n\n".join(extra_narratives)
+
+    return {
+        "regime": regime,
+        "direction": direction,
+        "confidence": confidence,
+        "x": x,
+        "y": y,
+        "forecast_6m": forecast_6m,
+        "forecast_6m_x": forecast_6m_x,
+        "forecast_6m_y": forecast_6m_y,
+        "forecast_12m": forecast_12m,
+        "forecast_12m_x": forecast_12m_x,
+        "forecast_12m_y": forecast_12m_y,
+        "weeks_held": weeks_held,
+        "regime_narrative": regime_narrative,
+        "forecast_section_md": forecast_section_md,
+        "what_changed_md": what_changed_md,
+    }
+
+
 def parse_regime_from_synthesis(synthesis_text):
-    """Extract regime data including forecasts from synthesis for the visualization."""
+    """Extract regime data including forecasts from synthesis markdown (legacy fallback).
+
+    NOTE: This is the markdown-parsing fallback used when synthesis-data.json is not available.
+    New weekly runs should produce synthesis-data.json which is read by parse_regime_from_json().
+    """
     regime = "Unknown"
     direction = "Stable"
     confidence = "Medium"
@@ -648,19 +779,14 @@ def parse_regime_from_synthesis(synthesis_text):
     for i, line in enumerate(lines):
         lower = line.lower()
 
-        # Current regime — only match "Current Quadrant" line or the first "Regime:" line
-        if regime == "Unknown" and ("current quadrant" in lower or ("regime:" in lower and "forecast" not in lower and "most likely" not in lower)):
-            if "goldilocks" in lower:
-                regime = "Goldilocks"
-            elif "overheating" in lower:
-                regime = "Overheating"
-            elif "stagflation" in lower:
-                regime = "Stagflation"
-            elif "disinflation" in lower or "slowdown" in lower:
-                regime = "Disinflationary Slowdown"
+        # Current regime — match "Current Quadrant" line, YAML front matter, or "Regime:" metadata
+        if regime == "Unknown":
+            if "current quadrant" in lower:
+                regime = _regime_name_from_string(line)
+            elif lower.strip().startswith("regime:") and "forecast" not in lower and "most likely" not in lower:
+                regime = _regime_name_from_string(line)
 
         if "direction:" in lower and "forecast" not in lower and direction == "Stable":
-            # Extract the raw text after "Direction:"
             match = re.search(r'\*{0,2}[Dd]irection:?\*{0,2}\s*(.+)', line)
             if match:
                 direction = match.group(1).strip()
@@ -678,33 +804,17 @@ def parse_regime_from_synthesis(synthesis_text):
             in_forecast_section = True
 
         if in_forecast_section:
-            # Track which forecast horizon we're currently under
             if "6 month" in lower or "6-month" in lower:
                 current_forecast = "6m"
             elif "12 month" in lower or "12-month" in lower:
                 current_forecast = "12m"
 
-            # Match "most likely regime:" on its own line
             if "most likely" in lower and "regime" in lower:
                 target = current_forecast if 'current_forecast' in dir() else None
                 if target == "6m" and forecast_6m == "Unknown":
-                    if "goldilocks" in lower:
-                        forecast_6m = "Goldilocks"
-                    elif "overheating" in lower:
-                        forecast_6m = "Overheating"
-                    elif "stagflation" in lower:
-                        forecast_6m = "Stagflation"
-                    elif "disinflation" in lower or "slowdown" in lower:
-                        forecast_6m = "Disinflationary Slowdown"
+                    forecast_6m = _regime_name_from_string(line)
                 elif target == "12m" and forecast_12m == "Unknown":
-                    if "goldilocks" in lower:
-                        forecast_12m = "Goldilocks"
-                    elif "overheating" in lower:
-                        forecast_12m = "Overheating"
-                    elif "stagflation" in lower:
-                        forecast_12m = "Stagflation"
-                    elif "disinflation" in lower or "slowdown" in lower:
-                        forecast_12m = "Disinflationary Slowdown"
+                    forecast_12m = _regime_name_from_string(line)
 
     # --- Extract text sections for the regime tab ---
     weeks_held = ""
@@ -712,7 +822,7 @@ def parse_regime_from_synthesis(synthesis_text):
     forecast_section_md = ""
     what_changed_md = ""
 
-    # Extract weeks held
+    # Extract weeks held — try multiple patterns
     for line in lines:
         lower = line.lower()
         if "weeks in current regime" in lower:
@@ -720,36 +830,77 @@ def parse_regime_from_synthesis(synthesis_text):
             if match:
                 weeks_held = match.group(1).strip()
             break
+        elif "regime duration" in lower:
+            match = re.search(r'(\d+)\s*weeks?', lower)
+            if match:
+                weeks_held = match.group(1)
+            break
 
-    # Extract regime narrative (paragraph after Regime Assessment header, after the metadata lines)
-    # Matches both ## and ### headers
+    # Extract regime narrative from the Regime Assessment section
+    # Look for "Regime Assessment" or "Regime Quadrant Assessment" headers
     in_regime_section = False
     metadata_lines_seen = 0
     narrative_lines = []
     for line in lines:
         lower = line.lower().strip()
-        if lower.startswith("#") and "regime assessment" in lower:
+        if lower.startswith("#") and ("regime assessment" in lower or "regime quadrant assessment" in lower):
+            # Only match the TOP-LEVEL regime header (## level), not sub-sections like "Liquidity Regime Assessment"
+            if "liquidity" in lower or "policy" in lower or "growth" in lower or "inflation" in lower:
+                continue
             in_regime_section = True
             continue
         if in_regime_section:
-            # Skip metadata lines (bold key-value pairs)
             if lower.startswith("**") and ":" in lower:
                 metadata_lines_seen += 1
                 continue
-            # Skip blank lines between metadata and narrative
             if metadata_lines_seen > 0 and not lower:
                 continue
-            # Stop at next section header or horizontal rule
+            # Stop at next ## header, ### sub-header, or horizontal rule
             if lower.startswith("#") or lower == "---":
                 break
             if lower:
                 narrative_lines.append(line)
-                metadata_lines_seen = 99  # prevent re-entering skip mode
+                metadata_lines_seen = 99
 
     regime_narrative = " ".join(narrative_lines).strip()
 
+    # If narrative is still empty, try the "Regime Edge Assessment" or "Quadrant Stability Analysis" block
+    if not regime_narrative:
+        in_stability = False
+        stability_lines = []
+        for line in lines:
+            lower = line.lower().strip()
+            if lower.startswith("#") and ("regime edge" in lower or "quadrant stability" in lower or "stability analysis" in lower):
+                in_stability = True
+                continue
+            if in_stability:
+                if lower.startswith("#") or lower == "---":
+                    break
+                if lower and not lower.startswith("**") and not lower.startswith("- "):
+                    stability_lines.append(line.strip())
+        if stability_lines:
+            regime_narrative = " ".join(stability_lines).strip()
+
+    # Last resort: try paragraph after "Regime Edge Assessment" bold block
+    if not regime_narrative:
+        in_coords = False
+        blank_count = 0
+        for line in lines:
+            lower = line.lower().strip()
+            if "coordinate-label consistency" in lower or "regime coordinates" in lower:
+                in_coords = True
+                blank_count = 0
+                continue
+            if in_coords:
+                # Stop at section boundaries
+                if lower.startswith("#") or lower == "---":
+                    break
+                # Skip metadata, list items, and table rows
+                if lower and not lower.startswith("**") and not lower.startswith("-") and not lower.startswith("|") and not lower.startswith("✓") and not lower.startswith("✗"):
+                    regime_narrative = line.strip()
+                    break
+
     # Extract full Regime Forecast section as markdown
-    # Include both 6-month and 12-month sub-sections (don't break on --- between them)
     in_forecast_text = False
     forecast_lines = []
     for line in lines:
@@ -758,14 +909,11 @@ def parse_regime_from_synthesis(synthesis_text):
             in_forecast_text = True
             continue
         if in_forecast_text:
-            # Only break on a true next-section ## header (not ### sub-headers or --- dividers)
             if lower.startswith("## ") and not lower.startswith("### "):
-                # Check if this is a forecast sub-section we should keep
                 if '12-month' in lower or '12 month' in lower or '6-month' in lower or '6 month' in lower or 'forecast' in lower:
                     forecast_lines.append(line)
                     continue
                 break
-            # --- horizontal rules between 6M and 12M should not break extraction
             forecast_lines.append(line)
     forecast_section_md = "\n".join(forecast_lines).strip()
 
@@ -783,19 +931,22 @@ def parse_regime_from_synthesis(synthesis_text):
             what_changed_lines.append(line)
     what_changed_md = "\n".join(what_changed_lines).strip()
 
-    # Map regime to coordinates
-    # X = growth direction (-1 to 1), Y = inflation direction (-1 to 1)
-    coords = {
-        "Goldilocks": (0.5, -0.5),
-        "Overheating": (0.5, 0.5),
-        "Disinflationary Slowdown": (-0.5, -0.5),
-        "Stagflation": (-0.5, 0.5),
-        "Unknown": (0, 0),
-    }
+    # Use actual scores from YAML front matter if available
+    x, y = _regime_coords(regime)
+    yaml_match_gs = re.search(r'^growth_score:\s*([-\d.]+)', synthesis_text, re.MULTILINE)
+    yaml_match_inf = re.search(r'^inflation_score:\s*([-\d.]+)', synthesis_text, re.MULTILINE)
+    if yaml_match_gs and yaml_match_inf:
+        x = max(-1.0, min(1.0, float(yaml_match_gs.group(1))))
+        y = max(-1.0, min(1.0, float(yaml_match_inf.group(1))))
 
-    x, y = coords.get(regime, (0, 0))
-    f6x, f6y = coords.get(forecast_6m, (0, 0))
-    f12x, f12y = coords.get(forecast_12m, (0, 0))
+    f6x, f6y = _regime_coords(forecast_6m)
+    f12x, f12y = _regime_coords(forecast_12m)
+
+    # Try to extract weeks_held from YAML front matter if not found in markdown body
+    if not weeks_held:
+        yaml_weeks = re.search(r'^regime_weeks:\s*(\d+)', synthesis_text, re.MULTILINE)
+        if yaml_weeks:
+            weeks_held = yaml_weeks.group(1)
 
     return {
         "regime": regime,
@@ -1260,10 +1411,22 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     skill_files = skill_files or []
     methodology = methodology or ""
 
-    # Regime: JSON-primary for structured fields, markdown fallback for narratives
-    regime_data = parse_regime_from_synthesis(synthesis)  # always parse for narrative/forecast text
+    # Regime: Try synthesis-data.json sidecar first (stable contract),
+    # fall back to markdown parsing (legacy) if not available.
+    regime_data = None
+    if output_dir:
+        sidecar_path = output_dir / "synthesis" / f"{week}-synthesis-data.json"
+        if sidecar_path.exists():
+            try:
+                sidecar_json = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                regime_data = parse_regime_from_json(sidecar_json)
+            except Exception as e:
+                import sys
+                print(f"Warning: failed to parse {sidecar_path}: {e}", file=sys.stderr)
+    if regime_data is None:
+        regime_data = parse_regime_from_synthesis(synthesis)  # legacy fallback
 
-    # NOTE: Regime JSON override happens after briefing_json_raw is loaded (see below)
+    # NOTE: Regime JSON override from briefing-data.json happens below (further enrichment)
 
     # Parse snapshot for key numbers
     snap = {}
@@ -1432,31 +1595,28 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         for f in presentations_dir.glob("*-report.md"):
             thesis_presentations[f.stem.replace("-report", "")] = f.read_text(encoding="utf-8")
 
-    # Helper: generate conviction bar HTML
+    # Helper: generate conviction label HTML
     def _conviction_bar_html(conviction_str):
-        """Generate 4-block conviction bar. High=3 filled, Medium=2, Low=1, empty=0.
-        Handles compound values like 'Medium (strengthening)', 'Medium-High', etc."""
+        """Generate a colored text label for conviction level.
+        Preserves the exact wording (e.g. 'Low-Medium', 'Medium-High',
+        'High (strengthening)') and maps color by the dominant level."""
         raw = conviction_str.strip().lower() if conviction_str else ""
-        # Extract the primary level: take the first word, stripping parentheticals
+        # Determine dominant level for color mapping
         level = raw.split("(")[0].split(",")[0].strip()
-        # Handle hyphenated ranges like "medium-high" — take the higher
         if "-" in level:
             parts = [p.strip() for p in level.split("-")]
             rank = {"high": 3, "medium": 2, "med": 2, "low": 1}
             level = max(parts, key=lambda p: rank.get(p, 0))
         if level in ("high", "h"):
-            filled, css_class = 3, ""
+            color = "var(--green)"
         elif level in ("medium", "med", "m"):
-            filled, css_class = 2, " medium"
+            color = "var(--amber)"
         elif level in ("low", "l"):
-            filled, css_class = 1, " low"
+            color = "var(--red)"
         else:
-            filled, css_class = 0, ""
-        blocks = ''.join(
-            f'<div class="block{" filled" if j < filled else ""}"></div>'
-            for j in range(4)
-        )
-        return f'<div class="conviction-bar{css_class}" title="Conviction: {conviction_str or "Unknown"}">{blocks}</div>'
+            color = "var(--text-muted)"
+        display = conviction_str.strip() if conviction_str else "—"
+        return f'<span class="conviction-label" style="color: {color}; font-size: 10px; font-weight: 600; white-space: nowrap;">{display}</span>'
 
     # Build thesis index table + detail panels
     thesis_table_rows = ""
@@ -2985,21 +3145,13 @@ tr:hover td {{
 /* Amendment row interactions */
 .amendment-row:hover {{ background: var(--surface2); }}
 .amendment-detail td {{ font-family: var(--mono); }}
-/* Conviction bar — 4 blocks visual indicator */
-.conviction-bar {{
-    display: flex;
-    gap: 2px;
-    align-items: center;
+/* Conviction label — colored text */
+.conviction-label {{
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
 }}
-.conviction-bar .block {{
-    width: 12px;
-    height: 6px;
-    background: var(--surface3);
-    border-radius: 1px;
-}}
-.conviction-bar .block.filled {{ background: var(--green); }}
-.conviction-bar.medium .block.filled {{ background: var(--accent); }}
-.conviction-bar.low .block.filled {{ background: var(--red); }}
 .thesis-horizon {{
     font-size: 10px;
     color: var(--text-muted);
@@ -3576,6 +3728,19 @@ function showTab(tabId) {{
     document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('tab-' + tabId).classList.add('active');
     event.target.classList.add('active');
+
+    // Chart.js cannot measure canvas dimensions inside display:none containers.
+    // When a tab becomes visible, force-resize any Chart.js instances it contains.
+    requestAnimationFrame(() => {{
+        if (tabId === 'regime' && regimeChartInstances['regimeChart']) {{
+            regimeChartInstances['regimeChart'].resize();
+        }}
+        if (tabId === 'overview' && regimeChartInstances['regimeChartOverview']) {{
+            regimeChartInstances['regimeChartOverview'].resize();
+        }}
+        // Also resize any thesis charts that may be in the visible tab
+        Object.values(Chart.instances || {{}}).forEach(c => c.resize());
+    }});
 }}
 
 // Thesis filters
@@ -3635,11 +3800,14 @@ function showThesis(idx) {{
 }}
 
 // Regime Charts (Overview and main)
+// Store chart instances so we can resize them when hidden tabs become visible
+const regimeChartInstances = {{}};
+
 function renderRegimeChart(canvasId) {{
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
-    new Chart(canvas.getContext('2d'), {{
+    const chartInstance = new Chart(canvas.getContext('2d'), {{
         type: 'scatter',
         data: {{
             datasets: [
@@ -3800,6 +3968,7 @@ function renderRegimeChart(canvasId) {{
             }}
         }}]
     }});
+    regimeChartInstances[canvasId] = chartInstance;
 }}
 
 // Render both regime charts
@@ -4244,6 +4413,17 @@ def main():
     # Build historical regime data for all weeks (for the regime trail)
     regime_history = []
     for w in reversed(all_weeks):  # oldest first
+        # Try JSON sidecar first, fall back to markdown parsing
+        sidecar_path = output_dir / "synthesis" / f"{w}-synthesis-data.json"
+        if sidecar_path.exists():
+            try:
+                sidecar_json = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                rd = parse_regime_from_json(sidecar_json)
+                rd["week"] = w
+                regime_history.append(rd)
+                continue
+            except Exception:
+                pass
         syn = read_file(output_dir / "synthesis" / f"{w}-synthesis.md")
         if syn:
             rd = parse_regime_from_synthesis(syn)
