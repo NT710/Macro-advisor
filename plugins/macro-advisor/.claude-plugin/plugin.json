@@ -1,6 +1,6 @@
 {
   "name": "macro-advisor",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Autonomous macro research system. Collects economic data, monitors central banks, tracks liquidity conditions, scans geopolitical risks, synthesizes macro regimes, generates investment theses with ETF implementation, and delivers weekly HTML dashboards.",
   "author": {
     "name": "Macro Advisor Contributors"
