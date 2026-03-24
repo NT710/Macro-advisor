@@ -23,20 +23,48 @@ Write a weekly macro memo. Not a data dump — a narrative. The reader opens the
 
 After compiling the briefing memo, write a structured JSON file alongside it:
 
-**Path:** `outputs/briefings/{week}-briefing-data.json`
+**Path:** `outputs/briefings/{week}-briefing-data.json` (e.g. `2026-W13-briefing-data.json` — week prefix is mandatory, must match the memo filename)
 
 This file provides the dashboard with all structured data it needs. The dashboard's Overview tab reads cross-asset and sector positioning from this JSON. The Theses tab reads thesis data from the thesis files directly. The memo does NOT contain tables — the JSON carries the structured data, the memo carries the narrative.
 
 ```json
 {
+  "meta": {
+    "week": "2026-W13",
+    "run_date": "2026-03-23",
+    "regime": "Stagflation",
+    "regime_weeks": 4,
+    "regime_confidence": "High",
+    "growth_score": -0.35,
+    "inflation_score": 0.52
+  },
+  "regime": {
+    "quadrant": "Stagflation",
+    "weeks_in_regime": 4,
+    "direction": "Stable/Deepening",
+    "confidence": "High",
+    "change_from_prior_week": "None — 4th consecutive week",
+    "growth_score": -0.35,
+    "inflation_score": 0.52,
+    "key_drivers": {
+      "growth": "LEI -1.3% 6M, CFNAI -0.01, unemployment 4.4% rising",
+      "inflation": "WTI +48% month, core CPI 2.47%, 5Y breakeven 2.63%"
+    }
+  },
   "theses": {
     "short-duration-capital-preservation": {
-      "conviction": "High",
-      "recommendation": "Hold"
-    },
-    "energy-oil-shock-beneficiary": {
+      "name": "Short Duration Capital Preservation",
+      "status": "ACTIVE",
+      "weeks_active": 2,
       "conviction": "Medium",
-      "recommendation": "Watch"
+      "direction": "Favor",
+      "recommendation": "Hold",
+      "etfs": "CSBGU0.SW (primary), ITPS.SW (secondary)",
+      "entry_trigger": "Stagflation regime confirmed",
+      "kill_switch": "Fed emergency cuts 50bp+ AND 10Y <3.5%",
+      "assumption_status": "All intact",
+      "mechanism": "Capital preservation during regime uncertainty.",
+      "analyst_support": "Lyn Alden, Luke Gromen"
     }
   },
   "cross_asset": [
@@ -53,34 +81,86 @@ This file provides the dashboard with all structured data it needs. The dashboar
       "sector": "Energy",
       "direction": "Strong Favor",
       "etfs": "IUES.SW (XLE)",
+      "conviction": "Medium-High",
       "why": "Oil at $98 means windfall profits.",
-      "timing": "Tactical — reassess on Hormuz resolution or oil below $85"
+      "trigger_to_add": "Oil above $85 for 4+ weeks",
+      "kill_switch": "Oil below $70 for 5 consecutive days",
+      "timing": "Tactical — reassess on Hormuz resolution"
     }
-  ]
+  ],
+  "watch_points": {
+    "next_week_critical": ["Helium supply updates", "Oil backwardation"],
+    "phase_2_contagion_triggers": ["TSMC fab curtailment", "Korean exports"],
+    "regime_exit_signals": ["Hormuz reopening", "Oil below $85"],
+    "kill_switch_proximity": ["Short-duration: 80% to trigger"]
+  },
+  "private_credit_override": {
+    "active": true,
+    "composite_signal": "benign — majority of proxies converging",
+    "override_reason": "Cliffwater $33B fund gated redemptions Mar 18; Morgan Stanley private credit vehicle froze withdrawals Mar 19",
+    "raw_votes": {"stress": 0, "easing": 2, "neutral": 3, "total": 5}
+  }
 }
 ```
 
 **Rules:**
 
-`theses` object:
+`meta` object (required):
+- `week`: ISO week string (e.g. "2026-W13"). Must match the filename prefix.
+- `run_date`: ISO date of the run (e.g. "2026-03-23").
+- `regime`: current regime quadrant name.
+- `regime_weeks`: integer weeks in current regime (carry forward from synthesis — on first run this is an estimate from data trends, not a run counter).
+- `regime_confidence`: "High", "Medium", or "Low".
+- `growth_score`: float roughly in [-1, 1] range. Negative = contraction.
+- `inflation_score`: float roughly in [-1, 1] range. Positive = above target.
+
+`regime` object (required):
+- `quadrant`: one of "Goldilocks", "Overheating", "Stagflation", "Disinflationary Slowdown".
+- `weeks_in_regime`: integer (from synthesis chain — estimated from data trends on first run, chained thereafter).
+- `direction`: free text (e.g. "Stable/Deepening", "Transitioning toward Goldilocks").
+- `confidence`: "High", "Medium", or "Low".
+- `change_from_prior_week`: one-sentence summary.
+- `growth_score`, `inflation_score`: same as meta (dashboard uses these for precise chart positioning).
+- `key_drivers`: object with `growth` and `inflation` string summaries.
+
+`theses` object (required):
 - Keys are thesis slugs: lowercase, hyphens for spaces, no colons or special characters. Must match the thesis filename minus the `ACTIVE-`/`DRAFT-` prefix and `.md` extension.
-- `conviction`: "High", "Medium", or "Low". Required for every thesis.
-- `recommendation`: The single action word — "Hold", "Add", "Reduce", "Close" (active) or "Activate", "Watch", "Discard" (draft). One word only, capitalized.
+- `name`: human-readable thesis name.
+- `status`: "ACTIVE" or "DRAFT".
+- `conviction`: "High", "Medium", "Medium-High", or "Low". Required for every thesis.
+- `recommendation`: action text — can be a phrase (e.g. "Hold", "Scale entry over 8-12 weeks", "Defer entry until Hormuz resolution"). Required for every thesis.
+- `direction`: stance (e.g. "Favor", "Avoid").
+- `etfs`: ticker string.
+- `entry_trigger`, `kill_switch`, `assumption_status`, `mechanism`, `analyst_support`: context fields.
 - Every thesis on disk must appear.
 
-`cross_asset` array:
+`cross_asset` array (required):
 - One object per asset class row.
-- `what`: asset class name (e.g. "US Stocks (broad)", "Gold", "Oil/Commodities").
-- `direction`: the stance word exactly as used in the memo's reasoning (e.g. "Favor", "Underweight", "Avoid", "Tactical Favor", "Neutral/Avoid").
-- `etfs`: ticker string (e.g. "ZGLD.SW (GLD)").
+- `what`: asset class name (e.g. "US Stocks (broad)", "Gold", "Oil/Commodities"). Use `what` not `asset`.
+- `direction`: the stance word (e.g. "Favor", "Underweight", "Avoid"). Use `direction` not `signal`.
+- `etfs`: ticker string (e.g. "ZGLD.SW (GLD)"). Use `etfs` not `etf`.
 - `why`: one-sentence rationale.
 - `timing`: when to act or reassess.
 
-`sector_view` array:
+`sector_view` array (required):
 - One object per sector row.
-- Same fields as `cross_asset` but with `sector` instead of `what`.
+- `sector`: sector name.
+- `direction`, `etfs` (not `etf`), `conviction`, `why`, `timing`: same conventions as cross_asset.
+- `trigger_to_add`, `kill_switch`: optional but recommended.
+
+`watch_points` object (recommended):
+- `next_week_critical`: array of strings.
+- `phase_2_contagion_triggers`, `regime_exit_signals`, `kill_switch_proximity`: arrays of strings.
+
+`private_credit_override` object (optional — include only when Skill 2 flagged a qualitative-quantitative contradiction):
+- `active`: boolean. `true` if Skill 2's analyst override is present; `false` or omit entirely if no contradiction.
+- `composite_signal`: string. The quantitative composite from the snapshot (e.g. "benign — majority of proxies converging").
+- `override_reason`: string. The specific named events that contradict the composite (e.g. "Cliffwater $33B fund gated redemptions Mar 18"). Must cite named events, not subjective assessments.
+- `raw_votes`: object with `stress`, `easing`, `neutral`, `total` integer counts. Pulled from snapshot `private_credit_proxy`.
 
 This JSON is the **single source of truth** for the dashboard's structured tables. The memo references these views in prose — the JSON renders them as tables in the Overview tab. Both are generated from the same reasoning pass — they cannot contradict.
+
+**Key naming matters.** Use `what`/`direction`/`etfs` (not `asset`/`signal`/`etf`). The dashboard normalizes common variants, but using the canonical names prevents any mismatch.
 
 ---
 

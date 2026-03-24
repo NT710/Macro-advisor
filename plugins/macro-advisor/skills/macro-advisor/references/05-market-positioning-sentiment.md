@@ -49,8 +49,10 @@ Private credit ($1.7T+ market) has no public mark-to-market. These are **adjacen
 - **Senior Loan Officer Survey** (`sloos_tightening_pct`): % of banks tightening C&I loan standards. Quarterly (often stale). Positive = tightening. Above 40 = severe. This is the strongest leading indicator — when banks tighten, private credit borrowers face the same or worse conditions.
 - **C&I Loans Outstanding** (`ci_loans_level_B`, `ci_loans_yoy_pct`): Total bank commercial & industrial lending. Contraction or stagnation = credit withdrawal. YoY growth below 0 = serious.
 - **Leveraged Loan ETF — BKLN** (`leveraged_loan_etf`, `leveraged_loan_month_chg`): Price-based proxy. Leveraged loans share the same borrower universe as private credit (sub-IG corporates, sponsor-backed). Price declines > 2% in a month = stress. Also in `snapshot.markets.bkln_leveraged_loans`.
+- **BDC Income ETF — BIZD** (`bdc_etf`, `bdc_month_chg`): Direct proxy for private credit. BDCs (Business Development Companies) hold private credit loans and are publicly traded, making this the closest observable proxy. Wider thresholds than BKLN (±3% stress/risk-on) because BDCs are equity-like with higher volatility. Also in `snapshot.markets.bizd_bdc_income`.
 - **HY OAS** (`hy_oas_cross_ref`): Cross-reference only — already reported in Credit Spreads. Included here for convergence check.
-- **Composite signal** (`composite_signal`): Requires majority convergence to call stress or benign. Mixed signals = "inconclusive." This is deliberate — do NOT resolve ambiguity by favoring the stress narrative.
+- **Composite signal** (`composite_signal`): Convergence-based composite of 5 proxies. Raw vote breakdown: `stress_count`, `easing_count`, `neutral_count`, `total_proxies`. Requires ≥2 agreeing proxies for directional call. When `neutral_count` is high relative to `total_proxies`, most proxies are abstaining — do not describe this as "converging." Mixed signals = "inconclusive." This is deliberate — do NOT resolve ambiguity by favoring the stress narrative.
+- **Analyst override** (`private_credit_override`): Present only when Skill 2 identifies a qualitative-quantitative contradiction — e.g., the composite reads "benign" but major fund gating events are occurring. The override cites specific named events and does NOT change the composite. If present, report both the composite and the override, and let the contradiction stand.
 
 **Anti-confirmation-bias rules for this cluster:**
 1. **Never call "private credit stress" from a single proxy.** One indicator moving while others are stable is noise, not signal.
@@ -65,7 +67,7 @@ Private credit ($1.7T+ market) has no public mark-to-market. These are **adjacen
 
 1. **Read the data snapshot first.** Extract all structured data from `outputs/data/latest-snapshot.json`:
    - **COT positioning** (`snapshot.positioning.*`): net speculative positions, percentiles, extremes for all 9 contracts. This is the primary positioning data source. Build the Positioning Extremes table directly from this.
-   - **Credit stress cluster** (`snapshot.credit.private_credit_proxy`): SLOOS, C&I loans, leveraged loan ETF, composite signal. Check `composite_signal` first — if "inconclusive," report the divergence honestly rather than picking the scariest proxy.
+   - **Credit stress cluster** (`snapshot.credit.private_credit_proxy`): SLOOS, C&I loans, BKLN, BIZD, HY OAS — 5 proxies. Check `composite_signal` first, then raw votes (`stress_count`, `easing_count`, `neutral_count`). If "inconclusive," report the divergence honestly. If `private_credit_override` is present (from Skill 2), report both the composite and the override.
    - **VIX** (`snapshot.markets.vix`): level + changes
    - **CBOE Skew** (`snapshot.volatility.^SKEW` or via Yahoo data): tail risk demand
    - **Put/Call ratio**: no longer in snapshot (^CPCE delisted). Web search if needed for sentiment context.

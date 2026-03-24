@@ -90,7 +90,11 @@ When inputs conflict (e.g., liquidity expanding but growth decelerating), flag t
 
 ### Regime Assessment
 **Current Quadrant:** [Goldilocks / Overheating / Disinflationary Slowdown / Stagflation]
-**Weeks in current regime:** [N — count consecutive ISO weeks in this quadrant, based on the prior-week synthesis chain. If this is a same-week rerun, carry forward the same count from the current week's previous run — do not increment.]
+**Weeks in current regime:** [N — USE THE REGIME STREAK SCRIPT OUTPUT. Before this skill runs, the orchestration executes `regime_week_count.py` which reads `regime-history.json` (one entry per ISO week, deduplicated) and counts the trailing streak of same-regime weeks. Rules:
+- If this week's regime matches the script's reported regime → N = script_streak + 1.
+- If this week's regime is DIFFERENT → N = 1.
+- If the script returned streak=0 (first run, no history) → estimate from 6-month data trends, do NOT default to 1.
+Do NOT compute this from prior synthesis files. Do NOT carry forward a number from a prior run. The script is the single source of truth — it cannot be inflated by same-week reruns because regime-history.json stores one entry per ISO week.]
 **Direction:** [Stable / Moving toward ___]
 **Confidence:** [High / Medium / Low]
 **Change from last week:** [No change / Shifted from ___ to ___]
@@ -198,7 +202,7 @@ meta:
     confidence: [high/medium/low]
     inputs_available: [number out of 5]
     regime_changed: [true/false]
-    regime_weeks_held: [number — consecutive ISO weeks in current regime. Count from the prior-week chain, not from number of runs. Same-week reruns do not increment this counter.]
+    regime_weeks_held: [number — from regime_week_count.py script output. Do NOT compute this yourself.]
     growth_score: [number, -1.0 to 1.0]
     inflation_score: [number, -1.0 to 1.0]
   notes: "[any issues — e.g., 'positioning data unavailable, synthesis based on 4 of 5 inputs']"

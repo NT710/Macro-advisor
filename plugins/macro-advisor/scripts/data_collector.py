@@ -160,6 +160,7 @@ YAHOO_TICKERS = {
 
     # Leveraged Loan / Private Credit Proxy
     "BKLN": ("Invesco Senior Loan ETF", "leveraged_loans"),
+    "BIZD": ("VanEck BDC Income ETF", "private_credit_bdc"),
 }
 
 # ---------------------------------------------------------------------------
@@ -316,6 +317,7 @@ PLAUSIBLE_RANGES = {
     "HYG":  (50.0, 110.0, "HYG High Yield ETF"),
     "LQD":  (70.0, 150.0, "LQD IG Corporate ETF"),
     "BKLN": (10.0, 30.0,  "BKLN Leveraged Loan ETF"),
+    "BIZD": (8.0, 25.0,   "BIZD BDC Income ETF"),
     "SHV":  (90.0, 120.0, "SHV Short Treasury ETF"),
 
     # --- Yahoo: Regional/EM ETFs ---
@@ -1433,6 +1435,25 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "firming" if month_chg < 1.5 else
             "risk-on"
         )
+    if "BIZD" in yd:
+        # BDC Income ETF — direct proxy for private credit market health.
+        # BDCs hold private credit loans and are publicly traded, making BIZD
+        # the closest observable proxy to actual private credit conditions.
+        # Wider thresholds than BKLN: BDCs are more volatile and less liquid.
+        bizd = yd["BIZD"]
+        pc_proxy["bdc_etf"] = bizd["latest_value"]
+        pc_proxy["bdc_week_chg"] = bizd.get("week_change_pct")
+        pc_proxy["bdc_month_chg"] = bizd.get("month_change_pct")
+        pc_proxy["bdc_date"] = bizd["latest_date"]
+        month_chg = bizd.get("month_change_pct") or 0
+        # Wider thresholds than BKLN: BDCs are more volatile (equity-like vs loan-like)
+        pc_proxy["bdc_signal"] = (
+            "stress" if month_chg < -3.0 else
+            "softening" if month_chg < -1.0 else
+            "stable" if abs(month_chg) <= 1.0 else
+            "firming" if month_chg < 3.0 else
+            "risk-on"
+        )
     # HY OAS from the existing credit spreads (cross-reference, not double count)
     if "BAMLH0A0HYM2" in fd:
         pc_proxy["hy_oas_cross_ref"] = fd["BAMLH0A0HYM2"]["latest_value"]
@@ -1462,6 +1483,13 @@ def compute_derived_metrics(fred_data, yahoo_data):
             elif pc_proxy["leveraged_loan_signal"] in ("firming", "risk-on"):
                 easing_signals += 1
             # "stable" and "softening" are neutral — contribute to total but don't vote
+        if "bdc_signal" in pc_proxy:
+            total_signals += 1
+            if pc_proxy["bdc_signal"] == "stress":
+                stress_signals += 1
+            elif pc_proxy["bdc_signal"] in ("firming", "risk-on"):
+                easing_signals += 1
+            # "stable" and "softening" are neutral — contribute to total but don't vote
         if "hy_oas_cross_ref" in pc_proxy:
             total_signals += 1
             hy = pc_proxy["hy_oas_cross_ref"]
@@ -1487,13 +1515,15 @@ def compute_derived_metrics(fred_data, yahoo_data):
         pc_proxy["composite_signal"] = composite
         pc_proxy["stress_count"] = stress_signals
         pc_proxy["easing_count"] = easing_signals
+        pc_proxy["neutral_count"] = total_signals - stress_signals - easing_signals
         pc_proxy["total_proxies"] = total_signals
         pc_proxy["_disclaimer"] = (
             "These are PROXIES for private credit conditions, not direct observations. "
             "Private credit has no public mark-to-market. Bank lending surveys, C&I loan "
-            "volumes, and leveraged loan ETF prices capture adjacent markets that share "
-            "borrower profiles with private credit — but they can diverge. Treat convergence "
-            "as informative and divergence as genuinely uncertain, not as a sign one proxy is 'right'."
+            "volumes, leveraged loan ETF prices, and BDC ETF prices capture adjacent or "
+            "overlapping markets that share borrower profiles with private credit — but they "
+            "can diverge. Treat convergence as informative and divergence as genuinely "
+            "uncertain, not as a sign one proxy is 'right'."
         )
         derived["credit_stress_private_proxy"] = pc_proxy
 
@@ -1751,7 +1781,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
                          ("EURUSD=X", "eurusd"), ("DX-Y.NYB", "dxy"), ("TLT", "tlt_20y_treasury"),
                          ("HYG", "hyg"), ("LQD", "lqd"), ("EEM", "eem"), ("EFA", "efa"),
                          ("JPY=X", "usdjpy"), ("CHF=X", "usdchf"), ("CNY=X", "usdcny"),
-                         ("BKLN", "bkln_leveraged_loans")]:
+                         ("BKLN", "bkln_leveraged_loans"),
+                         ("BIZD", "bizd_bdc_income")]:
         if ticker in yd:
             snapshot["markets"][key] = {
                 "value": yd[ticker]["latest_value"],

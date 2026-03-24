@@ -37,6 +37,10 @@ def md_to_html(md_text):
     # Also strip YAML front matter at very start of file (e.g. skill descriptions)
     if md_text.lstrip().startswith('---'):
         md_text = re.sub(r'\A\s*---.*?^---\s*$', '', md_text, count=1, flags=re.DOTALL | re.MULTILINE)
+    # Also strip meta blocks wrapped in code fences (```yaml\nmeta:\n...\n```)
+    md_text = re.sub(r'(?m)^```(?:yaml|yml)?\s*\nmeta:.*?^```\s*$', '', md_text, flags=re.DOTALL | re.MULTILINE)
+    # Strip standalone meta: blocks not wrapped in any delimiter (bare meta blocks at end of file)
+    md_text = re.sub(r'(?m)^meta:\n(?:  .+\n)+', '', md_text)
     lines = md_text.split("\n")
     html_lines = []
     in_table = False
@@ -683,16 +687,23 @@ def parse_regime_from_synthesis(synthesis_text):
     regime_narrative = " ".join(narrative_lines).strip()
 
     # Extract full Regime Forecast section as markdown
+    # Include both 6-month and 12-month sub-sections (don't break on --- between them)
     in_forecast_text = False
     forecast_lines = []
     for line in lines:
         lower = line.lower().strip()
-        if lower.startswith("#") and "regime forecast" in lower:
+        if lower.startswith("#") and ("regime forecast" in lower or "6 and 12" in lower or "6-month and 12-month" in lower or "6 & 12" in lower):
             in_forecast_text = True
             continue
         if in_forecast_text:
-            if (lower.startswith("## ") and not lower.startswith("### ")) or lower == "---":
+            # Only break on a true next-section ## header (not ### sub-headers or --- dividers)
+            if lower.startswith("## ") and not lower.startswith("### "):
+                # Check if this is a forecast sub-section we should keep
+                if '12-month' in lower or '12 month' in lower or '6-month' in lower or '6 month' in lower or 'forecast' in lower:
+                    forecast_lines.append(line)
+                    continue
                 break
+            # --- horizontal rules between 6M and 12M should not break extraction
             forecast_lines.append(line)
     forecast_section_md = "\n".join(forecast_lines).strip()
 
@@ -793,20 +804,20 @@ def extract_cross_asset_tables(briefing_text):
     for line in briefing_text.split('\n'):
         lower = line.lower().strip()
 
-        # Detect cross-asset section start
-        if lower.startswith('## cross-asset view'):
+        # Detect cross-asset section start (flexible: ##, ###, or bold header)
+        if ('cross-asset' in lower or 'cross asset' in lower) and lower.startswith('#'):
             in_cross_asset = True
             in_sector = False
             continue
 
-        # Detect sector view sub-section
-        if in_cross_asset and ('sector view' in lower) and lower.startswith('###'):
+        # Detect sector view sub-section (###, ##, or bold header within cross-asset)
+        if (in_cross_asset or not in_sector) and 'sector view' in lower and (lower.startswith('#') or lower.startswith('**')):
             in_cross_asset = False
             in_sector = True
             continue
 
-        # Stop at next ## section (but not ### which we handle above)
-        if (in_cross_asset or in_sector) and line.startswith('## ') and not line.startswith('### '):
+        # Stop at next major section (but not sub-headers about cross-asset/sector)
+        if (in_cross_asset or in_sector) and line.strip().startswith('## ') and 'cross' not in lower and 'sector' not in lower:
             break
 
         if in_cross_asset:
@@ -873,21 +884,37 @@ def parse_improvement_report(improvement_text):
     if obs_lines:
         result["observation_rows"] = _parse_table_section(obs_lines)
 
-    # Parse amendment evaluation table
+    # Parse amendment evaluation table — try multiple header patterns
+    # (different weeks use different headers: "Amendment Evaluation", "Amendment Tracker",
+    #  "Summary of Amendment Decisions", "Amendment Proposals")
+    amend_headers = ['amendment evaluation', 'amendment tracker',
+                     'summary of amendment', 'amendment proposals',
+                     'proposed amendments', 'proposed new amendments']
     in_amend = False
     amend_lines = []
+    best_amend_lines = []  # keep the longest table found
     for line in lines:
         lower = line.lower().strip()
-        if ('amendment evaluation' in lower or 'amendment tracker' in lower) and lower.startswith('#'):
+        if any(ah in lower for ah in amend_headers) and lower.startswith('#'):
+            # If we were already collecting, save what we had
+            if amend_lines and len(amend_lines) > len(best_amend_lines):
+                best_amend_lines = amend_lines[:]
             in_amend = True
+            amend_lines = []
             continue
         if in_amend:
             if line.strip().startswith('#') or line.strip() == '---':
-                break
+                if amend_lines and len(amend_lines) > len(best_amend_lines):
+                    best_amend_lines = amend_lines[:]
+                in_amend = False
+                continue
             if '|' in line:
                 amend_lines.append(line)
-    if amend_lines:
-        result["amendments"] = _parse_table_section(amend_lines)
+    # Final check in case file ended while in_amend
+    if amend_lines and len(amend_lines) > len(best_amend_lines):
+        best_amend_lines = amend_lines
+    if best_amend_lines:
+        result["amendments"] = _parse_table_section(best_amend_lines)
 
     # Parse data gaps table
     in_gaps = False
@@ -908,10 +935,261 @@ def parse_improvement_report(improvement_text):
     return result
 
 
+def parse_horizon_map(md_text):
+    """Parse Skill 14 Decade Horizon Strategic Map markdown into structured data.
+
+    Returns dict with:
+      - meta: run_date, run_type, mega_forces_mapped, blind_spots_identified, etc.
+      - forces: list of dicts (name, direction, confidence, timeline, data_anchor,
+                mechanism, cross_sector, last_quarter_change, causal_chains, stress_test)
+      - blind_spots: list of dicts (name, priority, coverage_gap, investability, timeline,
+                     recommendation, coverage_status)
+      - summary_table: list of dicts (force, direction, confidence, timeline, consensus, mispricing)
+    """
+    if not md_text or not md_text.strip():
+        return None
+
+    result = {
+        "meta": {},
+        "forces": [],
+        "blind_spots": [],
+        "summary_table": [],
+    }
+
+    # ── Extract meta block (YAML in code fence at end) ──
+    meta_match = re.search(r'```(?:yaml|yml)?\s*\n---\s*\nmeta:\s*\n(.*?)```', md_text, re.DOTALL)
+    if meta_match:
+        meta_text = meta_match.group(1)
+        for line in meta_text.split('\n'):
+            line = line.strip()
+            if ':' in line and not line.startswith('#'):
+                key, _, val = line.partition(':')
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                if key in ('run_date', 'run_type', 'skill_version'):
+                    result["meta"][key] = val
+        # nested execution block
+        exec_match = re.search(r'execution:\s*\n((?:\s{4,}.+\n)+)', meta_text)
+        if exec_match:
+            for line in exec_match.group(1).split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    k, _, v = line.partition(':')
+                    k, v = k.strip(), v.strip()
+                    try:
+                        result["meta"][k] = int(v)
+                    except ValueError:
+                        result["meta"][k] = v
+        # quality block
+        qual_match = re.search(r'quality:\s*\n((?:\s{4,}.+\n)+)', meta_text)
+        if qual_match:
+            for line in qual_match.group(1).split('\n'):
+                line = line.strip()
+                if ':' in line:
+                    k, _, v = line.partition(':')
+                    result["meta"][k.strip()] = v.strip()
+
+    # ── Extract run date/type from header if meta block missing ──
+    if not result["meta"].get("run_date"):
+        date_m = re.search(r'\*\*Run Date:\*\*\s*(.+)', md_text)
+        if date_m:
+            result["meta"]["run_date"] = date_m.group(1).strip()
+    if not result["meta"].get("run_type"):
+        type_m = re.search(r'\*\*Run Type:\*\*\s*(.+)', md_text)
+        if type_m:
+            result["meta"]["run_type"] = type_m.group(1).strip()
+
+    # ── Extract mega-force summary table ──
+    table_match = re.search(r'MEGA-FORCE SUMMARY TABLE.*?\n+\|.*?\n\|[-| :]+\n((?:\|.*\n?)+)', md_text, re.IGNORECASE)
+    if table_match:
+        for row in table_match.group(1).strip().split('\n'):
+            cells = [c.strip() for c in row.split('|')[1:-1]]
+            if len(cells) >= 6:
+                result["summary_table"].append({
+                    "force": re.sub(r'^\d+\.\s*', '', cells[0]),
+                    "direction": cells[1],
+                    "confidence": cells[2],
+                    "timeline": cells[3],
+                    "consensus": cells[4],
+                    "mispricing": cells[5],
+                })
+
+    # ── Extract individual mega-forces (Phase 1 sections) ──
+    # Split on "## Mega-Force N:" headers in Phase 1 area
+    phase1_match = re.search(r'## PHASE 1.*?(?=## PHASE 2|$)', md_text, re.DOTALL | re.IGNORECASE)
+    if phase1_match:
+        phase1_text = phase1_match.group(0)
+        force_sections = re.split(r'(?=## Mega-Force \d+:)', phase1_text)
+        for section in force_sections:
+            name_m = re.match(r'## Mega-Force \d+:\s*(.+)', section.strip())
+            if not name_m:
+                continue
+            force = {"name": name_m.group(1).strip()}
+
+            # Extract key fields
+            dir_m = re.search(r'\*\*Direction:\*\*\s*(.+)', section)
+            force["direction"] = dir_m.group(1).strip() if dir_m else ""
+
+            conf_m = re.search(r'\*\*Confidence in persistence:\*\*\s*(.+)', section)
+            force["confidence"] = conf_m.group(1).strip() if conf_m else ""
+
+            time_m = re.search(r'\*\*Time horizon:\*\*\s*(.+)', section)
+            force["timeline"] = time_m.group(1).strip() if time_m else ""
+
+            # Data anchor — capture as block of text
+            anchor_m = re.search(r'\*\*Data anchor:\*\*\s*\n((?:[-*].*\n?)+)', section)
+            if anchor_m:
+                anchors = []
+                for line in anchor_m.group(1).strip().split('\n'):
+                    line = re.sub(r'^[-*]\s*', '', line.strip())
+                    if line:
+                        anchors.append(line)
+                force["data_anchor"] = anchors
+            else:
+                force["data_anchor"] = []
+
+            # Mechanism paragraph
+            mech_m = re.search(r'\*\*Mechanism:\*\*\s*\n(.+?)(?=\n\*\*|\n---|\n##|$)', section, re.DOTALL)
+            force["mechanism"] = mech_m.group(1).strip() if mech_m else ""
+
+            # Cross-sector impact
+            cross_m = re.search(r'\*\*Cross-sector impact:\*\*\s*\n((?:[-*].*\n?)+)', section)
+            if cross_m:
+                impacts = []
+                for line in cross_m.group(1).strip().split('\n'):
+                    line = re.sub(r'^[-*]\s*', '', line.strip())
+                    if line:
+                        impacts.append(line)
+                force["cross_sector"] = impacts
+            else:
+                force["cross_sector"] = []
+
+            # Last quarter change
+            lqc_m = re.search(r'\*\*Last quarter change:\*\*\s*(.+)', section)
+            force["last_quarter_change"] = lqc_m.group(1).strip() if lqc_m else ""
+
+            result["forces"].append(force)
+
+    # ── Extract causal chains (Phase 2) and attach to forces ──
+    phase2_match = re.search(r'## PHASE 2.*?(?=## PHASE 3|$)', md_text, re.DOTALL | re.IGNORECASE)
+    if phase2_match:
+        phase2_text = phase2_match.group(0)
+        # Split by mega-force headers within Phase 2
+        force_chains = re.split(r'(?=## Mega-Force \d+:)', phase2_text)
+        for section in force_chains:
+            name_m = re.match(r'## Mega-Force \d+:\s*(.+)', section.strip())
+            if not name_m:
+                continue
+            force_name = name_m.group(1).strip()
+
+            chains = {}
+            for order_label, order_key in [("FIRST-ORDER", "first_order"), ("SECOND-ORDER", "second_order"), ("THIRD-ORDER", "third_order")]:
+                order_m = re.search(rf'### {order_label} IMPACTS.*?\n(.*?)(?=### [A-Z]|---\s*\n## |$)', section, re.DOTALL)
+                if order_m:
+                    block = order_m.group(1).strip()
+                    chain_info = {}
+                    # Extract chain arrow
+                    chain_m = re.search(r'\*\*Chain:\*\*\s*(.+)', block)
+                    chain_info["chain"] = chain_m.group(1).strip() if chain_m else ""
+                    # Direction
+                    dir_m = re.search(r'Direction:\s*(.+)', block)
+                    chain_info["direction"] = dir_m.group(1).strip() if dir_m else ""
+                    # Consensus
+                    cons_m = re.search(r'Consensus awareness:\s*(.+)', block)
+                    chain_info["consensus"] = cons_m.group(1).strip() if cons_m else ""
+                    # Timeline to materiality
+                    tl_m = re.search(r'\*\*Timeline to (?:materiality|irreversibility):\*\*\s*(.+)', block)
+                    chain_info["timeline"] = tl_m.group(1).strip() if tl_m else ""
+                    chains[order_key] = chain_info
+
+            # Attach chains to matching force (fuzzy: Phase 2 may use shorter names)
+            for f in result["forces"]:
+                if f["name"] == force_name or force_name in f["name"] or f["name"] in force_name:
+                    f["causal_chains"] = chains
+                    break
+
+    # ── Extract contrarian stress tests (Phase 4) and attach to forces ──
+    phase4_match = re.search(r'## PHASE 4.*?(?=## MEGA-FORCE SUMMARY|## Summary|## Meta|$)', md_text, re.DOTALL | re.IGNORECASE)
+    if phase4_match:
+        phase4_text = phase4_match.group(0)
+        stress_sections = re.split(r'(?=### Mega-Force \d+:)', phase4_text)
+        for section in stress_sections:
+            name_m = re.match(r'### Mega-Force \d+:\s*(.+)', section.strip())
+            if not name_m:
+                continue
+            force_name = name_m.group(1).strip()
+
+            stress = {}
+            # Consensus saturation
+            sat_m = re.search(r'Consensus status:\s*(.+?)(?:\n|$)', section)
+            stress["consensus_status"] = sat_m.group(1).strip() if sat_m else ""
+            # Assessment
+            assess_m = re.search(r'\*\*Assessment:\*\*\s*(.+?)(?:\n|$)', section)
+            stress["assessment"] = assess_m.group(1).strip() if assess_m else ""
+            # Conviction after stress test
+            conv_m = re.search(r'\*\*Conviction after stress test:\*\*\s*(.+)', section)
+            stress["conviction_post_test"] = conv_m.group(1).strip() if conv_m else ""
+
+            for f in result["forces"]:
+                if f["name"] == force_name or force_name in f["name"] or f["name"] in force_name:
+                    f["stress_test"] = stress
+                    break
+
+    # ── Extract blind spots (Phase 3) ──
+    phase3_match = re.search(r'## PHASE 3.*?(?=## PHASE 4|$)', md_text, re.DOTALL | re.IGNORECASE)
+    if phase3_match:
+        phase3_text = phase3_match.group(0)
+
+        # Coverage assessment per mega-force
+        coverage_sections = re.split(r'(?=\*\*Mega-Force \d+)', phase3_text)
+        coverage_map = {}
+        for section in coverage_sections:
+            cov_name_m = re.match(r'\*\*Mega-Force \d+\s*\(([^)]+)\)\s*—\s*Coverage Status:\s*(.+?)\*\*', section)
+            if cov_name_m:
+                coverage_map[cov_name_m.group(1).strip()] = cov_name_m.group(2).strip()
+
+        # Prioritized blind spots
+        blind_sections = re.split(r'(?=\*\*(?:HIGH|MEDIUM|LOW) PRIORITY BLIND SPOT)', phase3_text)
+        for section in blind_sections:
+            bs_m = re.match(r'\*\*(HIGH|MEDIUM|LOW) PRIORITY BLIND SPOT #\d+:\s*(.+?)\*\*', section.strip())
+            if not bs_m:
+                continue
+            bs = {
+                "priority": bs_m.group(1),
+                "name": bs_m.group(2).strip(),
+            }
+            gap_m = re.search(r'\*\*Coverage gap:\*\*\s*(.+?)(?:\n\n|\n\*\*)', section, re.DOTALL)
+            bs["coverage_gap"] = gap_m.group(1).strip() if gap_m else ""
+
+            inv_m = re.search(r'\*\*Investability:\*\*\s*(\S+(?:\s+\S+)?)', section)
+            inv_raw = inv_m.group(1).strip() if inv_m else ""
+            # Capture two-word levels like "VERY HIGH" or "MEDIUM-HIGH" but stop before long descriptions
+            if inv_raw and '—' in inv_raw:
+                inv_raw = inv_raw.split('—')[0].strip()
+            bs["investability"] = inv_raw
+
+            tl_m = re.search(r'\*\*Timeline to materiality:\*\*\s*(.+?)(?:\n|$)', section)
+            bs["timeline"] = tl_m.group(1).strip() if tl_m else ""
+
+            rec_m = re.search(r'\*\*Recommendation:\*\*\s*(.+?)(?:\n\n|\n---|\n\*\*|$)', section, re.DOTALL)
+            bs["recommendation"] = rec_m.group(1).strip() if rec_m else ""
+
+            result["blind_spots"].append(bs)
+
+        # Attach coverage status to forces
+        for f in result["forces"]:
+            for cov_key, cov_val in coverage_map.items():
+                if cov_key.lower() in f["name"].lower() or f["name"].lower() in cov_key.lower():
+                    f["coverage_status"] = cov_val
+                    break
+
+    return result
+
+
 def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                    all_weeks=None, all_weeks_data=None, regime_history=None,
                    skill_files=None, methodology=None, output_dir=None,
-                   closed_theses=None):
+                   closed_theses=None, horizon_map=None):
     """Generate the full HTML dashboard with multi-week history support."""
 
     all_weeks = all_weeks or [week]
@@ -920,7 +1198,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     skill_files = skill_files or []
     methodology = methodology or ""
 
-    regime_data = parse_regime_from_synthesis(synthesis)
+    # Regime: JSON-primary for structured fields, markdown fallback for narratives
+    regime_data = parse_regime_from_synthesis(synthesis)  # always parse for narrative/forecast text
+
+    # NOTE: Regime JSON override happens after briefing_json_raw is loaded (see below)
 
     # Parse snapshot for key numbers
     snap = {}
@@ -936,18 +1217,27 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     cross_assets_from_json = []
     sector_view_from_json = []
 
-    # Try briefing-data.json first, then legacy thesis-status.json
-    briefing_data_path = output_dir / "briefings" / f"{week}-briefing-data.json" if output_dir else None
-    legacy_path = output_dir / "briefings" / f"{week}-thesis-status.json" if output_dir else None
+    # Try briefing-data.json: week-prefixed first, then legacy
+    # We do NOT fall back to an un-prefixed "briefing-data.json" because it could be stale
+    # data from a prior week with no way to verify which week it belongs to.
     json_path = None
-    if briefing_data_path and briefing_data_path.exists():
-        json_path = briefing_data_path
-    elif legacy_path and legacy_path.exists():
-        json_path = legacy_path
+    if output_dir:
+        candidates = [
+            output_dir / "briefings" / f"{week}-briefing-data.json",   # canonical: 2026-W13-briefing-data.json
+            output_dir / "briefings" / f"{week}-thesis-status.json",   # legacy format
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                json_path = candidate
+                break
+
+    briefing_json_raw = None  # keep full JSON for regime/meta extraction later
 
     if json_path:
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
+            briefing_json_raw = raw  # store for regime/meta/thesis use below
+
             # briefing-data.json nests under "theses"; legacy is flat
             thesis_data = raw.get("theses", raw) if isinstance(raw, dict) else {}
             for slug, data in thesis_data.items():
@@ -956,10 +1246,45 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                         thesis_recommendations[slug] = data["recommendation"].lower()
                     if data.get("conviction"):
                         thesis_convictions_from_briefing[slug] = data["conviction"]
-            cross_assets_from_json = raw.get("cross_asset", [])
-            sector_view_from_json = raw.get("sector_view", [])
-        except (json.JSONDecodeError, AttributeError):
-            pass  # fall through to markdown fallback
+
+            # Normalize cross_asset keys: JSON uses asset/signal/etf,
+            # renderer expects what/direction/etfs
+            cross_assets_from_json = []
+            for item in raw.get("cross_asset", []):
+                normalized = dict(item)  # copy all fields (why, timing, etc.)
+                if "asset" in normalized and "what" not in normalized:
+                    normalized["what"] = normalized.pop("asset")
+                if "signal" in normalized and "direction" not in normalized:
+                    normalized["direction"] = normalized.pop("signal")
+                if "etf" in normalized and "etfs" not in normalized:
+                    normalized["etfs"] = normalized.pop("etf")
+                cross_assets_from_json.append(normalized)
+
+            # Normalize sector_view keys: JSON uses etf, renderer expects etfs
+            sector_view_from_json = []
+            for item in raw.get("sector_view", []):
+                normalized = dict(item)
+                if "etf" in normalized and "etfs" not in normalized:
+                    normalized["etfs"] = normalized.pop("etf")
+                sector_view_from_json.append(normalized)
+        except Exception as e:
+            import sys
+            print(f"Warning: failed to parse {json_path}: {e}", file=sys.stderr)
+            briefing_json_raw = None  # reset so downstream code doesn't use partial data
+
+    # Regime JSON override — now that briefing_json_raw is loaded
+    if briefing_json_raw and "regime" in briefing_json_raw:
+        rj = briefing_json_raw["regime"]
+        regime_data["regime"] = rj.get("quadrant", regime_data["regime"])
+        regime_data["direction"] = rj.get("direction", regime_data["direction"])
+        regime_data["confidence"] = rj.get("confidence", regime_data["confidence"])
+        if rj.get("weeks_in_regime"):
+            regime_data["weeks_held"] = str(rj["weeks_in_regime"])
+        gs = rj.get("growth_score")
+        inf = rj.get("inflation_score")
+        if gs is not None and inf is not None:
+            regime_data["x"] = max(-1.0, min(1.0, float(gs)))
+            regime_data["y"] = max(-1.0, min(1.0, float(inf)))
 
     # Fallback: parse briefing markdown tables for weeks that pre-date the JSON output
     if not thesis_recommendations and briefing:
@@ -1083,33 +1408,81 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         # Extract metadata from content
         thesis_key = name.replace("ACTIVE-", "").replace("DRAFT-", "").replace(".md", "")
 
+        # --- JSON-PRIMARY: conviction and recommendation from briefing-data.json ---
         conviction = ""
-        # Match structural format: *Thesis conviction:* High
-        conviction_match = re.search(r'\*Thesis conviction:\*\s*(\w+)', content)
-        if conviction_match:
-            conviction = conviction_match.group(1).strip()
-        # Also match tactical format: **Conviction:** High
+        recommendation = ""
+        json_thesis_entry = None
+        if briefing_json_raw and "theses" in briefing_json_raw:
+            json_theses = briefing_json_raw["theses"]
+            # Try exact slug match first
+            if thesis_key in json_theses:
+                json_thesis_entry = json_theses[thesis_key]
+            else:
+                # Fuzzy match: word overlap between thesis_key and JSON slugs
+                # Only accept if there's a single best match (no ties — ambiguity means skip)
+                tk_words = set(thesis_key.lower().replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+                best_score = 0
+                best_match = None
+                tie = False
+                for jk, jv in json_theses.items():
+                    jk_words = set(jk.lower().replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+                    overlap = len(tk_words & jk_words)
+                    if overlap >= 2 and overlap > best_score:
+                        best_score = overlap
+                        best_match = jv
+                        tie = False
+                    elif overlap >= 2 and overlap == best_score:
+                        tie = True  # ambiguous — two JSON entries score equally
+                if best_match and not tie:
+                    json_thesis_entry = best_match
+
+            if json_thesis_entry:
+                conviction = json_thesis_entry.get("conviction", "")
+                recommendation = json_thesis_entry.get("recommendation", "")
+
+        # --- LEGACY FALLBACK: parse conviction from thesis markdown file ---
         if not conviction:
-            conviction_match = re.search(r'\*\*Conviction:\*\*\s*(\w+)', content)
+            # Match structural format: *Thesis conviction:* High
+            conviction_match = re.search(r'\*Thesis conviction:\*\s*(\w+)', content)
             if conviction_match:
                 conviction = conviction_match.group(1).strip()
-        # Also match h2 format: ## Conviction\nHigh (on next line)
-        if not conviction:
-            conviction_match = re.search(r'##\s*Conviction\s*\n+\s*(High|Medium|Low)', content, re.IGNORECASE)
-            if conviction_match:
-                conviction = conviction_match.group(1).strip().capitalize()
-        # Also match YAML meta block: confidence: high/medium/low
-        if not conviction:
-            conviction_match = re.search(r'confidence:\s*(\w+)', content)
-            if conviction_match:
-                conviction = conviction_match.group(1).strip().capitalize()
-        # Fallback: look up conviction from briefing table
-        if not conviction:
-            thesis_lookup_conv = thesis_key.lower()
-            for ckey, cval in thesis_convictions_from_briefing.items():
-                if ckey in thesis_lookup_conv or thesis_lookup_conv in ckey:
-                    conviction = cval
-                    break
+            # Also match tactical format: **Conviction:** High
+            if not conviction:
+                conviction_match = re.search(r'\*\*Conviction:\*\*\s*(\w+)', content)
+                if conviction_match:
+                    conviction = conviction_match.group(1).strip()
+            # Also match h2 format: ## Conviction\nHigh (on next line)
+            if not conviction:
+                conviction_match = re.search(r'##\s*Conviction\s*\n+\s*(High|Medium|Low)', content, re.IGNORECASE)
+                if conviction_match:
+                    conviction = conviction_match.group(1).strip().capitalize()
+            # Also match YAML meta block: confidence: high/medium/low
+            if not conviction:
+                conviction_match = re.search(r'confidence:\s*(\w+)', content)
+                if conviction_match:
+                    conviction = conviction_match.group(1).strip().capitalize()
+            # Match prose patterns
+            if not conviction:
+                conviction_match = re.search(
+                    r'(?:conviction|conv\.?)\s*(?:level|holds at|after stress-test)?[:\s]+\*{0,2}(High|Medium|Low)(?:-\w+)?\*{0,2}',
+                    content, re.IGNORECASE
+                )
+                if conviction_match:
+                    conviction = conviction_match.group(1).strip().capitalize()
+            # Last resort: briefing table lookup (fuzzy)
+            if not conviction:
+                thesis_lookup_conv = thesis_key.lower()
+                conv_words = set(thesis_lookup_conv.replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+                best_conv_score = 0
+                for ckey, cval in thesis_convictions_from_briefing.items():
+                    if ckey in thesis_lookup_conv or thesis_lookup_conv in ckey:
+                        conviction = cval
+                        break
+                    ckey_words = set(ckey.replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+                    overlap = len(conv_words & ckey_words)
+                    if overlap >= 2 and overlap > best_conv_score:
+                        best_conv_score = overlap
+                        conviction = cval
 
         provenance = ""
         prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
@@ -1138,13 +1511,20 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 # Fallback: take first phrase before period or parenthesis
                 horizon = horizon_match.group(1).strip().split('.')[0].split('(')[0].strip()
 
-        # Look up recommendation from briefing
-        recommendation = ""
-        thesis_lookup = thesis_key.lower()
-        for rkey, rval in thesis_recommendations.items():
-            if rkey in thesis_lookup or thesis_lookup in rkey:
-                recommendation = rval.capitalize()
-                break
+        # Legacy fallback: look up recommendation from briefing table (only if JSON didn't provide one)
+        if not recommendation:
+            thesis_lookup = thesis_key.lower()
+            thesis_words = set(thesis_lookup.replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+            best_match_score = 0
+            for rkey, rval in thesis_recommendations.items():
+                if rkey in thesis_lookup or thesis_lookup in rkey:
+                    recommendation = rval.capitalize()
+                    break
+                rkey_words = set(rkey.replace('-', ' ').split()) - {'the', 'a', 'an', 'of', 'for', 'and', 'in', 'on'}
+                overlap = len(thesis_words & rkey_words)
+                if overlap >= 2 and overlap > best_match_score:
+                    best_match_score = overlap
+                    recommendation = rval.capitalize()
 
         # Build table row — compact 5-column format with badge pills + conviction bars
         selected_class = "selected" if i == 0 else ""
@@ -1669,6 +2049,240 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
     if not methodology_html:
         methodology_html = "<p style='color: var(--text-muted); text-align: center; padding: 40px 0;'>No methodology document found.</p>"
+
+    # --- Build Mega Forces tab HTML from Skill 14 horizon map ---
+    horizon_data = parse_horizon_map(horizon_map) if horizon_map else None
+    mega_forces_html = ""
+    if horizon_data and horizon_data.get("forces"):
+        hd = horizon_data
+        hm = hd["meta"]
+        run_date = hm.get("run_date", "—")
+        run_type = hm.get("run_type", "—")
+        forces_mapped = hm.get("mega_forces_mapped", len(hd["forces"]))
+        blind_count = hm.get("blind_spots_identified", len(hd["blind_spots"]))
+        actionable_count = hm.get("blind_spots_actionable", 0)
+
+        # Derive quarter from run_date (e.g. "2026-03-23" -> "2026 Q1")
+        report_quarter = "—"
+        try:
+            rd_parsed = datetime.strptime(run_date.strip(), "%Y-%m-%d")
+            q = (rd_parsed.month - 1) // 3 + 1
+            report_quarter = f"{rd_parsed.year} Q{q}"
+        except (ValueError, AttributeError):
+            # Try extracting from filename pattern like "2026-Q1"
+            q_match = re.search(r'(\d{4})-Q(\d)', horizon_map or "")
+            if q_match:
+                report_quarter = f"{q_match.group(1)} Q{q_match.group(2)}"
+
+        # Direction color helper
+        def _dir_color(d):
+            dl = d.lower() if d else ""
+            if "accelerat" in dl:
+                return "var(--green)"
+            elif "deceler" in dl:
+                return "var(--red)"
+            return "var(--amber)"
+
+        # Confidence color helper
+        def _conf_color(c):
+            cl = c.lower() if c else ""
+            if "very high" in cl:
+                return "var(--green)"
+            elif "high" in cl:
+                return "var(--accent)"
+            elif "medium" in cl:
+                return "var(--amber)"
+            return "var(--text-muted)"
+
+        # Priority color helper
+        def _prio_color(p):
+            pl = p.upper() if p else ""
+            if pl == "HIGH":
+                return "var(--red)"
+            elif pl == "MEDIUM":
+                return "var(--amber)"
+            return "var(--text-muted)"
+
+        # KPI strip
+        mega_forces_html += f'''
+        <div class="kpi-grid" style="margin-bottom: 12px;">
+            <div class="kpi-card">
+                <div class="kpi-label">MEGA FORCES</div>
+                <div class="kpi-number">{forces_mapped}</div>
+                <div class="kpi-sub">Structural shifts mapped</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">BLIND SPOTS</div>
+                <div class="kpi-number" style="color: {"var(--red)" if blind_count > 0 else "var(--green)"};">{blind_count}</div>
+                <div class="kpi-sub">{actionable_count} actionable</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">LAST RUN</div>
+                <div style="font-size: 14px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.1;">{run_date}</div>
+                <div class="kpi-sub">{run_type}</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-label">REPORT</div>
+                <div class="kpi-number">{report_quarter}</div>
+                <div class="kpi-sub">Quarterly horizon map</div>
+            </div>
+        </div>
+        '''
+
+        # Summary table
+        if hd["summary_table"]:
+            sum_rows = ""
+            for st in hd["summary_table"]:
+                dc = _dir_color(st["direction"])
+                cc = _conf_color(st["confidence"])
+                sum_rows += (
+                    f'<tr>'
+                    f'<td style="color: var(--white); font-weight: 500;">{st["force"]}</td>'
+                    f'<td><span style="color: {dc}; font-weight: 600;">{st["direction"]}</span></td>'
+                    f'<td style="color: {cc};">{st["confidence"]}</td>'
+                    f'<td style="color: var(--text-muted);">{st["timeline"]}</td>'
+                    f'<td style="color: var(--text);">{st["consensus"]}</td>'
+                    f'<td style="color: var(--accent);">{st["mispricing"]}</td>'
+                    f'</tr>'
+                )
+            mega_forces_html += f'''
+            <div class="panel" style="margin-bottom: 12px;">
+                <div class="panel-header"><span class="panel-title">LANDSCAPE</span><span class="panel-meta">Decade horizon</span></div>
+                <div class="panel-body-dense">
+                    <div class="cross-asset-container">
+                        <table>
+                            <thead><tr>
+                                <th>Force</th><th>Direction</th><th>Confidence</th>
+                                <th>Timeline</th><th>Consensus</th><th>Mispricing</th>
+                            </tr></thead>
+                            <tbody>{sum_rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            '''
+
+        # Force cards — each expandable
+        for idx, force in enumerate(hd["forces"]):
+            dc = _dir_color(force.get("direction", ""))
+            cc = _conf_color(force.get("confidence", ""))
+            dir_short = force.get("direction", "").split("(")[0].strip()
+            conf_short = force.get("confidence", "").split("(")[0].strip()
+            cov = force.get("coverage_status", "")
+            cov_color = "var(--green)" if "WELL" in cov.upper() else ("var(--amber)" if "PARTIAL" in cov.upper() else "var(--red)" if cov else "var(--text-muted)")
+
+            # Stress test info
+            stress = force.get("stress_test", {})
+            conviction_post = stress.get("conviction_post_test", "")
+            assessment = stress.get("assessment", "")
+
+            # Data anchor bullets
+            anchor_html = ""
+            for a in force.get("data_anchor", [])[:4]:
+                anchor_html += f'<li style="margin: 2px 0; color: var(--text); font-size: 11px;">{apply_inline(a)}</li>'
+
+            # Causal chains
+            chains = force.get("causal_chains", {})
+            chains_html = ""
+            for order_key, order_label in [("first_order", "1ST ORDER"), ("second_order", "2ND ORDER"), ("third_order", "3RD ORDER")]:
+                chain = chains.get(order_key, {})
+                if not chain:
+                    continue
+                chain_dir = chain.get("direction", "")
+                chain_cons = chain.get("consensus", "")
+                chain_tl = chain.get("timeline", "")
+                chain_arrow = chain.get("chain", "")
+                cons_color = "var(--red)" if "VERY LOW" in chain_cons.upper() else ("var(--amber)" if "LOW" in chain_cons.upper() else "var(--text-muted)")
+                chains_html += f'''
+                <div style="margin-bottom: 8px; padding: 8px 10px; background: var(--surface); border-left: 2px solid var(--border-bright);">
+                    <div style="font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 4px;">{order_label}</div>
+                    <div style="font-size: 11px; color: var(--text); margin-bottom: 4px; line-height: 1.5;">{apply_inline(chain_arrow)}</div>
+                    <div style="display: flex; gap: 16px; font-family: var(--mono); font-size: 10px;">
+                        <span style="color: var(--text-muted);">Direction: <span style="color: var(--text);">{chain_dir[:60]}</span></span>
+                        <span style="color: var(--text-muted);">Consensus: <span style="color: {cons_color};">{chain_cons[:40]}</span></span>
+                        {"<span style='color: var(--text-muted);'>Timeline: <span style=color:var(--text);>" + chain_tl[:40] + "</span></span>" if chain_tl else ""}
+                    </div>
+                </div>'''
+
+            # Mechanism first sentence for collapsed view
+            mechanism = force.get("mechanism", "")
+            mech_short = mechanism[:200] + "..." if len(mechanism) > 200 else mechanism
+
+            force_id = f"mega-force-{idx}"
+            short_id = f"mf-short-{idx}"
+            mega_forces_html += f'''
+            <div class="panel mf-card" style="margin-bottom: 8px;">
+                <div class="panel-header" style="cursor: pointer;" onclick="var body = document.getElementById('{force_id}'); var short = document.getElementById('{short_id}'); var arrow = this.querySelector('.mf-arrow'); if(body.style.display === 'none') {{ body.style.display = 'block'; short.style.display = 'none'; arrow.style.transform = 'rotate(180deg)'; }} else {{ body.style.display = 'none'; short.style.display = 'block'; arrow.style.transform = 'rotate(0deg)'; }}">
+                    <span class="panel-title" style="display: flex; align-items: center; gap: 10px;">
+                        {force["name"]}
+                        <span style="font-size: 9px; padding: 2px 6px; background: {dc}22; color: {dc}; border: 1px solid {dc}44; font-weight: 500; letter-spacing: 0.04em;">{dir_short}</span>
+                        <span style="font-size: 9px; padding: 2px 6px; background: {cc}22; color: {cc}; border: 1px solid {cc}44; font-weight: 500;">{conf_short}</span>
+                        {"<span style='font-size: 9px; padding: 2px 6px; background:" + cov_color + "22; color:" + cov_color + "; border: 1px solid " + cov_color + "44; font-weight: 500;'>" + cov + "</span>" if cov else ""}
+                    </span>
+                    <span style="display: flex; align-items: center; gap: 12px;">
+                        <span style="color: var(--text-muted); font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0;">{force.get("timeline", "")}</span>
+                        <span class="mf-arrow" style="color: var(--text-muted); font-size: 10px; transition: transform 0.15s;">&#9660;</span>
+                    </span>
+                </div>
+                <div id="{short_id}" class="panel-body" style="padding: 8px 12px;">
+                    <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                        <div style="flex: 1;">
+                            <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Key Data</div>
+                            <ul style="margin: 0 0 0 14px; padding: 0;">{anchor_html}</ul>
+                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text); line-height: 1.6; margin-bottom: 6px;">{apply_inline(mech_short)}</div>
+                </div>
+                <div id="{force_id}" style="display: none;">
+                    <div style="padding: 8px 12px 10px 12px;">
+                        <div style="display: flex; gap: 16px; margin-bottom: 8px;">
+                            <div style="flex: 1;">
+                                <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Key Data</div>
+                                <ul style="margin: 0 0 0 14px; padding: 0;">{anchor_html}</ul>
+                            </div>
+                        </div>
+                        <div style="font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Mechanism</div>
+                        <div style="font-size: 12px; color: var(--text); line-height: 1.6; margin-bottom: 12px;">{apply_inline(mechanism)}</div>
+                        {"<div style='margin-bottom: 12px;'><div style=" + repr("font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 6px;") + ">Causal Chains</div>" + chains_html + "</div>" if chains_html else ""}
+                        {"<div style='padding: 8px 10px; background: var(--surface2); border: 1px solid var(--border); margin-bottom: 8px;'><div style=" + repr("font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 4px;") + ">Stress Test</div><div style=" + repr("font-size: 11px; color: var(--text); line-height: 1.5;") + ">" + apply_inline(assessment) + "</div><div style=" + repr("font-family: var(--mono); font-size: 10px; color: var(--text-muted); margin-top: 4px;") + ">Post-test conviction: <span style=" + repr("color: var(--accent); font-weight: 600;") + ">" + conviction_post + "</span></div></div>" if assessment else ""}
+                    </div>
+                </div>
+            </div>
+            '''
+
+        # Blind spots section
+        if hd["blind_spots"]:
+            bs_rows = ""
+            for bs in hd["blind_spots"]:
+                pc = _prio_color(bs["priority"])
+                bs_rows += (
+                    f'<tr>'
+                    f'<td><span style="color: {pc}; font-weight: 600;">{bs["priority"]}</span></td>'
+                    f'<td style="color: var(--white); font-weight: 500;">{bs["name"]}</td>'
+                    f'<td style="color: var(--text);">{bs.get("coverage_gap", "")[:80]}</td>'
+                    f'<td style="color: var(--text-muted);">{bs.get("investability", "")}</td>'
+                    f'<td style="color: var(--text-muted);">{bs.get("timeline", "")}</td>'
+                    f'<td style="color: var(--text); font-size: 10px;">{bs.get("recommendation", "")[:60]}</td>'
+                    f'</tr>'
+                )
+            mega_forces_html += f'''
+            <div class="panel" style="margin-top: 12px;">
+                <div class="panel-header"><span class="panel-title">BLIND SPOTS</span><span class="panel-meta">{blind_count} identified · {actionable_count} actionable</span></div>
+                <div class="panel-body-dense">
+                    <div class="cross-asset-container">
+                        <table>
+                            <thead><tr>
+                                <th>Priority</th><th>Blind Spot</th><th>Coverage Gap</th>
+                                <th>Investability</th><th>Timeline</th><th>Action</th>
+                            </tr></thead>
+                            <tbody>{bs_rows}</tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            '''
+    else:
+        mega_forces_html = "<p style='color: var(--text-muted); text-align: center; padding: 40px 0;'>No horizon map data available. Run Skill 14 (Decade Horizon) to generate mega-force analysis.</p>"
 
     # --- Build cross-asset and sector view tables ---
     def _direction_class(d):
@@ -2310,6 +2924,8 @@ tr:hover td {{
 .thesis-detail-panel {{
     background: var(--surface);
     border: 1px solid var(--border);
+    overflow-x: auto;
+    max-width: 100%;
 }}
 .thesis-detail-header {{
     background: var(--surface2);
@@ -2350,6 +2966,16 @@ tr:hover td {{
     line-height: 1.7;
     color: var(--text);
     padding: 10px 12px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}}
+.thesis-detail table {{
+    table-layout: fixed;
+    width: 100%;
+}}
+.thesis-detail td, .thesis-detail th {{
+    overflow-wrap: break-word;
+    word-break: break-word;
 }}
 .thesis-detail h1 {{
     color: var(--accent);
@@ -2596,6 +3222,7 @@ tr:hover td {{
     <button onclick="showTab('briefing')">BRIEFING</button>
     <button onclick="showTab('regime')">REGIME</button>
     <button onclick="showTab('theses')">THESES</button>
+    <button onclick="showTab('megaforces')">MEGA FORCES</button>
     <button onclick="showTab('improvement')">SYSTEM</button>
     <button onclick="showTab('about')">ABOUT</button>
 </div>
@@ -2773,6 +3400,11 @@ tr:hover td {{
         <div class="thesis-subtab-content" id="thesis-sub-archive">
             {'<div class="thesis-index"><table><thead><tr><th>Thesis</th><th>Type</th><th>Conv</th><th>Outcome</th><th>Created</th><th>Closed</th><th>Duration</th></tr></thead><tbody>' + archive_table_rows + '</tbody></table></div>' if archive_table_rows else '<p style="color: var(--text-muted); padding: 40px 0; text-align: center;">No closed theses yet. Theses move here when invalidated or closed at target.</p>'}
         </div>
+    </div>
+
+    <!-- Mega Forces Tab -->
+    <div class="tab-content" id="tab-megaforces">
+        {mega_forces_html}
     </div>
 
     <!-- System Health Tab -->
@@ -3258,9 +3890,9 @@ function renderTimeline() {{
     if (!canvas) return;
 
     // Set canvas height dynamically based on thesis count
-    // Extra height per row to accommodate wrapped labels
-    const rowHeight = 44;
-    const chartHeight = Math.max(200, data.length * rowHeight + 80);
+    // Extra height per row to accommodate wrapped labels (multi-line names need more space)
+    const rowHeight = 52;
+    const chartHeight = Math.max(200, data.length * rowHeight + 100);
     canvas.style.height = chartHeight + 'px';
 
     const today = new Date();
@@ -3371,8 +4003,8 @@ function renderTimeline() {{
                         callback: function(value, index) {{
                             const label = this.getLabelForValue(value);
                             if (!label) return label;
-                            // Wrap at ~20 chars per line
-                            const maxWidth = 22;
+                            // Wrap at ~28 chars per line for better readability
+                            const maxWidth = 28;
                             if (label.length <= maxWidth) return label;
                             const words = label.split(' ');
                             const lines = [];
@@ -3535,6 +4167,19 @@ def main():
     if args.plugin_root:
         methodology = read_file(Path(args.plugin_root) / "skills" / "macro-advisor" / "references" / "methodology.md")
 
+    # Read Skill 14 Decade Horizon map (latest-horizon-map.md or most recent quarterly)
+    horizon_map = read_file(output_dir / "strategic" / "latest-horizon-map.md")
+    if not horizon_map:
+        # Fallback: find most recent quarterly horizon map by glob
+        strategic_dir = output_dir / "strategic"
+        if strategic_dir.exists():
+            horizon_files = sorted(strategic_dir.glob("*-horizon-map.md"), reverse=True)
+            for hf in horizon_files:
+                if hf.name != "latest-horizon-map.md":
+                    horizon_map = read_file(hf)
+                    if horizon_map:
+                        break
+
     # Generate HTML — pass all weeks data, regime history, skills, methodology
     html = generate_html(
         args.week, briefing, theses, improvement, synthesis, snapshot,
@@ -3545,6 +4190,7 @@ def main():
         methodology=methodology,
         output_dir=output_dir,
         closed_theses=closed_theses,
+        horizon_map=horizon_map,
     )
 
     # Write output

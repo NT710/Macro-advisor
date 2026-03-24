@@ -29,11 +29,13 @@ Before doing anything else, read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/ref
    - `config/etf-overrides.md` (workspace) — currency-specific equivalents. Read first. May not exist if user chose USD.
    - `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/etf-reference.md` (plugin) — USD defaults and thematic/sector ETFs.
 
-## SKILL 0: DATA COLLECTION (run first, always)
+## SKILL 0: DATA COLLECTION (MANDATORY — run first, every time, no exceptions)
 
 ```bash
 pip install -r ${CLAUDE_PLUGIN_ROOT}/scripts/requirements.txt --break-system-packages -q 2>/dev/null
 ```
+
+**The data collector MUST run on every weekly cycle.** Do NOT skip it because a snapshot already exists. The existing snapshot may be from a prior week or a prior run — market data goes stale within hours.
 
 Check if `outputs/data/latest-data-full.json` exists. If NOT (first run), use historical mode:
 ```bash
@@ -47,9 +49,13 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM
 
 Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. EIA petroleum data, CFTC COT, and BIS credit data are all pulled automatically (no API key needed). Never hardcode keys in any output file.
 
-Read `outputs/data/latest-snapshot.json` after completion. This snapshot is the data foundation for all subsequent skills.
+**After the collector finishes, run the pre-flight check:**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/data/ --config config/user-config.json
+```
+**If the pre-flight check fails (non-zero exit code), STOP.** Do not proceed to any skill. The check validates that: (1) the snapshot was generated within the last 18 hours — not yesterday, not last week; (2) key market data (oil, S&P, gold, VIX) is present; (3) config is valid. A failed pre-flight means every downstream output will be built on stale or missing data. Fix the issue (usually: re-run the data collector) and re-run the check until it passes.
 
-## EXECUTION SEQUENCE: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9
+## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→7→11(if triggered)→8→12→9
 
 Each skill MUST:
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` (re-read for each skill to keep guardrails in context)
@@ -114,8 +120,20 @@ Save candidates to: `outputs/structural/candidates/CANDIDATE-[domain-slug]-[date
 Update: `outputs/structural/last-scan.json`
 Candidates are consumed by Skill 7 as structural thesis candidates (alongside data patterns and analyst-sourced candidates).
 
+### PRE-SKILL 6: Regime Streak Count
+Before running the synthesis, compute the authoritative regime week count from the regime history file. This is a deterministic calculation — the LLM must NOT compute this count itself.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/regime_week_count.py --history outputs/regime-history.json
+```
+
+The script outputs JSON like: `{"regime": "Stagflation", "streak": 3, "note": "The prior 3 week(s) were Stagflation. If this week is also Stagflation, weeks_in_regime = 4. If the regime changed, weeks_in_regime = 1."}`
+
+**Pass this output to Skill 6 as an input.** The synthesis must use the script's streak number — not a number from any prior synthesis file, not a number from memory, not a number it computes itself.
+
 ### SKILL 6: Weekly Macro Synthesis
-Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-synthesis.md` + ALL collection outputs (Skills 1-5) + analyst monitor (Skill 10) + snapshot + prior synthesis from a **previous ISO week** (if exists in `outputs/synthesis/`). "Prior" means the most recent `YYYY-Www` file where Www is strictly less than the current week. The current week's own synthesis file is NOT prior — same-week reruns update the current assessment, they don't start a new week.
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-synthesis.md` + ALL collection outputs (Skills 1-5) + analyst monitor (Skill 10) + snapshot + **regime streak output from the script above** + prior synthesis from a **previous ISO week** (if exists in `outputs/synthesis/`). "Prior" means the most recent `YYYY-Www` file where Www is strictly less than the current week. The current week's own synthesis file is NOT prior — same-week reruns update the current assessment, they don't start a new week.
+**Regime week count:** Use the streak script output. If this week's regime matches the script's reported regime, set `regime_weeks_held` = streak + 1. If the regime changed, set `regime_weeks_held` = 1. If the script returned streak=0 (first run, no history), estimate from 6-month data trends. **Do NOT read `regime_weeks_held` from any prior synthesis file — the script is the single source of truth.**
 **Note:** Do NOT read Skill 13 (Structural Scanner) output here. The synthesis is a cyclical regime assessment. Structural imbalances enter through a separate pipeline: Skill 13 → Skill 11 → Skill 7.
 Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 
@@ -161,10 +179,11 @@ Skill 12 does NOT rewrite thesis content. The dashboard renders raw thesis files
 
 ### SKILL 9: Monday Morning Memo
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/09-monday-briefing.md` + synthesis + thesis monitor + Skill 12 presentation cards + improvement summary + analyst monitor (Skill 10) output.
-**List `outputs/theses/active/` to get the authoritative set of theses.** The directory listing is the source of truth — not Skill 7's monitor output, not Skill 12's card list. Every thesis on disk must appear in the JSON sidecar (`briefing-data.json`). In the memo prose, reference theses naturally where the week's data is relevant — don't force-list every thesis.
+**List `outputs/theses/active/` to get the authoritative set of theses.** The directory listing is the source of truth — not Skill 7's monitor output, not Skill 12's card list. Every thesis on disk must appear in the JSON sidecar. In the memo prose, reference theses naturally where the week's data is relevant — don't force-list every thesis.
 Read Skill 12 briefing cards from `outputs/theses/presentations/` for thesis context. If any thesis exists on disk without a Skill 12 card, read the thesis file directly.
 The memo is narrative prose — no tables, no bullet lists. Structured data (cross-asset, sector, thesis tables) goes in the JSON sidecar for the Overview and Theses tabs. Write for a smart non-specialist. Keep under 5 minutes reading time.
-Save to: `outputs/briefings/YYYY-Www-briefing.md`
+Save memo to: `outputs/briefings/YYYY-Www-briefing.md`
+Save JSON sidecar to: `outputs/briefings/YYYY-Www-briefing-data.json` (e.g. `2026-W13-briefing-data.json` — the week prefix is mandatory)
 
 ## DASHBOARD GENERATION
 
