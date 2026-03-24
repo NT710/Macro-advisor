@@ -1,6 +1,6 @@
 # Macro Advisor
 
-An autonomous macro research system for Claude Cowork. Collects economic data from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies macro regimes using the Alpine Macro framework (liquidity-first, four-quadrant regime model), generates investment theses with specific ETF implementation, and delivers weekly HTML dashboards.
+An autonomous macro research system for Claude Cowork. Built on a three-force model — **Growth**, **Inflation**, and **Liquidity** — that determines the macro regime and drives all downstream analysis. Collects economic data from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies macro regimes using the Alpine Macro framework (liquidity-first, four-quadrant regime model), produces 6 and 12-month regime forecasts with probability distributions, generates investment theses with specific ETF implementation, and delivers weekly HTML dashboards.
 
 ## What It Does
 
@@ -8,12 +8,13 @@ Every week, the system:
 
 1. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS
 2. Analyzes central bank policy, liquidity conditions, macro data, geopolitical risks, and market positioning
-3. Reads external analyst feeds for cross-referencing
-4. Scans for structural imbalances — supply-demand gaps, capex underinvestment, demographic shifts (bi-weekly)
-5. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation)
-6. Generates and monitors investment theses from three sources: data patterns, analyst insights, and structural scans
-7. Scores its own accuracy and self-improves
-8. Delivers an HTML dashboard with briefing, regime map, thesis reports, and system health
+3. Reads external analyst feeds (8 analysts) for cross-referencing
+4. Scans for structural imbalances — supply-demand gaps, capex underinvestment, demographic shifts, technology displacement (bi-weekly, 7 signal detectors)
+5. Identifies the current macro regime (Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation) based on where Growth, Inflation, and Liquidity sit
+6. Produces 6 and 12-month regime forecasts with probability distributions, key assumptions, conditional triggers, and driver trajectories (where Growth, Inflation, and Liquidity are heading)
+7. Generates and monitors investment theses from three sources: data patterns, analyst insights, and structural scans
+8. Scores its own accuracy and self-improves
+9. Delivers an HTML dashboard with briefing, regime map, thesis reports, and system health
 
 ## Installation
 
@@ -32,7 +33,7 @@ Every week, the system:
 
 ## Setup
 
-Run `/macro-advisor:setup` after installation. It will walk you through:
+Run `/macro-advisor:setup` after installation. It starts by explaining the three-force model (Growth, Inflation, Liquidity → four regimes), then walks you through:
 
 1. **Python dependencies** — installs fredapi, yfinance, pandas, numpy
 2. **FRED API key** — free from [fred.stlouisfed.org](https://fred.stlouisfed.org) (My Account → API Keys)
@@ -47,8 +48,8 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 
 | Command | Description |
 |---------|-------------|
-| `/macro-advisor:setup` | First-run configuration |
-| `/macro-advisor:run-weekly` | Run the full 14-skill analysis cycle manually |
+| `/macro-advisor:setup` | First-run configuration — explains the model, then sets up dependencies, API keys, currency, ETFs, and schedule |
+| `/macro-advisor:run-weekly` | Run the full 15-skill analysis cycle manually |
 | `/macro-advisor:investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
 | `/macro-advisor:structural-scan` | Run the structural scanner manually (bi-weekly, 7 signal detectors) |
 | `/macro-advisor:activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
@@ -64,15 +65,18 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 
 ## How It Works
 
-The system runs 14 skills in sequence, each building on the previous:
+The system runs 15 skills in a specific sequence, each building on the previous. Some skills run on special cadences (quarterly, bi-weekly) while the rest run every week:
 
 ```
 Data Collection → Central Bank Watch → Liquidity Monitor → Macro Tracker →
 Geopolitical Scanner → Positioning & Sentiment → Analyst Monitor →
 Decade Horizon (quarterly) → Structural Scanner (bi-weekly) →
-Weekly Synthesis → Thesis Generator → Structural Research (if triggered) →
-Self-Improvement → Thesis Presentation → Monday Briefing
+Weekly Synthesis (regime + 6/12-month forecasts) → Thesis Generator →
+Structural Research (if triggered) → Self-Improvement →
+Thesis Presentation → Monday Briefing
 ```
+
+The synthesis skill is where the three forces converge: it reads all upstream analysis, classifies the current regime based on Growth, Inflation, and Liquidity readings, and produces probability-weighted forecasts at 6 and 12-month horizons with conditional triggers that would cause regime transitions. These forecasts, along with the underlying driver trajectories, are consumed by the Trading Engine for forward-looking position reasoning.
 
 The thesis generator draws from three sources: data patterns from the weekly synthesis, analyst-sourced candidates from the analyst monitor, and structural scanner candidates from the bi-weekly structural scan. The decade horizon map (quarterly) provides strategic context by mapping mega-forces across the next decade and identifying blind spots in the thesis book. Structural candidates are routed through first-principles research (Skill 11) before becoming theses.
 
