@@ -29,6 +29,42 @@ def read_file(path):
         return ""
 
 
+def _table_col_widths(header_names):
+    """Return a list of CSS width strings for known thesis table layouts.
+    header_names should be lowercased. Returns None for unknown layouts."""
+    n = len(header_names)
+    h = tuple(header_names)
+
+    # (#, Assumption) — 2 cols
+    if n == 2 and '#' in h:
+        return ['5%', '95%']
+    # (#, Assumption, Status) — 3 cols
+    if n == 3 and '#' in h and 'status' in h:
+        return ['5%', '75%', '20%']
+    # (#, Assumption, Testable By) — 3 cols
+    if n == 3 and '#' in h and 'testable by' in h:
+        return ['5%', '60%', '35%']
+    # (#, Assumption, Testable By, Status) — 4 cols
+    if n == 4 and '#' in h and 'testable by' in h:
+        return ['5%', '50%', '30%', '15%']
+    # (#, Link, Quantified) — causal chain
+    if n == 3 and '#' in h and 'link' in h:
+        return ['5%', '55%', '40%']
+    # (Binding Constraint, Quantified, Source) — structural foundation
+    if n == 3 and 'binding constraint' in h:
+        return ['35%', '35%', '30%']
+    # (Order, ETF, Size, Rationale) — ETF expression
+    if n == 4 and 'order' in h and 'etf' in h:
+        return ['12%', '28%', '20%', '40%']
+    # (What, Direction, ETFs, Why) — cross-asset without timing
+    if n == 4 and 'what' in h and 'direction' in h:
+        return ['18%', '12%', '18%', '52%']
+    # (What, Direction, ETFs, Why, Timing) — cross-asset with timing
+    if n == 5 and 'what' in h and 'timing' in h:
+        return ['16%', '10%', '16%', '38%', '20%']
+    return None
+
+
 def md_to_html(md_text):
     """Simple markdown to HTML conversion — handles headers, bold, tables, lists, code blocks."""
     # Strip YAML meta blocks (---\nmeta:\n...\n--- or front matter at top of file)
@@ -75,7 +111,14 @@ def md_to_html(md_text):
             if not in_table:
                 html_lines.append('<div class="table-wrapper"><table>')
                 in_table = True
-                html_lines.append("<thead><tr>" + "".join(f"<th>{c}</th>" for c in cells) + "</tr></thead><tbody>")
+                # Assign column widths based on header names
+                col_widths = _table_col_widths([c.lower() for c in cells])
+                if col_widths:
+                    html_lines.append("<thead><tr>" + "".join(
+                        f'<th style="width:{w}">{c}</th>' for c, w in zip(cells, col_widths)
+                    ) + "</tr></thead><tbody>")
+                else:
+                    html_lines.append("<thead><tr>" + "".join(f"<th>{c}</th>" for c in cells) + "</tr></thead><tbody>")
             else:
                 html_lines.append("<tr>" + "".join(f"<td>{apply_inline(c)}</td>" for c in cells) + "</tr>")
             continue
@@ -346,12 +389,22 @@ def format_thesis_html(md_text):
             if desc_lines:
                 output_lines.extend(desc_lines)
                 output_lines.append('')
-            # Convert bullets to table
+            # Convert bullets to table (skip blank lines between bullets)
             if i < len(lines) and lines[i].strip().startswith('- '):
                 output_lines.append('| Binding Constraint | Quantified | Source |')
                 output_lines.append('|-------------------|-----------|--------|')
-                while i < len(lines) and lines[i].strip().startswith('- '):
-                    text = lines[i].strip()[2:].strip()
+                while i < len(lines):
+                    l = lines[i].strip()
+                    if not l:
+                        # Blank line — peek ahead for more bullets or section boundary
+                        peek = _peek_past_blanks(lines, i + 1)
+                        if peek < len(lines) and lines[peek].strip().startswith('- '):
+                            i += 1
+                            continue
+                        break
+                    if not l.startswith('- '):
+                        break
+                    text = l[2:].strip()
                     parts = [p.strip() for p in text.split(' — ')]
                     if len(parts) >= 3:
                         output_lines.append(f'| {parts[0]} | {parts[1]} | {parts[2]} |')
@@ -441,12 +494,21 @@ def format_thesis_html(md_text):
             if prose_lines:
                 output_lines.extend(prose_lines)
                 output_lines.append('')
-            # Convert order bullets to table
+            # Convert order bullets to table (skip blank lines between bullets)
             if i < len(lines) and lines[i].strip().startswith('- '):
                 output_lines.append('| Order | ETF | Size | Rationale |')
                 output_lines.append('|-------|-----|------|-----------|')
-                while i < len(lines) and lines[i].strip().startswith('- '):
-                    text = lines[i].strip()[2:].strip()
+                while i < len(lines):
+                    l = lines[i].strip()
+                    if not l:
+                        peek = _peek_past_blanks(lines, i + 1)
+                        if peek < len(lines) and lines[peek].strip().startswith('- '):
+                            i += 1
+                            continue
+                        break
+                    if not l.startswith('- '):
+                        break
+                    text = l[2:].strip()
                     # Parse: **First-order** (desc): ETF — size — rationale
                     order_match = re.match(r'\*\*(.+?)\*\*\s*(?:\([^)]*\))?\s*:?\s*(.*)', text)
                     if order_match:
@@ -1372,8 +1434,16 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
     # Helper: generate conviction bar HTML
     def _conviction_bar_html(conviction_str):
-        """Generate 4-block conviction bar. High=3 filled, Medium=2, Low=1, empty=0."""
-        level = conviction_str.strip().lower() if conviction_str else ""
+        """Generate 4-block conviction bar. High=3 filled, Medium=2, Low=1, empty=0.
+        Handles compound values like 'Medium (strengthening)', 'Medium-High', etc."""
+        raw = conviction_str.strip().lower() if conviction_str else ""
+        # Extract the primary level: take the first word, stripping parentheticals
+        level = raw.split("(")[0].split(",")[0].strip()
+        # Handle hyphenated ranges like "medium-high" — take the higher
+        if "-" in level:
+            parts = [p.strip() for p in level.split("-")]
+            rank = {"high": 3, "medium": 2, "med": 2, "low": 1}
+            level = max(parts, key=lambda p: rank.get(p, 0))
         if level in ("high", "h"):
             filled, css_class = 3, ""
         elif level in ("medium", "med", "m"):
@@ -1888,41 +1958,49 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     amendment_table_rows = ""
     for row in amendments:
         a_id = (row.get("amendment id", "") or row.get("id", ""))
-        proposed = row.get("proposed", "")
+        proposed = (row.get("proposed", "") or row.get("skill", ""))
         status = (row.get("status", ""))
-        target = (row.get("target metric", "") or row.get("amendment", ""))
+        target = (row.get("target metric", "") or row.get("amendment", "")
+                  or row.get("type", ""))
         before = row.get("before", "")
         after = (row.get("after", "") or row.get("after (run 3)", ""))
-        verdict = row.get("verdict", "")
+        verdict = (row.get("verdict", "") or row.get("recommendation", ""))
+        impact = row.get("impact", "")
 
         # Badge for status
         s_lower = status.lower().strip()
-        if s_lower == "approved":
+        if s_lower in ("approved", "implemented"):
             badge_cls = "badge-active"
-        elif s_lower == "proposed":
+        elif s_lower in ("proposed", "new"):
             badge_cls = "badge-draft"
-        elif s_lower == "rejected" or s_lower == "reverted":
+        elif s_lower in ("rejected", "reverted"):
             badge_cls = "badge-invalidated"
+        elif s_lower == "pending":
+            badge_cls = "badge-draft"
         else:
             badge_cls = "badge-draft"
 
         # Verdict coloring
         v_lower = verdict.lower() if verdict else ""
         v_style = ""
-        if "effective" in v_lower:
+        if "effective" in v_lower or "approve" in v_lower:
             v_style = 'color: var(--green);'
-        elif "reverted" in v_lower or "ineffective" in v_lower:
+        elif "reverted" in v_lower or "ineffective" in v_lower or "reject" in v_lower:
             v_style = 'color: var(--red);'
-        elif "inconclusive" in v_lower:
+        elif "inconclusive" in v_lower or "defer" in v_lower:
             v_style = 'color: var(--accent);'
 
         # Build expanded detail content
         detail_parts = []
+        if impact:
+            detail_parts.append(f'<strong>Impact:</strong> {impact}')
         if before:
             detail_parts.append(f'<strong>Before:</strong> {before}')
         if after:
             detail_parts.append(f'<strong>After:</strong> {after}')
-        detail_html = ' → '.join(detail_parts) if detail_parts else 'No detail available.'
+        if not detail_parts and verdict:
+            detail_parts.append(verdict)
+        detail_html = ' &nbsp;·&nbsp; '.join(detail_parts) if detail_parts else 'No detail available.'
 
         amendment_table_rows += (
             f'<tr class="amendment-row" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === \'none\' ? \'table-row\' : \'none\';" style="cursor: pointer;">'
@@ -2197,10 +2275,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 <div style="margin-bottom: 8px; padding: 8px 10px; background: var(--surface); border-left: 2px solid var(--border-bright);">
                     <div style="font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 4px;">{order_label}</div>
                     <div style="font-size: 11px; color: var(--text); margin-bottom: 4px; line-height: 1.5;">{apply_inline(chain_arrow)}</div>
-                    <div style="display: flex; gap: 16px; font-family: var(--mono); font-size: 10px;">
-                        <span style="color: var(--text-muted);">Direction: <span style="color: var(--text);">{chain_dir[:60]}</span></span>
-                        <span style="color: var(--text-muted);">Consensus: <span style="color: {cons_color};">{chain_cons[:40]}</span></span>
-                        {"<span style='color: var(--text-muted);'>Timeline: <span style=color:var(--text);>" + chain_tl[:40] + "</span></span>" if chain_tl else ""}
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; font-family: var(--mono); font-size: 10px;">
+                        <span style="color: var(--text-muted);">Direction: <span style="color: var(--text);">{chain_dir}</span></span>
+                        <span style="color: var(--text-muted);">Consensus: <span style="color: {cons_color};">{chain_cons}</span></span>
+                        {"<span style='color: var(--text-muted);'>Timeline: <span style=color:var(--text);>" + chain_tl + "</span></span>" if chain_tl else ""}
                     </div>
                 </div>'''
 
@@ -2341,6 +2419,13 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
     cross_asset_html = _build_asset_section(cross_assets, 'what', 'What')
     sector_view_html = _build_asset_section(sector_view, 'sector', 'Sector')
+
+    # Extract run date from briefing JSON for cross-asset/sector headers
+    briefing_data_date = ""
+    if briefing_json_raw and isinstance(briefing_json_raw, dict):
+        meta = briefing_json_raw.get("meta", {})
+        if isinstance(meta, dict):
+            briefing_data_date = meta.get("run_date", "") or meta.get("week", "")
 
     # Extract system health score from improvement text
     health_score = "—"
@@ -2687,6 +2772,7 @@ body {{
     width: 100%;
     border-collapse: collapse;
     font-feature-settings: "tnum";
+    table-layout: fixed;
 }}
 .cross-asset-container th {{
     background: var(--surface2);
@@ -2712,7 +2798,6 @@ body {{
 }}
 .cross-asset-etfs {{
     font-family: var(--mono);
-    white-space: nowrap;
     color: var(--text-muted);
 }}
 .cross-asset-why {{
@@ -2723,7 +2808,7 @@ body {{
 .cross-asset-timing {{
     color: var(--text-muted);
     font-size: 10px;
-    white-space: nowrap;
+    font-family: 'Inter', sans-serif;
 }}
 .cross-asset-direction {{
     font-weight: 600;
@@ -3268,7 +3353,7 @@ tr:hover td {{
             </div>
             <div class="panel">
                 <div class="panel-header">Thesis Book</div>
-                <div class="panel-body thesis-book">
+                <div class="panel-body thesis-book" id="thesis-book-scroll" style="max-height: 360px; overflow-y: auto; position: relative;">
                     <table>
                         <thead>
                             <tr>
@@ -3284,12 +3369,15 @@ tr:hover td {{
                         </tbody>
                     </table>
                 </div>
+                <div id="thesis-book-fade" style="pointer-events: none; position: relative; height: 28px; margin-top: -28px; background: linear-gradient(transparent, var(--surface)); display: flex; align-items: flex-end; justify-content: center;">
+                    <span style="font-size: 9px; color: var(--text-dim); letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.7; pointer-events: none;">&#x25BC; scroll</span>
+                </div>
             </div>
         </div>
 
-        {'<div class="panel overview-grid-full"><div class="panel-header">Cross-Asset View</div><div class="panel-body">' + cross_asset_html + '</div></div>' if cross_asset_html else ''}
+        {'<div class="panel overview-grid-full"><div class="panel-header"><span class="panel-title">Cross-Asset View</span><span class="panel-meta">' + briefing_data_date + '</span></div><div class="panel-body">' + cross_asset_html + '</div></div>' if cross_asset_html else ''}
 
-        {'<div class="panel overview-grid-full"><div class="panel-header">Stocks — Sector View</div><div class="panel-body">' + sector_view_html + '</div></div>' if sector_view_html else ''}
+        {'<div class="panel overview-grid-full"><div class="panel-header"><span class="panel-title">Stocks — Sector View</span><span class="panel-meta">' + briefing_data_date + '</span></div><div class="panel-body">' + sector_view_html + '</div></div>' if sector_view_html else ''}
     </div>
 
     <!-- Briefing Tab -->
@@ -3319,8 +3407,8 @@ tr:hover td {{
                         <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">W{regime_data.get('weeks_held', '—')} · {regime_data['confidence'].upper()} CONFIDENCE</div>
                         {regime_narrative_html}
                     </div>
-                    {'<div style="border-top: 1px solid var(--border); padding-top: 12px;"><h4 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">6 &amp; 12-Month Forecast</h4>' + regime_forecast_html + '</div>' if regime_forecast_html else ''}
-                    {'<div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;"><h4 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">What Changed This Week</h4>' + regime_what_changed_html + '</div>' if regime_what_changed_html else ''}
+                    {'<div style="border-top: 1px solid var(--border); padding-top: 12px;"><h4 style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 8px;">6 &amp; 12-Month Forecast</h4>' + regime_forecast_html + '</div>' if regime_forecast_html else ''}
+                    {'<div style="border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px;"><h4 style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 8px;">What Changed This Week</h4>' + regime_what_changed_html + '</div>' if regime_what_changed_html else ''}
                 </div>
             </div>
         </div>
@@ -4067,6 +4155,22 @@ function renderTimeline() {{
 if (document.querySelector('.thesis-row[data-idx="0"]')) {{
     showThesis(0);
 }}
+
+// Thesis book scroll fade — hide indicator when scrolled to bottom
+(function() {{
+    var el = document.getElementById('thesis-book-scroll');
+    var fade = document.getElementById('thesis-book-fade');
+    if (el && fade) {{
+        function checkScroll() {{
+            var atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+            var noScroll = el.scrollHeight <= el.clientHeight;
+            fade.style.opacity = (atBottom || noScroll) ? '0' : '1';
+            fade.style.transition = 'opacity 0.2s';
+        }}
+        el.addEventListener('scroll', checkScroll);
+        checkScroll();
+    }}
+}})();
 </script>
 
 </body>
