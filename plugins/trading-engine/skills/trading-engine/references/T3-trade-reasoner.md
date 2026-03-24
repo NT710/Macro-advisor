@@ -76,6 +76,14 @@ The base bear case text may be identical across positions sharing a thesis. The 
 
 If "Proceed: No" — skip the trade and log the decision. The improvement loop will track whether skipped trades would have been profitable or not.
 
+**Structural thesis turnover reservation:**
+
+When a structural thesis has been ACTIVE for 2+ runs with zero position, the reasoner must reserve its first-entry amount (33% of target allocation) from the turnover budget before allocating the remainder to regime scaling or other position adjustments. This prevents structural theses from being indefinitely deferred by the regime scaling queue.
+
+The reservation is small by design — typically 1-2% of portfolio per structural thesis. It fits within the existing 25% turnover cap. The purpose is sequencing, not pace: structural theses with time-bound entry windows (e.g., "scale in over 8-12 weeks") should not miss their entry timing because regime positions consumed the entire budget for multiple consecutive runs.
+
+If the total structural reservation exceeds 5% of portfolio in a single run, the reasoner should prioritize by thesis conviction and entry-window urgency, not by activation date.
+
 **Scaling logic for new entries:**
 - Tactical thesis: Enter at 50% of target on first run, 100% on next run if thesis still ACTIVE
 - Structural thesis: Enter at 33% of target on first run, 66% on run 2, 100% on run 3-4. Structural theses are patient by nature.
@@ -217,7 +225,7 @@ The Wednesday check is defense only. Offense happens on Sunday.
 - Kill switch exits must be processed before any other orders
 - The reasoning log must be human-readable — it's the primary audit trail
 - Skipped trades are as important as executed trades in the log
-- Total turnover (buys + sells as % of portfolio) should not exceed 25% in a single run under normal conditions
+- Total turnover (buys + sells as % of portfolio) should not exceed 25% in a single run under normal conditions. Structural thesis reservations (see Priority 4) come out of this budget — they do not increase it
 
 ## Meta Block
 

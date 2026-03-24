@@ -360,18 +360,23 @@ def parse_reasoning_files(reasoning_dir):
                     "risk_state_after": {},
                 }
 
-                # Extract week date from header
-                week_match = re.search(r"## Trading Engine Reasoning — Week of\s*(.+?)(?:\n|$)", content)
+                # Extract week date from header — handle multiple formats
+                week_match = re.search(r"#{1,2}\s*(?:Trading Engine Reasoning|Trade Reasoning)\s*(?:—|–|-)\s*(?:Week of\s*)?(.+?)(?:\n|$)", content)
                 if week_match:
                     entry["week_date"] = week_match.group(1).strip()
+                else:
+                    # Fall back to filename date
+                    fname_date = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
+                    if fname_date:
+                        entry["week_date"] = fname_date.group(1)
 
-                # Extract regime context
-                regime_match = re.search(r"### Regime Context\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                # Extract regime context — handle ## or ### level
+                regime_match = re.search(r"#{2,3}\s*Regime Context\s*\n(.+?)(?=\n#{2,3}\s|\Z)", content, re.DOTALL)
                 if regime_match:
                     entry["regime_context"] = regime_match.group(1).strip()
 
                 # Extract kill switch exits
-                ks_match = re.search(r"### Kill Switch Exits\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                ks_match = re.search(r"#{2,3}\s*Kill Switch Exits\s*\n(.+?)(?=\n#{2,3}\s|\Z)", content, re.DOTALL)
                 if ks_match:
                     ks_block = ks_match.group(1)
                     for line in ks_block.split("\n"):
@@ -386,11 +391,19 @@ def parse_reasoning_files(reasoning_dir):
                                     })
 
                 # Extract new positions
-                new_pos_match = re.search(r"### New Positions\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                new_pos_match = re.search(r"#{2,3}\s*(?:New Positions|Scaling Existing Positions)\s*(?:\([^)]*\))?\s*\n(.+?)(?=\n#{2,3}\s(?!#)|\Z)", content, re.DOTALL)
                 if new_pos_match:
                     new_pos_block = new_pos_match.group(1)
-                    # Find each position block marked with **[SYMBOL] — [Name]**
-                    pos_blocks = re.findall(r"\*\*([A-Z0-9]+)\s*—\s*(.+?)\*\*\n(.+?)(?=\n\*\*|\n###|\Z)", new_pos_block, re.DOTALL)
+                    # Find each position block — handle both formats:
+                    # Format 1: **SYMBOL — Name**
+                    # Format 2: ### SYMBOL (Name) — Layer
+                    pos_blocks = re.findall(r"\*\*([A-Z0-9]+)\s*—\s*(.+?)\*\*\n(.+?)(?=\n\*\*|\n#{2,3}\s|\Z)", new_pos_block, re.DOTALL)
+                    if not pos_blocks:
+                        # Try ### heading format: ### SYMBOL (Name) — Layer
+                        pos_blocks = re.findall(r"###\s+([A-Z0-9,\s]+?)\s*\((.+?)\)\s*(?:—|–|-)\s*.+?\n(.+?)(?=\n###|\Z)", new_pos_block, re.DOTALL)
+                    if not pos_blocks:
+                        # Simplest: ### SYMBOL — anything
+                        pos_blocks = re.findall(r"###\s+([A-Z0-9]+)\s*(?:—|–|-)\s*(.+?)\n(.+?)(?=\n###|\Z)", new_pos_block, re.DOTALL)
                     for symbol, name, pos_content in pos_blocks:
                         pos_dict = {
                             "symbol": symbol.strip(),
@@ -453,7 +466,7 @@ def parse_reasoning_files(reasoning_dir):
                         entry["new_positions"].append(pos_dict)
 
                 # Extract adjustments
-                adj_match = re.search(r"### Adjustments\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                adj_match = re.search(r"#{2,3}\s*Adjustments\s*\n(.+?)(?=\n#{2,3}\s|\Z)", content, re.DOTALL)
                 if adj_match:
                     adj_block = adj_match.group(1)
                     for line in adj_block.split("\n"):
@@ -461,7 +474,7 @@ def parse_reasoning_files(reasoning_dir):
                             entry["adjustments"].append(line.strip()[2:])
 
                 # Extract skipped
-                skip_match = re.search(r"### Skipped\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                skip_match = re.search(r"#{2,3}\s*Skipped\s*\n(.+?)(?=\n#{2,3}\s|\Z)", content, re.DOTALL)
                 if skip_match:
                     skip_block = skip_match.group(1)
                     for line in skip_block.split("\n"):
@@ -476,7 +489,7 @@ def parse_reasoning_files(reasoning_dir):
                                     })
 
                 # Extract risk state after execution
-                risk_match = re.search(r"### Risk State After Execution\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+                risk_match = re.search(r"#{2,3}\s*Risk State After\s*(?:Execution)?\s*\n(.+?)(?=\n#{2,3}\s|\Z)", content, re.DOTALL)
                 if risk_match:
                     risk_block = risk_match.group(1)
                     cash_m = re.search(r"- Cash:\s*(.+?)%", risk_block)
@@ -581,6 +594,125 @@ def parse_rules_md(rules_path):
         pass
 
     return rules
+
+
+def _parse_md_table(text):
+    """Parse a markdown table into a list of dicts keyed by header names."""
+    lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+    if len(lines) < 2:
+        return []
+    header_line = lines[0]
+    cells = [c.strip() for c in header_line.split("|")[1:-1]]
+    if not cells:
+        return []
+    rows = []
+    for line in lines[2:]:  # skip header + separator
+        if not line.startswith("|"):
+            break
+        vals = [c.strip() for c in line.split("|")[1:-1]]
+        if len(vals) == len(cells):
+            rows.append(dict(zip(cells, vals)))
+    return rows
+
+
+def parse_external_overlay(external_dir):
+    """Parse the latest external overlay markdown for exposure, thesis alignment, and gap analysis."""
+    result = {
+        "exposure_by_asset_class": [],
+        "exposure_by_geography": [],
+        "exposure_by_sector": [],
+        "thesis_alignments": [],
+        "gap_analysis": [],
+        "non_investable_summary": "",
+        "kill_switch_status": "",
+        "summary": "",
+    }
+
+    if not external_dir or not os.path.exists(external_dir):
+        return result
+
+    # Find latest overlay file
+    overlay_files = sorted(Path(external_dir).glob("*-external-overlay.md"), reverse=True)
+    if not overlay_files:
+        return result
+
+    try:
+        with open(overlay_files[0], "r") as f:
+            content = f.read()
+
+        # Parse exposure by asset class
+        ac_match = re.search(r"\*\*By Asset Class:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
+        if ac_match:
+            result["exposure_by_asset_class"] = _parse_md_table(ac_match.group(1))
+
+        # Parse exposure by geography
+        geo_match = re.search(r"\*\*By Geography:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
+        if geo_match:
+            result["exposure_by_geography"] = _parse_md_table(geo_match.group(1))
+
+        # Parse exposure by sector
+        sec_match = re.search(r"\*\*By Sector[^*]*:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
+        if sec_match:
+            result["exposure_by_sector"] = _parse_md_table(sec_match.group(1))
+
+        # Parse thesis alignment scan
+        thesis_blocks = re.findall(
+            r"\*\*Thesis:\s*(.+?)\s*\(([^)]+)\)\*\*\s*\n(.*?)(?=\n\*\*Thesis:|\n###|\Z)",
+            content, re.DOTALL
+        )
+        for name, status, body in thesis_blocks:
+            alignment = {
+                "thesis_name": name.strip(),
+                "status": status.strip(),
+                "direction": "",
+                "overlapping": "",
+                "opposing": "",
+                "kill_switch": "",
+            }
+            dir_m = re.search(r"- Direction:\s*(.+)", body)
+            if dir_m:
+                alignment["direction"] = dir_m.group(1).strip()
+            over_m = re.search(r"- External positions with overlapping exposure:\s*(.+?)(?=\n-|\Z)", body, re.DOTALL)
+            if over_m:
+                alignment["overlapping"] = over_m.group(1).strip()
+            opp_m = re.search(r"- External positions with opposing exposure:\s*(.+?)(?=\n-|\Z)", body, re.DOTALL)
+            if opp_m:
+                alignment["opposing"] = opp_m.group(1).strip()
+            ks_m = re.search(r"- Kill switch status:\s*(.+)", body)
+            if ks_m:
+                alignment["kill_switch"] = ks_m.group(1).strip()
+            result["thesis_alignments"].append(alignment)
+
+        # Parse gap analysis
+        gap_blocks = re.findall(
+            r"\d+\.\s+\*\*(.+?)\*\*\s*(.+?)(?=\n\d+\.|\n\*\*Non-investable|\n###|\Z)",
+            content, re.DOTALL
+        )
+        for title, body in gap_blocks:
+            result["gap_analysis"].append({
+                "title": title.strip(),
+                "description": body.strip().replace("\n", " "),
+            })
+
+        # Parse non-investable summary
+        ni_match = re.search(r"\*\*Non-investable exposure[^*]*:\*\*\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+        if ni_match:
+            result["non_investable_summary"] = ni_match.group(1).strip().replace("\n", " ")
+
+        # Kill switch propagation section
+        ks_match = re.search(r"### Kill Switch Propagation\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+        if ks_match:
+            result["kill_switch_status"] = ks_match.group(1).strip()
+
+        # Summary
+        sum_match = re.search(r"### Summary\s*\n(.+?)(?=\n---|\Z)", content, re.DOTALL)
+        if sum_match:
+            result["summary"] = sum_match.group(1).strip()
+
+    except Exception:
+        pass
+
+    return result
 
 
 def parse_regime_templates(regime_path):
@@ -821,8 +953,10 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         amendments = parse_amendment_tracker(improvement_dir)
         improvement_report = parse_latest_improvement_report(improvement_dir)
 
-    # Load reasoning files
+    # Load reasoning files — try dedicated reasoning dir first, fall back to trades dir
     weekly_reasoning = parse_reasoning_files(reasoning_dir)
+    if not weekly_reasoning:
+        weekly_reasoning = parse_reasoning_files(trades_dir)
 
     # Load rules
     rules_data = {}
@@ -857,6 +991,7 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     cash_pct = 0
     thesis_overlay_pct = 0
     largest_position = None
+    largest_position_name = ""
     largest_position_pct = 0
     positions = []
 
@@ -866,16 +1001,41 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         if portfolio_value and cash:
             cash_pct = (cash / portfolio_value) * 100
 
+    # Build lookup from trade log: symbol → {name, layer, thesis} from most recent filled trade
+    _trade_meta = {}
+    for t in reversed(trade_log):
+        sym = t.get("symbol", "")
+        if sym and sym not in _trade_meta:
+            _trade_meta[sym] = {
+                "name": t.get("name", ""),
+                "layer": t.get("layer", ""),
+                "thesis": t.get("thesis", ""),
+            }
+
+    # Top-level allocation percentages from snapshot
+    alloc_map = latest_snapshot.get("allocations_pct", {})
+
     # Process positions
     if isinstance(latest_snapshot.get("positions"), list):
         for pos in latest_snapshot.get("positions", []):
             symbol = pos.get("symbol", "")
-            name = pos.get("name", "")
+            # Name: prefer snapshot, fall back to trade log lookup
+            name = pos.get("name", "") or _trade_meta.get(symbol, {}).get("name", "")
             qty = _num(pos.get("qty"))
             avg_entry = _num(pos.get("avg_entry_price"))
             current_price = _num(pos.get("current_price"))
             market_value = _num(pos.get("market_value"))
-            alloc_pct = _num(pos.get("allocation_pct"))
+            # Allocation: prefer per-position field, fall back to top-level allocations_pct
+            alloc_pct = _num(pos.get("allocation_pct")) or _num(alloc_map.get(symbol))
+
+            # Layer/thesis: prefer snapshot fields, fall back to trade log
+            layer = pos.get("layer", "") or _trade_meta.get(symbol, {}).get("layer", "")
+            thesis = pos.get("thesis", "") or _trade_meta.get(symbol, {}).get("thesis", "")
+
+            # Compute unrealized return for this position
+            pos_return_pct = 0
+            if avg_entry and avg_entry > 0 and current_price:
+                pos_return_pct = ((current_price - avg_entry) / avg_entry) * 100
 
             positions.append({
                 "symbol": symbol,
@@ -885,13 +1045,20 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
                 "current_price": fmt_money(current_price),
                 "market_value": fmt_money(market_value),
                 "allocation_pct": f"{alloc_pct:.1f}%" if alloc_pct else "0%",
-                "layer": pos.get("layer", ""),
-                "thesis": pos.get("thesis", ""),
+                "allocation_pct_raw": alloc_pct,
+                "return_pct": pos_return_pct,
+                "layer": layer,
+                "thesis": thesis,
                 "scaling_state": pos.get("scaling_state", "")
             })
 
+            # Track thesis overlay (positions with a non-empty thesis)
+            if thesis:
+                thesis_overlay_pct += alloc_pct
+
             if largest_position is None or alloc_pct > largest_position_pct:
                 largest_position = symbol
+                largest_position_name = name
                 largest_position_pct = alloc_pct
 
     # Build chart data from snapshots
@@ -933,19 +1100,40 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     if "by_layer" in attribution:
         for layer_name, layer_data in attribution.get("by_layer", {}).items():
             attr_layer[layer_name] = {
+                "layer": layer_name,
                 "positions": layer_data.get("positions", 0),
                 "allocation_pct": layer_data.get("allocation_pct", 0),
                 "week_return": layer_data.get("week_return", 0),
                 "contribution": layer_data.get("contribution", 0),
             }
     else:
-        # Fall back to trade_count_by_layer
+        # Fall back to trade_count_by_layer — compute allocation, return, contribution from positions
+        _layer_alloc = {}
+        _layer_return_weighted = {}  # sum of (alloc * return) per layer
+        _layer_positions_count = {}  # count of current held positions per layer
+        for p in positions:
+            pl = p.get("layer", "")
+            if pl:
+                alloc_raw = p.get("allocation_pct_raw", 0) or 0
+                ret_raw = p.get("return_pct", 0) or 0
+                _layer_alloc[pl] = _layer_alloc.get(pl, 0) + alloc_raw
+                _layer_return_weighted[pl] = _layer_return_weighted.get(pl, 0) + (alloc_raw * ret_raw / 100)
+                _layer_positions_count[pl] = _layer_positions_count.get(pl, 0) + 1
+
         for layer_name, count in attribution.get("trade_count_by_layer", {}).items():
+            layer_alloc = _layer_alloc.get(layer_name, 0)
+            # Weighted average return for the layer
+            layer_return = 0
+            if layer_alloc > 0:
+                layer_return = (_layer_return_weighted.get(layer_name, 0) / layer_alloc) * 100
+            # Contribution = allocation × return (contribution to total portfolio return)
+            layer_contribution = _layer_return_weighted.get(layer_name, 0)
             attr_layer[layer_name] = {
-                "positions": count,
-                "allocation_pct": 0,
-                "week_return": 0,
-                "contribution": 0,
+                "layer": layer_name,
+                "positions": _layer_positions_count.get(layer_name, count),
+                "allocation_pct": layer_alloc,
+                "week_return": round(layer_return, 2),
+                "contribution": round(layer_contribution, 2),
             }
 
     # Load external portfolio data
@@ -965,40 +1153,51 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     ext_kill_switch_propagation = []
     ext_approaching_kill_switches = []
     ext_staleness_warnings = []
+    ext_overlay = {"exposure_by_asset_class": [], "exposure_by_geography": [], "exposure_by_sector": [],
+                   "thesis_alignments": [], "gap_analysis": [], "non_investable_summary": "",
+                   "kill_switch_status": "", "summary": ""}
 
     if external_dir and os.path.exists(external_dir):
         ext_has_data = True
-        # Load latest prices
-        latest_prices = load_json(os.path.join(external_dir, "outputs/external/latest-prices.json"))
+        # Load latest prices — try latest-prices.json first, fall back to *-external-snapshot.json
+        latest_prices = load_json(os.path.join(external_dir, "latest-prices.json"))
+        if not latest_prices or "positions" not in latest_prices:
+            # Fall back to the most recent external snapshot
+            _ext_snaps = sorted(Path(external_dir).glob("*-external-snapshot.json"), reverse=True)
+            if _ext_snaps:
+                latest_prices = load_json(str(_ext_snaps[0]))
         if latest_prices and "positions" in latest_prices:
             ext_positions = latest_prices["positions"]
             ext_position_count = len(ext_positions)
-            ext_total_value = _num(latest_prices.get("total_value"))
+            ext_total_value = _num(latest_prices.get("total_value_base") or latest_prices.get("total_value"))
             ext_base_currency = latest_prices.get("base_currency", "USD")
             ext_stale_count = sum(1 for p in ext_positions if p.get("price_stale") or p.get("manual_valuation"))
 
         # Load value history
-        value_history_data = load_json(os.path.join(external_dir, "outputs/external/external-value-history.json"))
+        value_history_data = load_json(os.path.join(external_dir, "external-value-history.json"))
         if value_history_data:
             ext_value_history = value_history_data
 
         # Load exposure
-        ext_exposure_data = load_json(os.path.join(external_dir, "outputs/external/latest-exposure.json"))
+        ext_exposure_data = load_json(os.path.join(external_dir, "latest-exposure.json"))
         if ext_exposure_data:
             ext_exposure = ext_exposure_data
 
         # Load thesis overlap
-        thesis_overlap = load_json(os.path.join(external_dir, "outputs/external/latest-thesis-overlap.json"))
+        thesis_overlap = load_json(os.path.join(external_dir, "latest-thesis-overlap.json"))
         if thesis_overlap and "overlaps" in thesis_overlap:
             ext_thesis_overlap = thesis_overlap["overlaps"]
 
         # Load kill switches
-        kill_switches = load_json(os.path.join(external_dir, "outputs/external/latest-kill-switches.json"))
+        kill_switches = load_json(os.path.join(external_dir, "latest-kill-switches.json"))
         if kill_switches:
             if "propagations" in kill_switches:
                 ext_kill_switch_propagation = kill_switches["propagations"]
             if "approaching" in kill_switches:
                 ext_approaching_kill_switches = kill_switches["approaching"]
+
+        # Parse external overlay markdown for rich content
+        ext_overlay = parse_external_overlay(external_dir)
 
     # Load Jinja2 template
     script_dir = Path(__file__).parent
@@ -1045,6 +1244,9 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     except (FileNotFoundError, json.JSONDecodeError):
         pass
 
+    # Sort trade log by date descending (latest first)
+    trade_log.sort(key=lambda t: t.get("date", ""), reverse=True)
+
     # Render improvements tab HTML (reuse existing builder)
     improvements_html = _build_improvements_tab(improvement_report, amendments)
 
@@ -1086,7 +1288,7 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         position_count=len(positions),
         cash_pct=f"{cash_pct:.1f}%",
         thesis_overlay_pct=f"{thesis_overlay_pct:.1f}%",
-        largest_position_name=largest_position or "—",
+        largest_position_name=f"{largest_position} ({largest_position_name})" if largest_position and largest_position_name else (largest_position or "—"),
         largest_position_pct=f"{largest_position_pct:.1f}%",
         # Trade tables
         trade_log=trade_log,
@@ -1118,6 +1320,7 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         ext_kill_switch_propagation=ext_kill_switch_propagation,
         ext_approaching_kill_switches=ext_approaching_kill_switches,
         ext_staleness_warnings=ext_staleness_warnings,
+        ext_overlay=ext_overlay,
         # Rules
         rules_risk_constraints=rules_data.get("risk_constraints", []),
         rules_execution=rules_data.get("execution", ""),

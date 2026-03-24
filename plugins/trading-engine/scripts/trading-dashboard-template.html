@@ -277,6 +277,14 @@ tbody tr:last-child td {
     border-bottom: none;
 }
 
+.name-cell {
+    white-space: normal;
+    word-wrap: break-word;
+    max-width: 200px;
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
 /* ============================================================
    SORT BUTTONS & INTERACTIVE
    ============================================================ */
@@ -729,7 +737,11 @@ canvas {
                 </div>
                 <div class="kpi-card">
                     <div class="label">Largest Position</div>
-                    <div class="value">{{ largest_position }}</div>
+                    <div class="value">{{ largest_position_name | default('—', true) }}</div>
+                </div>
+                <div class="kpi-card">
+                    <div class="label">Largest Position %</div>
+                    <div class="value">{{ largest_position_pct | fmt_pct }}</div>
                 </div>
             </div>
         </div>
@@ -766,11 +778,11 @@ canvas {
                         <td><strong>{{ p.symbol }}</strong></td>
                         <td class="name-cell">{{ p.name }}</td>
                         <td>{{ p.qty }}</td>
-                        <td>{{ p.avg_entry | fmt_money }}</td>
-                        <td>{{ p.current_price | fmt_money }}</td>
-                        <td>{{ p.market_value | fmt_money }}</td>
-                        <td>{{ p.allocation_pct | fmt_pct }}</td>
-                        <td><span class="badge badge-blue">{{ p.layer }}</span></td>
+                        <td>{{ p.avg_entry }}</td>
+                        <td>{{ p.current_price }}</td>
+                        <td>{{ p.market_value }}</td>
+                        <td>{{ p.allocation_pct }}</td>
+                        <td>{% if p.layer %}<span class="badge badge-blue">{{ p.layer }}</span>{% else %}—{% endif %}</td>
                         <td>{{ p.thesis | default('—', true) }}</td>
                         <td><span class="badge badge-green">{{ p.scaling_state | default('ACTIVE', true) }}</span></td>
                     </tr>
@@ -857,10 +869,15 @@ canvas {
                         <td><span class="badge badge-blue">{{ t.layer | default('', true) }}</span></td>
                         <td>{{ t.thesis | default('—', true) }}</td>
                         <td>
-                        {% if t.status == 'OPEN' %}
-                            <span class="badge badge-green">OPEN</span>
-                        {% elif t.status == 'CLOSED' %}
-                            <span class="badge badge-red">CLOSED</span>
+                        {% set st = (t.status | default('', true) | lower) %}
+                        {% if st in ('filled', 'open', 'active') %}
+                            <span class="badge badge-green">{{ t.status | upper }}</span>
+                        {% elif st in ('cancelled', 'canceled', 'expired', 'closed') %}
+                            <span class="badge badge-red">{{ t.status | upper }}</span>
+                        {% elif st in ('new', 'pending', 'partially_filled') %}
+                            <span class="badge badge-cyan">{{ t.status | upper }}</span>
+                        {% elif st == 'rejected' %}
+                            <span class="badge" style="background: rgba(239,68,68,0.15); color: #ef4444;">{{ t.status | upper }}</span>
                         {% else %}
                             <span class="badge badge-amber">{{ t.status }}</span>
                         {% endif %}
@@ -1060,6 +1077,7 @@ canvas {
         {% if perf_attribution %}
         <div class="section">
             <h3>Layer Attribution</h3>
+            <div style="overflow-x: auto;">
             <table>
                 <thead>
                     <tr>
@@ -1082,6 +1100,7 @@ canvas {
                 {% endfor %}
                 </tbody>
             </table>
+            </div>
         </div>
         <hr class="divider">
         {% endif %}
@@ -1320,13 +1339,13 @@ canvas {
                     <tr>
                         <td><strong>{{ ep.ticker }}</strong></td>
                         <td class="name-cell">{{ ep.name }}</td>
-                        <td>{{ ep.qty }}</td>
+                        <td>{{ ep.quantity | default(ep.qty, true) }}</td>
                         <td>{{ ep.entry_price | fmt_money }}</td>
                         <td>{{ ep.current_price | fmt_money }}</td>
-                        <td class="{{ 'positive' if ep.pl_pct | float > 0 else 'negative' }}">{{ ep.pl_pct | fmt_pct }}</td>
+                        <td class="{{ 'positive' if ep.pl_pct | default(0, true) | float > 0 else 'negative' }}">{{ ep.pl_pct | fmt_pct }}</td>
                         <td>{{ ep.value_base | fmt_money }}</td>
                         <td>{{ ep.allocation_pct | fmt_pct }}</td>
-                        <td><span class="badge badge-blue">{{ ep.account }}</span></td>
+                        <td>{% if ep.account %}<span class="badge badge-blue">{{ ep.account }}</span>{% else %}—{% endif %}</td>
                         <td>
                         {% if ep.price_stale %}
                             <span class="badge" style="background: var(--red-dim); color: var(--red);">STALE</span>
@@ -1357,7 +1376,167 @@ canvas {
         <hr class="divider">
         {% endif %}
 
-        {# Exposure Comparison #}
+        {# ---- Overlay-based sections (parsed from weekly external overlay markdown) ---- #}
+
+        {# Exposure by Asset Class #}
+        {% if ext_overlay.exposure_by_asset_class %}
+        <div class="section">
+            <h3>Exposure by Asset Class</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_asset_class[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_asset_class %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure by Geography #}
+        {% if ext_overlay.exposure_by_geography %}
+        <div class="section">
+            <h3>Exposure by Geography</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_geography[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_geography %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure by Sector #}
+        {% if ext_overlay.exposure_by_sector %}
+        <div class="section">
+            <h3>Exposure by Sector (Equities)</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        {% for key in ext_overlay.exposure_by_sector[0].keys() %}
+                        <th>{{ key }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                {% for row in ext_overlay.exposure_by_sector %}
+                    <tr>
+                    {% for val in row.values() %}
+                        <td>{{ val }}</td>
+                    {% endfor %}
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Thesis Alignment from Overlay #}
+        {% if ext_overlay.thesis_alignments %}
+        <div class="section">
+            <h3>Thesis Alignment Scan</h3>
+            {% for ta in ext_overlay.thesis_alignments %}
+            <div class="accordion-item">
+                <div class="accordion-header" onclick="toggleAccordion(this)">
+                    <div>
+                        <strong>{{ ta.thesis_name }}</strong>
+                        <span class="badge badge-green" style="margin-left: 8px;">{{ ta.status }}</span>
+                        {% if ta.kill_switch %}
+                        <span style="color: var(--text-muted); margin-left: 8px; font-size: 10px;">Kill Switch: {{ ta.kill_switch }}</span>
+                        {% endif %}
+                    </div>
+                    <span class="toggle">▶</span>
+                </div>
+                <div class="accordion-body">
+                    {% if ta.direction %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Direction:</strong> {{ ta.direction }}</div>
+                    {% endif %}
+                    {% if ta.overlapping %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Overlapping Exposure:</strong> {{ ta.overlapping }}</div>
+                    {% endif %}
+                    {% if ta.opposing %}
+                    <div style="margin-bottom: 6px; font-size: 11px;"><strong>Opposing Exposure:</strong> {{ ta.opposing }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Gap Analysis from Overlay #}
+        {% if ext_overlay.gap_analysis %}
+        <div class="section">
+            <h3>Gap Analysis</h3>
+            {% for gap in ext_overlay.gap_analysis %}
+            <div style="margin-bottom: 12px; padding: 10px; background: var(--surface2); border-left: 3px solid var(--amber);">
+                <strong style="font-size: 11px;">{{ gap.title }}</strong>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 4px;">{{ gap.description }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Non-Investable Summary from Overlay #}
+        {% if ext_overlay.non_investable_summary %}
+        <div class="section">
+            <h3>Non-Investable Exposure (Informational)</h3>
+            <p style="font-size: 11px; color: var(--text-muted); padding: 10px; background: var(--surface2);">{{ ext_overlay.non_investable_summary }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Kill Switch Status from Overlay #}
+        {% if ext_overlay.kill_switch_status %}
+        <div class="section">
+            <h3>Kill Switch Propagation</h3>
+            <p style="font-size: 11px; padding: 10px; background: var(--surface2);">{{ ext_overlay.kill_switch_status }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Summary from Overlay #}
+        {% if ext_overlay.summary %}
+        <div class="section">
+            <h3>Weekly Summary</h3>
+            <p style="font-size: 11px; color: var(--text); padding: 10px; background: var(--surface2); line-height: 1.6;">{{ ext_overlay.summary }}</p>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
+        {# Exposure Comparison (JSON-based — requires both ext_exposure and paper_exposure) #}
         {% if ext_exposure and paper_exposure %}
         <div class="section">
             <h3>Allocation Comparison: By Sector</h3>

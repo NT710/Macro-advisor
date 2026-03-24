@@ -21,6 +21,37 @@ Before doing anything else, read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/ref
    > "Your system works fine without these. Enable them when convenient by editing `config/user-config.json`."
 
    Then continue the run normally. Do not block.
+3b. **Plugin version reconciliation.** Read the plugin version from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` (field: `version`). Then check if `outputs/improvement/plugin-version.json` exists in the workspace.
+   - **If it does not exist** (first run or pre-feature): write `{"plugin_version": "<current>", "stamped_at": "<ISO date>", "amendments_at_stamp": []}` and continue. No report needed.
+   - **If it exists**, read the stored `plugin_version`. If it matches the current version, continue silently.
+   - **If versions differ** (plugin was updated): generate a **reconciliation report** before continuing:
+     1. Read `outputs/improvement/amendment-tracker.md` and collect all amendments with status APPROVED, EFFECTIVE, PENDING IMPLEMENTATION, or PROPOSED (i.e., anything that represents a local improvement or pending local improvement).
+     2. For each amendment, note which skill reference file it targets (e.g., `Skill 2` → `references/02-liquidity-credit-monitor.md`).
+     3. Present the report under:
+        > **Plugin updated: v{old} → v{new}**
+        >
+        > Your system has {N} active/pending amendments from the self-improvement loop. These local improvements may overlap with changes in the new plugin version. Review below:
+        >
+        > | Amendment | Skill | Description | Risk |
+        > |-----------|-------|-------------|------|
+        > | {id} | {skill} | {description} | {assessment} |
+        >
+        > **Recommended actions:**
+        > - Review each amendment against the updated skill reference file to confirm it's still needed
+        > - Amendments targeting unchanged skill files are safe to keep
+        > - Amendments targeting changed skill files should be re-evaluated — the update may have incorporated the improvement or changed the context
+        > - Run `/macro-advisor:implement-improvements` after this cycle to reconcile
+     4. Update `outputs/improvement/plugin-version.json` with the new version and a snapshot of current amendment IDs:
+        ```json
+        {
+          "plugin_version": "<new>",
+          "previous_version": "<old>",
+          "stamped_at": "<ISO date>",
+          "upgrade_detected_at": "<ISO date>",
+          "amendments_at_stamp": ["A-2026W12-001", "A-2026W13-002", ...]
+        }
+        ```
+     5. Continue the run normally. Do not block. The reconciliation is advisory — the system keeps running with existing amendments. Skill 8 (Self-Improvement Loop) will naturally re-evaluate amendment effectiveness against the updated skill outputs.
 4. Read `workspace_path` from config. If the current working directory does not match `workspace_path`, `cd` to `workspace_path` so all relative output paths resolve correctly.
 5. Determine the current date and ISO week number. All output files use the format: `YYYY-Www-[skill-name].md`.
 6. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/SKILL.md` for system overview and execution chain.
