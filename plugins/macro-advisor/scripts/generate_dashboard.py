@@ -183,19 +183,27 @@ def _status_html(status):
     if not status:
         return ''
     s_upper = status.upper()
+    # Green statuses
     if s_upper == 'INTACT':
         return f'<span style="color: var(--green);">{status}</span>'
-    elif s_upper == 'UNDER PRESSURE':
+    # Amber statuses
+    elif s_upper in ('UNDER PRESSURE', 'DEVELOPING', 'WATCH', 'WEAKENING', 'MONITORING'):
         return f'<span style="color: var(--amber);">{status}</span>'
-    elif s_upper == 'BROKEN':
+    # Red statuses
+    elif s_upper in ('BROKEN', 'INVALIDATED', 'FAILED'):
         return f'<span style="color: var(--red);">{status}</span>'
+    # Blue/accent for strengthening
+    elif s_upper == 'STRENGTHENING':
+        return f'<span style="color: var(--accent);">{status}</span>'
     return status
 
 
 def _extract_status(text):
-    """Extract and remove status marker (INTACT/UNDER PRESSURE/BROKEN) from text.
-    Returns (cleaned_text, status_string)."""
-    for s in ['UNDER PRESSURE', 'INTACT', 'BROKEN']:
+    """Extract and remove status marker from text.
+    Returns (cleaned_text, status_string).
+    Searches longest-first to avoid partial matches (e.g. 'UNDER PRESSURE' before 'INTACT')."""
+    for s in ['UNDER PRESSURE', 'STRENGTHENING', 'INVALIDATED', 'DEVELOPING', 'MONITORING',
+              'WEAKENING', 'INTACT', 'BROKEN', 'FAILED', 'WATCH']:
         if s in text.upper():
             cleaned = re.sub(r'\s*—?\s*' + re.escape(s), '', text, flags=re.IGNORECASE).strip()
             return cleaned, s
@@ -238,6 +246,158 @@ def _emit_h2(text):
             clean = bold_match2.group(1).strip()
     clean = clean.rstrip(':').strip()
     return f'## {clean}'
+
+
+def format_thesis_from_json(sidecar):
+    """Render thesis HTML directly from a JSON sidecar — no markdown parsing needed.
+
+    Produces the same visual output as format_thesis_html() but reads structured data
+    from the sidecar dict instead of parsing markdown prose. This eliminates the class
+    of parsing bugs (em-dash splits, missing status keywords, bold marker confusion)
+    that affect the markdown parser.
+
+    Returns markdown-like text that md_to_html() can render (same as format_thesis_html).
+    """
+    lines = []
+
+    # Plain English Summary
+    if sidecar.get("plain_english_summary"):
+        lines.append('## Plain English Summary')
+        lines.append('')
+        lines.append(sidecar["plain_english_summary"])
+        lines.append('')
+
+    # Claim / Mechanism
+    if sidecar.get("claim"):
+        lines.append('## Claim')
+        lines.append('')
+        lines.append(sidecar["claim"])
+        lines.append('')
+
+    # What We Have To Believe / Assumptions
+    assumptions = sidecar.get("assumptions", [])
+    if assumptions:
+        has_testable = any(a.get("testable_by") for a in assumptions)
+        has_status = any(a.get("status") for a in assumptions)
+
+        if has_testable:
+            lines.append('## What We Have To Believe')
+            lines.append('')
+            if has_status:
+                lines.append('| # | Assumption | Testable By | Status |')
+                lines.append('|---|-----------|-------------|--------|')
+                for n, a in enumerate(assumptions, 1):
+                    status_html = _status_html(a.get("status", ""))
+                    lines.append(f'| {n} | {a.get("text", "")} | {a.get("testable_by", "")} | {status_html} |')
+            else:
+                lines.append('| # | Assumption | Testable By |')
+                lines.append('|---|-----------|-------------|')
+                for n, a in enumerate(assumptions, 1):
+                    lines.append(f'| {n} | {a.get("text", "")} | {a.get("testable_by", "")} |')
+        else:
+            lines.append('## Assumptions')
+            lines.append('')
+            if has_status:
+                lines.append('| # | Assumption | Status |')
+                lines.append('|---|-----------|--------|')
+                for n, a in enumerate(assumptions, 1):
+                    status_html = _status_html(a.get("status", ""))
+                    lines.append(f'| {n} | {a.get("text", "")} | {status_html} |')
+            else:
+                lines.append('| # | Assumption |')
+                lines.append('|---|-----------|')
+                for n, a in enumerate(assumptions, 1):
+                    lines.append(f'| {n} | {a.get("text", "")} |')
+        lines.append('')
+
+    # Quantified Causal Chain
+    chain = sidecar.get("causal_chain", [])
+    if chain:
+        lines.append('## Quantified Causal Chain')
+        lines.append('')
+        lines.append('| # | Link | Quantified |')
+        lines.append('|---|------|-----------|')
+        for step in chain:
+            n = step.get("step", "")
+            link = step.get("link", "")
+            quant = step.get("quantified", "")
+            source = step.get("source", "")
+            if source:
+                quant = f'{quant} ({source})' if quant else source
+            lines.append(f'| {n} | **{link}** | {quant} |')
+        lines.append('')
+
+    # Structural Foundation
+    foundation = sidecar.get("structural_foundation")
+    if foundation:
+        lines.append('## Structural Foundation')
+        lines.append('')
+        lines.append('| Binding Constraint | Quantified | Source |')
+        lines.append('|-------------------|-----------|--------|')
+        for f in foundation:
+            lines.append(f'| {f.get("constraint", "")} | {f.get("quantified", "")} | {f.get("source", "")} |')
+        lines.append('')
+
+    # Consensus View
+    if sidecar.get("consensus_view"):
+        lines.append('## Consensus View')
+        lines.append('')
+        lines.append(sidecar["consensus_view"])
+        lines.append('')
+
+    # ETF Expression
+    etf = sidecar.get("etf_expression")
+    if etf and isinstance(etf, dict):
+        lines.append('## ETF Expression')
+        lines.append('')
+        lines.append('| Order | ETF | Size | Rationale |')
+        lines.append('|-------|-----|------|-----------|')
+        for order_key, order_label in [("first_order", "First-order"), ("second_order", "Second-order"),
+                                        ("third_order", "Third-order"), ("reduce_avoid", "Reduce/Avoid")]:
+            for item in etf.get(order_key, []):
+                ticker = item.get("ticker", item.get("etf", ""))
+                size = item.get("size", "—") if order_key != "reduce_avoid" else "—"
+                rationale = item.get("rationale", "")
+                lines.append(f'| {order_label} | {ticker} | {size} | {rationale} |')
+        lines.append('')
+
+    # Conviction
+    if sidecar.get("conviction"):
+        lines.append('## Conviction')
+        lines.append('')
+        lines.append(sidecar["conviction"])
+        lines.append('')
+
+    # Kill Switch
+    if sidecar.get("kill_switch"):
+        lines.append(f'<div class="kill-switch-card">')
+        lines.append(f'<strong>KILL SWITCH:</strong> {sidecar["kill_switch"]}')
+        lines.append(f'</div>')
+        lines.append('')
+
+    # Trigger to Add
+    if sidecar.get("trigger_to_add"):
+        lines.append('## Trigger to Add')
+        lines.append('')
+        lines.append(sidecar["trigger_to_add"])
+        lines.append('')
+
+    # Contrarian Stress Test
+    stress = sidecar.get("contrarian_stress_test")
+    if stress and isinstance(stress, dict):
+        lines.append('## Contrarian Stress-Test')
+        lines.append('')
+        if stress.get("strongest_counter"):
+            lines.append(f'**Strongest counter-argument:** {stress["strongest_counter"]}')
+            lines.append('')
+        for risk in stress.get("key_risks", []):
+            lines.append(f'- {risk.get("risk", "")} (Probability: {risk.get("probability", "?")})')
+        if stress.get("post_test_conviction"):
+            lines.append('')
+            lines.append(f'**Conviction after stress test:** {stress["post_test_conviction"]}')
+        lines.append('')
+
+    return '\n'.join(lines)
 
 
 def format_thesis_html(md_text):
@@ -452,11 +612,16 @@ def format_thesis_html(md_text):
                 m = re.match(r'^\d+\.\s*(.+)', l)
                 if m:
                     text = m.group(1)
-                    # Try to split: "Link text — quantified detail"
-                    parts = text.split(' — ', 1)
-                    if len(parts) == 2:
-                        items.append((parts[0].strip(), parts[1].strip()))
+                    # Split on bold markers: **Bold claim.** Rest is quantified
+                    bold_match = re.match(r'\*\*(.+?)\*\*\s*(.*)', text, re.DOTALL)
+                    if bold_match:
+                        link = bold_match.group(1).strip()
+                        quant = bold_match.group(2).strip()
+                        # Strip leading dash/emdash from quantified if present
+                        quant = re.sub(r'^[—–\-]\s*', '', quant)
+                        items.append((f'**{link}**', quant))
                     else:
+                        # Fallback: no bold markers, keep full text as link
                         items.append((text.strip(), ''))
                     i += 1
                 else:
@@ -1402,7 +1567,8 @@ def parse_horizon_map(md_text):
 def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                    all_weeks=None, all_weeks_data=None, regime_history=None,
                    skill_files=None, methodology=None, output_dir=None,
-                   closed_theses=None, horizon_map=None):
+                   closed_theses=None, horizon_map=None, horizon_json_data=None,
+                   thesis_json_sidecars=None):
     """Generate the full HTML dashboard with multi-week history support."""
 
     all_weeks = all_weeks or [week]
@@ -1410,6 +1576,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     regime_history = regime_history or []
     skill_files = skill_files or []
     methodology = methodology or ""
+    thesis_json_sidecars = thesis_json_sidecars or {}
 
     # Regime: Try synthesis-data.json sidecar first (stable contract),
     # fall back to markdown parsing (legacy) if not available.
@@ -1637,10 +1804,20 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
         # Extract metadata from content
         thesis_key = name.replace("ACTIVE-", "").replace("DRAFT-", "").replace(".md", "")
+        thesis_stem = name.replace(".md", "")  # e.g. "ACTIVE-structural-grid-bottleneck"
+
+        # --- THESIS SIDECAR: structured data from thesis-name-data.json ---
+        thesis_sidecar = thesis_json_sidecars.get(thesis_stem)
 
         # --- JSON-PRIMARY: conviction and recommendation from briefing-data.json ---
         conviction = ""
         recommendation = ""
+
+        # Priority 1: thesis sidecar (most authoritative — from the thesis file itself)
+        if thesis_sidecar:
+            conviction = thesis_sidecar.get("conviction", "")
+            # Sidecar doesn't carry recommendation (that's a briefing concept)
+
         json_thesis_entry = None
         if briefing_json_raw and "theses" in briefing_json_raw:
             json_theses = briefing_json_raw["theses"]
@@ -1714,32 +1891,39 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                         best_conv_score = overlap
                         conviction = cval
 
-        provenance = ""
-        prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
-        if prov_match:
-            provenance = prov_match.group(1).strip()
+        # Metadata: prefer thesis sidecar, fall back to markdown parsing
+        if thesis_sidecar:
+            provenance = thesis_sidecar.get("provenance", "")
+            generated = thesis_sidecar.get("generated", "")
+            updated = thesis_sidecar.get("updated", "")
+            horizon = thesis_sidecar.get("time_horizon", "")
+        else:
+            provenance = ""
+            prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
+            if prov_match:
+                provenance = prov_match.group(1).strip()
 
-        generated = ""
-        gen_match = re.search(r'\*\*Generated:\*\*\s*(.+)', content)
-        if gen_match:
-            generated = gen_match.group(1).strip()
+            generated = ""
+            gen_match = re.search(r'\*\*Generated:\*\*\s*(.+)', content)
+            if gen_match:
+                generated = gen_match.group(1).strip()
 
-        updated = ""
-        upd_match = re.search(r'\*\*Updated:\*\*\s*(.+)', content)
-        if upd_match:
-            updated = upd_match.group(1).strip()
+            updated = ""
+            upd_match = re.search(r'\*\*Updated:\*\*\s*(.+)', content)
+            if upd_match:
+                updated = upd_match.group(1).strip()
 
-        # Extract time horizon (first line after ## Time Horizon)
-        horizon = ""
-        horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
-        if horizon_match:
-            # Grab just the short duration label (e.g. "1-3 months", "2-5 years")
-            h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?))', horizon_match.group(1).strip(), re.IGNORECASE)
-            if h_match:
-                horizon = h_match.group(1)
-            else:
-                # Fallback: take first phrase before period or parenthesis
-                horizon = horizon_match.group(1).strip().split('.')[0].split('(')[0].strip()
+            # Extract time horizon (first line after ## Time Horizon)
+            horizon = ""
+            horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
+            if horizon_match:
+                # Grab just the short duration label (e.g. "1-3 months", "2-5 years")
+                h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?))', horizon_match.group(1).strip(), re.IGNORECASE)
+                if h_match:
+                    horizon = h_match.group(1)
+                else:
+                    # Fallback: take first phrase before period or parenthesis
+                    horizon = horizon_match.group(1).strip().split('.')[0].split('(')[0].strip()
 
         # Legacy fallback: look up recommendation from briefing table (only if JSON didn't provide one)
         if not recommendation:
@@ -1856,11 +2040,17 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 f'</div>'
             )
 
+        # Render thesis body: prefer JSON sidecar (no parsing needed), fall back to markdown
+        if thesis_sidecar:
+            thesis_body_html = md_to_html(format_thesis_from_json(thesis_sidecar))
+        else:
+            thesis_body_html = md_to_html(format_thesis_html(render_content))
+
         display = "block" if i == 0 else "none"
         thesis_contents += (
             f'<div class="thesis-detail" id="thesis-{i}" style="display:{display}">'
             f'{chart_html}'
-            f'{md_to_html(format_thesis_html(render_content))}'
+            f'{thesis_body_html}'
             f'{source_viewer}'
             f'</div>\n'
         )
@@ -2289,12 +2479,33 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         methodology_html = "<p style='color: var(--text-muted); text-align: center; padding: 40px 0;'>No methodology document found.</p>"
 
     # --- Build Mega Forces tab HTML from Skill 14 horizon map ---
-    horizon_data = parse_horizon_map(horizon_map) if horizon_map else None
+    # Prefer pre-parsed JSON sidecar (horizon-data.json) over markdown parsing
+    if horizon_json_data:
+        # JSON sidecar matches parse_horizon_map() output shape — use directly
+        horizon_data = horizon_json_data
+        # Ensure expected top-level keys exist
+        horizon_data.setdefault("meta", {})
+        horizon_data.setdefault("forces", [])
+        horizon_data.setdefault("blind_spots", [])
+        horizon_data.setdefault("summary_table", [])
+        # Build summary_table from forces if not provided explicitly in JSON
+        if not horizon_data["summary_table"] and horizon_data["forces"]:
+            for f in horizon_data["forces"]:
+                horizon_data["summary_table"].append({
+                    "force": f.get("name", ""),
+                    "direction": f.get("direction", ""),
+                    "confidence": f.get("confidence", ""),
+                    "timeline": f.get("timeline", ""),
+                    "consensus": f.get("consensus", ""),
+                    "mispricing": f.get("mispricing", ""),
+                })
+    else:
+        horizon_data = parse_horizon_map(horizon_map) if horizon_map else None
     mega_forces_html = ""
     if horizon_data and horizon_data.get("forces"):
         hd = horizon_data
         hm = hd["meta"]
-        run_date = hm.get("run_date", "—")
+        run_date = hm.get("run_date") or hm.get("last_run_date", "—")
         run_type = hm.get("run_type", "—")
         forces_mapped = hm.get("mega_forces_mapped", len(hd["forces"]))
         blind_count = hm.get("blind_spots_identified", len(hd["blind_spots"]))
@@ -2497,10 +2708,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                     f'<tr>'
                     f'<td><span style="color: {pc}; font-weight: 600;">{bs["priority"]}</span></td>'
                     f'<td style="color: var(--white); font-weight: 500;">{bs["name"]}</td>'
-                    f'<td style="color: var(--text);">{bs.get("coverage_gap", "")[:80]}</td>'
+                    f'<td style="color: var(--text);">{bs.get("coverage_gap", "")}</td>'
                     f'<td style="color: var(--text-muted);">{bs.get("investability", "")}</td>'
                     f'<td style="color: var(--text-muted);">{bs.get("timeline", "")}</td>'
-                    f'<td style="color: var(--text); font-size: 10px;">{bs.get("recommendation", "")[:60]}</td>'
+                    f'<td style="color: var(--text); font-size: 10px;">{bs.get("recommendation", "")}</td>'
                     f'</tr>'
                 )
             mega_forces_html += f'''
@@ -4393,12 +4604,21 @@ def main():
     briefing = read_file(output_dir / "briefings" / f"{args.week}-briefing.md")
 
     # Read thesis files — active/draft and closed separately
+    # Also load JSON sidecar files when available (thesis-name-data.json)
     theses = []
+    thesis_json_sidecars = {}  # keyed by thesis filename stem (without .md)
     closed_theses = []
     theses_dir = output_dir / "theses" / "active"
     if theses_dir.exists():
         for f in sorted(theses_dir.glob("*.md")):
             theses.append((f.name, f.read_text(encoding="utf-8")))
+            # Check for companion JSON sidecar: ACTIVE-foo.md → ACTIVE-foo-data.json
+            json_sidecar = f.with_name(f.stem + "-data.json")
+            if json_sidecar.exists():
+                try:
+                    thesis_json_sidecars[f.stem] = json.loads(json_sidecar.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError) as e:
+                    print(f"Warning: failed to parse thesis sidecar {json_sidecar}: {e}", file=sys.stderr)
     closed_dir = output_dir / "theses" / "closed"
     if closed_dir.exists():
         for f in sorted(closed_dir.glob("*.md")):
@@ -4451,12 +4671,29 @@ def main():
     if args.plugin_root:
         methodology = read_file(Path(args.plugin_root) / "skills" / "macro-advisor" / "references" / "methodology.md")
 
-    # Read Skill 14 Decade Horizon map (latest-horizon-map.md or most recent quarterly)
-    horizon_map = read_file(output_dir / "strategic" / "latest-horizon-map.md")
-    if not horizon_map:
-        # Fallback: find most recent quarterly horizon map by glob
-        strategic_dir = output_dir / "strategic"
-        if strategic_dir.exists():
+    # Read Skill 14 Decade Horizon map — prefer JSON sidecar, fall back to markdown
+    horizon_map = ""
+    horizon_json_data = None
+    strategic_dir = output_dir / "strategic"
+
+    # Try JSON sidecar first (stable contract, no parsing needed)
+    if strategic_dir.exists():
+        json_candidates = [
+            strategic_dir / "latest-horizon-data.json",
+        ] + sorted(strategic_dir.glob("*-horizon-data.json"), reverse=True)
+        for jc in json_candidates:
+            if jc.exists() and jc.name != "latest-horizon-data.json" or (jc.name == "latest-horizon-data.json" and jc.exists()):
+                try:
+                    horizon_json_data = json.loads(jc.read_text(encoding="utf-8"))
+                    print(f"Horizon: using JSON sidecar {jc.name}", file=sys.stderr)
+                    break
+                except (json.JSONDecodeError, OSError) as e:
+                    print(f"Warning: failed to parse {jc}: {e}", file=sys.stderr)
+
+    # Fall back to markdown if no JSON sidecar
+    if not horizon_json_data:
+        horizon_map = read_file(strategic_dir / "latest-horizon-map.md") if strategic_dir.exists() else ""
+        if not horizon_map and strategic_dir.exists():
             horizon_files = sorted(strategic_dir.glob("*-horizon-map.md"), reverse=True)
             for hf in horizon_files:
                 if hf.name != "latest-horizon-map.md":
@@ -4475,6 +4712,8 @@ def main():
         output_dir=output_dir,
         closed_theses=closed_theses,
         horizon_map=horizon_map,
+        horizon_json_data=horizon_json_data,
+        thesis_json_sidecars=thesis_json_sidecars,
     )
 
     # Write output

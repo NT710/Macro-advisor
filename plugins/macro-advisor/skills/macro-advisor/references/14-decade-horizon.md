@@ -189,19 +189,79 @@ If you cannot write a credible inversion scenario, you're in narrative capture t
 - **Horizon map:** `outputs/strategic/YYYY-QN-horizon-map.md` — full output including all phases
 - **Latest symlink:** Copy to `outputs/strategic/latest-horizon-map.md` (overwrite) — this is what other skills read
 - **Blind spot candidates:** Each actionable blind spot is ALSO saved to `outputs/strategic/blind-spots/BLINDSPOT-[slug]-[date].md` — Skill 13 and Skill 7 read these
-- **Last-run tracker:** Update `outputs/strategic/last-horizon.json`:
+- **Last-run tracker:** Update `outputs/strategic/last-horizon.json` (see below)
+
+## Structured Data Sidecar (horizon-data.json)
+
+**After writing the markdown horizon map, also write a companion JSON file** to `outputs/strategic/YYYY-QN-horizon-data.json` (e.g., `2026-Q1-horizon-data.json`). Also copy to `outputs/strategic/latest-horizon-data.json`. This file is the machine-readable source of truth for the dashboard. It eliminates the need for the dashboard generator to parse markdown.
+
+The markdown file continues to be the human-readable horizon map. The JSON is the stable contract.
+
 ```json
 {
-  "last_run_date": "YYYY-MM-DD",
-  "last_run_quarter": "YYYY-QN",
-  "mega_forces_mapped": ["list of force names"],
-  "mega_forces_changed": ["list of forces added/removed/upgraded/downgraded vs previous quarter"],
-  "blind_spots_identified": 0,
-  "blind_spots_actionable": 0,
-  "blind_spots_flagged_for_scanner": 0,
-  "blind_spots_flagged_for_research": 0
+  "meta": {
+    "last_run_date": "2026-03-23",
+    "last_run_quarter": "2026-Q1",
+    "run_type": "first-run",
+    "mega_forces_mapped": 5,
+    "mega_forces_changed": [],
+    "blind_spots_identified": 4,
+    "blind_spots_actionable": 2,
+    "blind_spots_flagged_for_scanner": 1,
+    "blind_spots_flagged_for_research": 1
+  },
+
+  "forces": [
+    {
+      "name": "Fiscal Dominance Crystallization",
+      "direction": "Accelerating",
+      "confidence": "HIGH",
+      "timeline": "2026-2032",
+      "consensus": "Emerging, not saturated",
+      "mispricing": "Market doesn't price Fed subordination to fiscal",
+      "coverage_status": "WELL-COVERED",
+      "mechanism": "As cheap debt from 2020-2021 QE era matures and rolls at current rates...",
+      "key_data": [
+        "US federal debt: $38.5T (FRED GFDEBTN, Q4 2025)",
+        "Interest expense: $1.23T annually, 16.2% of total federal spending"
+      ],
+      "cross_sector_implications": "Affects rates, currency, gold, fiscal policy space",
+      "last_quarter_change": null,
+      "causal_chains": {
+        "first_order": [
+          {
+            "impact": "Rising interest expense constrains Fed policy space",
+            "direction": "POSITIVE for gold and hard assets / NEGATIVE for long-duration bonds",
+            "consensus": "MEDIUM-HIGH"
+          }
+        ],
+        "second_order": [],
+        "third_order": []
+      },
+      "stress_test": {
+        "assessment": "Counter-argument text...",
+        "conviction_post": "HIGH"
+      }
+    }
+  ],
+
+  "blind_spots": [
+    {
+      "priority": "HIGH",
+      "name": "Supply Chain Bifurcation",
+      "coverage_gap": "Full description of what the thesis book misses — never truncated",
+      "investability": "HIGH",
+      "timeline": "2-5 years",
+      "recommendation": "FLAG FOR SKILL 13 (scanner should detect supply chain bifurcation signals in trade data, shipping routes, and capex announcements)"
+    }
+  ]
 }
 ```
+
+**Rules:**
+- The JSON must contain **all** data from the horizon map — forces, causal chains, blind spots, stress tests. Full text, never truncated.
+- The `last-horizon.json` tracker is superseded by the `meta` block in this sidecar. Keep writing `last-horizon.json` for backward compatibility, but the sidecar is the authoritative source.
+- The dashboard generator reads the JSON when present, falling back to markdown parsing for legacy files without a sidecar.
 
 ---
 

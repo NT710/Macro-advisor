@@ -398,6 +398,81 @@ CLOSED → Final status. Record outcome in thesis log.
 - Thesis log: append all closed thesis entries to `outputs/theses/thesis-log.md`
 - Weekly monitor output: save with weekly collection outputs
 
+## Structured Data Sidecar (thesis-name-data.json)
+
+**After writing the markdown thesis file, also write a companion JSON file** alongside it. For example, `ACTIVE-structural-grid-bottleneck.md` gets `ACTIVE-structural-grid-bottleneck-data.json`. This file is the machine-readable source of truth for the dashboard. It eliminates the need for the dashboard generator to parse markdown tables.
+
+The markdown file continues to be the human-readable research note. The JSON is the stable contract for structured data.
+
+```json
+{
+  "name": "Structural Grid Bottleneck",
+  "status": "ACTIVE",
+  "classification": "structural",
+  "generated": "2026-03-22",
+  "updated": "2026-03-25",
+  "provenance": "data-pattern",
+  "conviction": "High",
+  "time_horizon": "2-5 yr",
+  "claim": "[The one-sentence claim]",
+  "plain_english_summary": "[The full summary paragraph]",
+
+  "assumptions": [
+    {
+      "text": "Data center power demand continues growing at 25%+ annually for 3+ years",
+      "testable_by": "quarterly data center construction starts, EIA electricity consumption data, hyperscaler capex announcements",
+      "current_status_detail": "McKinsey 3.5x by 2030, EIA +3% for 2027",
+      "status": "INTACT"
+    }
+  ],
+
+  "causal_chain": [
+    {
+      "step": 1,
+      "link": "Data center demand is growing at infrastructure speed, but supply is constrained at regulatory speed.",
+      "quantified": "Data center power consumption: 224 TWh in 2025 (5.2% of US demand), projected to reach 292 TWh in 2026 (6.5%) and 371 TWh in 2027 (8.0%). Growth rate ~35% annually.",
+      "source": "McKinsey 2025; EIA 2025"
+    }
+  ],
+
+  "structural_foundation": [
+    {
+      "constraint": "Transformer manufacturing capacity deficit",
+      "quantified": "30% deficit, new factory capacity not online until 2027",
+      "source": "Wood Mackenzie"
+    }
+  ],
+
+  "etf_expression": {
+    "first_order": [{"ticker": "XLUS.SW", "size": "Core (3-5%)", "rationale": "Diversified regulated utility exposure"}],
+    "second_order": [{"ticker": "GRID", "size": "Satellite (1-2%)", "rationale": "Grid infrastructure pure-play"}],
+    "third_order": [],
+    "reduce_avoid": [{"ticker": "CSNDX.SW", "rationale": "Long-duration growth vulnerable if grid constraints hit data center buildout"}]
+  },
+
+  "trigger_to_add": "PJM capacity auction clears above $350/MW-day",
+  "kill_switch": "FERC interconnection reform reduces queue to <2 years AND transformer deficit narrows below 5%",
+
+  "consensus_view": "[Market consensus paragraph]",
+  "contrarian_stress_test": {
+    "strongest_counter": "[The steelmanned counter-argument]",
+    "key_risks": [
+      {"risk": "AI efficiency gains compress demand growth to <15% annually", "probability": "30-40%"},
+      {"risk": "Off-grid generation absorbs >30% of incremental data center demand", "probability": "25-35%"}
+    ],
+    "post_test_conviction": "High"
+  }
+}
+```
+
+**Rules:**
+- The JSON must contain **all** structured data from the thesis — assumptions, causal chain, structural foundation, ETF expression. Full text, never truncated.
+- Status values for assumptions: `INTACT`, `DEVELOPING`, `UNDER PRESSURE`, `WEAKENING`, `STRENGTHENING`, `WATCH`, `BROKEN`, `INVALIDATED`, `FAILED`.
+- Tactical theses omit `structural_foundation` and `contrarian_stress_test` (set to `null`). Their `causal_chain` field maps the mechanism steps instead.
+- For tactical theses, `assumptions` uses the simpler format (no `testable_by` if not specified in the markdown — set to `""`).
+- When Function B (monitor) updates a thesis, update both the markdown and the JSON sidecar. The JSON `updated` field and assumption `status` values must stay in sync with the markdown.
+- The dashboard generator reads the JSON when present, falling back to markdown parsing for legacy files without a sidecar.
+
 ## Meta Block
 
 ```yaml
