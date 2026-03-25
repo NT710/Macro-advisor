@@ -958,12 +958,34 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     if not weekly_reasoning:
         weekly_reasoning = parse_reasoning_files(trades_dir)
 
-    # Load rules
+    # Load rules — auto-discover RULES.md if not explicitly provided
     rules_data = {}
     risk_limits_json = {}
     regime_templates = {}
+    if not rules_path:
+        # Auto-discover: script is at scripts/generate_dashboard.py,
+        # RULES.md is at skills/trading-engine/references/RULES.md
+        # (both under the same plugin root)
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        plugin_root = os.path.dirname(script_dir)  # up from scripts/ to plugin root
+        candidates = [
+            os.path.join(plugin_root, "skills", "trading-engine", "references", "RULES.md"),
+            os.path.join(plugin_root, "references", "RULES.md"),
+            os.path.join(plugin_root, "RULES.md"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                rules_path = candidate
+                break
     if rules_path:
         rules_data = parse_rules_md(rules_path)
+    if not config_dir:
+        # Auto-discover config directory relative to script location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        plugin_root = os.path.dirname(script_dir)
+        candidate_config = os.path.join(plugin_root, "config")
+        if os.path.isdir(candidate_config):
+            config_dir = candidate_config
     if config_dir:
         risk_limits_path = os.path.join(config_dir, "risk-limits.json")
         risk_limits_json = load_json(risk_limits_path)

@@ -42,8 +42,13 @@ Review the skill amendments proposed by the self-improvement loop (T7) and let t
      --trades outputs/trades/ \
      --performance outputs/performance/ \
      --improvement outputs/improvement/ \
+     --external outputs/external/ \
+     --config ${CLAUDE_PLUGIN_ROOT}/config/ \
+     --rules ${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md \
+     --reasoning outputs/trades/ \
      --output outputs/dashboard/
    ```
+   Note: `--rules` and `--config` auto-discover from the script's own location if omitted, so the Rules tab will populate even if these flags are missing. Always pass all flags for explicitness.
 
 ## Guardrails
 
