@@ -303,7 +303,7 @@ These apply when generating the `theses` object in the JSON:
 
 11. **When the data is mixed, say it's mixed.** Don't resolve ambiguity by choosing the more interesting narrative. "The data is genuinely conflicted this week" is a valid assessment that serves the reader better than false clarity.
 
-12. **Regime continuity is not the default.** The regime stability principle (Skill 6) guards against whipsawing. But the memo must not treat continuity as inherently more likely than change. If the data is shifting, describe the shift honestly even if it hasn't crossed the 2-week confirmation threshold yet. "The data is moving toward Overheating but hasn't confirmed — here's what confirmation would look like."
+12. **Regime continuity is not the default.** The regime stability principle (Skill 6) guards against whipsawing. But the memo must not treat continuity as inherently more likely than change. If the data is shifting, describe the shift honestly even if it hasn't crossed the 2-month confirmation threshold yet. "The data is moving toward Overheating but hasn't confirmed — here's what confirmation would look like."
 
 13. **Past accuracy doesn't earn narrative credit.** If our regime call has been right for 8 weeks, that's useful context — but it doesn't make week 9's call more likely to be right. Each week's assessment stands on its own data.
 

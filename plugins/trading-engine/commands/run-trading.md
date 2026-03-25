@@ -74,12 +74,15 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
   --performance outputs/performance/ \
   --improvement outputs/improvement/ \
   --external outputs/external/ \
+  --config config/ \
+  --rules ${CLAUDE_PLUGIN_ROOT}/skills/trading-engine/references/RULES.md \
+  --reasoning outputs/trades/ \
   --output outputs/dashboard/
 ```
 
-This produces `outputs/dashboard/latest-dashboard.html` — a self-contained HTML file with tabs: P&L, Trades, Improvements, and (if external portfolio is enabled) External Portfolio.
+This produces `outputs/dashboard/latest-dashboard.html` — a self-contained HTML file with all tabs fully populated: Overview, Positions, Trades & Reasoning, Performance, External Portfolio, Improvements, and Rules.
 
-The `--external` flag is optional. If the directory doesn't exist or is empty, the dashboard renders without the External Portfolio tab.
+All optional flags (`--external`, `--config`, `--rules`, `--reasoning`) should always be passed. If the underlying directory or file doesn't exist, the dashboard gracefully renders those sections as empty.
 
 Present the dashboard file to the user as the primary output of the run.
 

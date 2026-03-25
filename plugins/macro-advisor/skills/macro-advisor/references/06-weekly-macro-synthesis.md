@@ -26,14 +26,17 @@ First: classify the regime based on growth and inflation direction from the data
 
 A regime is a structural macroeconomic condition that persists for quarters, not weeks. When classifying, assess growth and inflation direction over a 6-month horizon, not just the last few data prints. A single month's uptick in CPI within a broader disinflationary trend does not constitute a regime change — it's noise within the existing regime.
 
-**Before calling a regime change, require confirmation:**
-1. At least 2 consecutive weeks of data pointing to the new regime, not just one anomalous print.
-2. The shift must be visible in the 6-month trend of the underlying indicators, not just the most recent 1-2 months.
+**Before calling a regime change, require confirmation — the 2-month filter on the 6-month direction window:**
+1. The growth × inflation direction must have visibly turned over the 6-month trend window. A single anomalous month or a short-term data spike does not constitute a turn — the 6-month direction of the underlying indicators must point to the new regime.
+2. That new direction must persist for at least 2 months (~8 weekly prints) before the regime change registers. During this confirmation period, flag the emerging shift as "regime under review — data pointing toward [new quadrant] but confirmation period not yet met." Continue to classify and position under the current regime until confirmation completes.
 3. If the data is ambiguous — one indicator says growth is rising, another says falling — hold the current regime and flag the conflict. The burden of proof is on the change, not on continuity.
+4. Liquidity is NOT part of the regime classification or confirmation filter. The four-quadrant model is growth × inflation only. Liquidity enters as a separate overlay that modifies asset implications within the active regime — it does not trigger or delay regime changes.
 
-**Equally important — challenge continuity too.** The confirmation requirement must not create a bias toward holding the current regime indefinitely. If the same regime has been active for 8+ consecutive weeks, actively stress-test it: what evidence would it take to call a different regime? If you can't articulate what would change your mind, you may be anchored rather than analytical. The burden of proof applies symmetrically — it's on the change when data is noisy, and it's on continuity when the regime has been stale for months and the underlying data is shifting.
+**Why this threshold:** The quantitative backtest validated this exact filter — growth × inflation direction over a 6-month window with a 2-month confirmation filter — on 15 years of monthly data across 9 asset classes. It "reduced noise significantly, raising average regime duration and making return patterns cleaner without losing real transitions." This is consistent with institutional practice: Hamilton Markov-switching models typically require 2–4 months to resolve regime changes at >0.7 probability, and AQR's macro momentum research uses 12-month rolling windows that embed even longer implicit confirmation.
 
-**Why this matters:** The weekly system runs 52 times a year. If the regime changes every 2-3 weeks, the Monday briefing whipsaws between contradictory positioning recommendations, and thesis time horizons become meaningless. A regime call should be stable enough to act on for at least a quarter. If it isn't, either the regime genuinely shifted (report it with high conviction) or the data is noisy (hold the current regime and note the uncertainty).
+**Equally important — challenge continuity too.** The confirmation requirement must not create a bias toward holding the current regime indefinitely. If the same regime has been active for 16+ consecutive weeks (~4 months), actively stress-test it: what evidence would it take to call a different regime? If you can't articulate what would change your mind, you may be anchored rather than analytical. The burden of proof applies symmetrically — it's on the change when data is noisy, and it's on continuity when the regime has persisted well beyond the confirmation window and the underlying data is shifting.
+
+**Why this matters:** The weekly system runs 52 times a year. Without a meaningful confirmation filter, regime calls whipsaw between contradictory positioning recommendations and thesis time horizons become meaningless. A regime call should be stable enough to act on for at least a quarter. The 2-month filter ensures this: if a regime change survives 8 weeks of scrutiny, it's real. If it doesn't, the current regime holds and the noise is documented but not acted on.
 
 When the current regime has held for multiple weeks, say so: "Disinflationary Slowdown for the 8th consecutive week." That's useful information — it tells the reader the macro picture is stable.
 
@@ -259,7 +262,7 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
       "regime": "STAGFLATION (most likely)",
       "growth_score": "-0.20 to -0.40",
       "inflation_score": "+0.35 to +0.50",
-      "key_driver": "Watch oil stabilization; 2-week confirmation rule",
+      "key_driver": "Watch oil stabilization; 2-month confirmation filter",
       "confidence": "HIGH"
     }
   ],
