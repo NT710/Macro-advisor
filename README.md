@@ -8,16 +8,16 @@ Both plugins are built on a **three-force framework**: **Growth** (expanding or 
 
 ## Plugins
 
-### Macro Advisor `v0.7.4`
+### Macro Advisor `v0.7.6`
 
 Autonomous macro research system. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies the current macro regime using the Alpine Macro liquidity-first framework, produces 6 and 12-month regime forecasts with probability distributions and conditional triggers, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
-The 15-skill analysis chain runs in sequence: data collection across all sources, central bank and liquidity monitoring, macro and geopolitical analysis, market positioning and sentiment, external analyst cross-referencing (8 analysts), decade horizon mapping (quarterly), structural scanning for multi-year imbalances (bi-weekly, 7 signal detectors including technology displacement), weekly synthesis with regime classification and forecasts, thesis generation and monitoring from three sources (data patterns, analyst insights, structural scans), self-improvement scoring, and delivery.
+The 16-skill analysis chain runs in sequence: data collection across all sources, central bank and liquidity monitoring, macro and geopolitical analysis, market positioning and sentiment, external analyst cross-referencing (8 analysts), decade horizon mapping (quarterly), structural scanning for multi-year imbalances (bi-weekly, 7 signal detectors including technology displacement), weekly synthesis with regime classification and forecasts, independent regime evaluation (generator-evaluator pattern for anti-anchoring), thesis generation and monitoring from three sources (data patterns, analyst insights, structural scans), self-improvement scoring, and delivery.
 
 **Commands:**
 
 - `/macro-advisor:setup` — First-run setup. Explains the three-force model, then walks you through FRED API key, currency preference, ETF mapping, and scheduling.
-- `/macro-advisor:run-weekly` — Run the full 15-skill weekly analysis cycle manually. Collects data, analyzes all macro pillars, identifies regime, generates forecasts, generates/monitors theses, scores accuracy, and produces the HTML dashboard.
+- `/macro-advisor:run-weekly` — Run the full 16-skill weekly analysis cycle manually. Collects data, analyzes all macro pillars, identifies regime, generates forecasts, generates/monitors theses, scores accuracy, and produces the HTML dashboard.
 - `/macro-advisor:structural-scan` — Run the structural scanner manually (7 signal detectors including technology displacement, capex underinvestment, demographic shifts).
 - `/macro-advisor:investigate-theme` — Investigate a macro theme you find interesting. Runs structural research and thesis evaluation against the latest data. Use this anytime between weekly runs when you spot something worth exploring.
 - `/macro-advisor:activate-thesis` — List draft theses with numbered selection and activate the ones you want monitored. Activated theses get weekly kill switch and assumption checks.
@@ -26,7 +26,7 @@ The 15-skill analysis chain runs in sequence: data collection across all sources
 
 [Full documentation →](plugins/macro-advisor/README.md)
 
-### Trading Engine `v0.1.9-beta`
+### Trading Engine `v0.2.0-beta`
 
 Autonomous paper trading system. Reads the Macro Advisor's regime assessments, theses, and regime forecasts (including the underlying Growth, Inflation, and Liquidity driver readings and trajectories), reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes forecast-aware trade reasoning (durability assessment based on driver sensitivity, not just regime label), structural thesis turnover reservation (prevents structural theses from being indefinitely deferred by the regime scaling queue), and a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
 
@@ -119,7 +119,7 @@ plugins/
     .claude-plugin/
     commands/               # /macro-advisor:setup, :run-weekly, :investigate-theme, :structural-scan, :activate-thesis, :update-etfs, :implement-improvements
     hooks/                  # Session start hook (reads user config)
-    skills/                 # 15-skill research chain + references
+    skills/                 # 16-skill research chain + references
     scripts/                # Data collection, dashboard generation, ETF lookup, backtest, tests
       assets/               # Bundled Chart.js + Inter font for offline dashboards
     config/                 # User config (created during setup, gitignored)
