@@ -29,7 +29,7 @@ Before executing ANY skill, read `references/RULES.md`. These are non-negotiable
 The system runs as a single sequential chain. Each skill reads the output of prior skills.
 
 ```
-Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly) → 6 → 7 → 11(if triggered) → 8 → 12 → 9
+Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly) → streak → 6 → 6b → 7 → 11(if triggered) → 8 → 12 → 9
 ```
 
 | Step | Skill | Reference File | Purpose |
@@ -44,6 +44,7 @@ Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly
 | 14 | Decade Horizon | `references/14-decade-horizon.md` | Quarterly: 3-5 mega-forces, causal chain mapping, thesis book blind spot analysis |
 | 13 | Structural Scanner | `references/13-structural-scanner.md` | Bi-weekly: 7 signal detectors including technology displacement |
 | 6 | Weekly Synthesis | `references/06-weekly-macro-synthesis.md` | Regime assessment + sector view + forecast (cyclical only — does NOT read Skill 13) |
+| 6b | Regime Evaluator | `references/06b-regime-evaluator.md` | Independent blind regime check + reasoning audit → PASS/REVIEW/CHALLENGE |
 | 7 | Thesis Generator | `references/07-thesis-generator-monitor.md` | Generate and monitor theses (three sources: data patterns, analyst-sourced, structural scanner) |
 | 11 | Structural Research | `references/11-structural-research.md` | First-principles research (5 trigger paths: data patterns, analyst, scanner, decade-horizon blind spots, manual) |
 | 8 | Self-Improvement | `references/08-self-improvement-loop.md` | Observe → inspect → amend → evaluate (includes scanner + horizon health monitoring) |
@@ -66,6 +67,7 @@ All Python scripts are in the `scripts/` directory at the plugin root:
 - `etf_lookup.py` — Dynamic ETF discovery and verification
 - `generate_dashboard.py` — HTML dashboard renderer
 - `regime_backtest.py` — Historical regime model validation
+- `evaluation_streak.py` — Deterministic divergence streak computation for Skill 6b
 
 ## Output Structure
 
@@ -75,7 +77,7 @@ Outputs are generated at runtime in the working directory:
 outputs/
 ├── data/              (JSON snapshots — weekly + latest)
 ├── collection/        (per-skill weekly outputs)
-├── synthesis/         (weekly regime assessments)
+├── synthesis/         (weekly regime assessments + regime evaluations + evaluation history)
 ├── strategic/         (quarterly decade horizon maps + last-horizon.json)
 ├── strategic/blind-spots/ (BLINDSPOT- files for Skill 13/7/11 consumption)
 ├── structural/        (bi-weekly scanner output + last-scan.json)

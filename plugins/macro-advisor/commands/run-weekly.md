@@ -86,7 +86,7 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/dat
 ```
 **If the pre-flight check fails (non-zero exit code), STOP.** Do not proceed to any skill. The check validates that: (1) the snapshot was generated within the last 18 hours — not yesterday, not last week; (2) key market data (oil, S&P, gold, VIX) is present; (3) config is valid. A failed pre-flight means every downstream output will be built on stale or missing data. Fix the issue (usually: re-run the data collector) and re-run the check until it passes.
 
-## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→7→11(if triggered)→8→12→9
+## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9
 
 Each skill MUST:
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` (re-read for each skill to keep guardrails in context)
@@ -168,6 +168,24 @@ Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-syn
 **Note:** Do NOT read Skill 13 (Structural Scanner) output here. The synthesis is a cyclical regime assessment. Structural imbalances enter through a separate pipeline: Skill 13 → Skill 11 → Skill 7.
 Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 
+### PRE-SKILL 6b: Evaluation Divergence Streak
+Before running the regime evaluator, compute the divergence streak from the evaluation history file. This is a deterministic calculation — the LLM must NOT compute this count itself.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/evaluation_streak.py --history outputs/synthesis/regime-evaluation-history.json
+```
+
+The script outputs JSON like: `{"consecutive_divergence_weeks": 3, "last_blind_regime": "Disinflationary Slowdown", "last_skill6_regime": "Overheating", "note": "..."}`
+
+**Pass this output to Skill 6b as an input.**
+
+### SKILL 6b: Regime Evaluation
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06b-regime-evaluator.md`
+Read: ALL collection outputs (Skills 1-5) + data snapshot + current week's Skill 6 synthesis output + **divergence streak script output from above**.
+Does NOT read: prior week's synthesis, regime-history.json, regime streak output, regime-evaluation-history.json, or any prior week's regime evaluation. This is intentional — the evaluator has no regime history context and no knowledge of its own prior evaluations.
+Save to: `outputs/synthesis/YYYY-Www-regime-evaluation.md`
+Update: `outputs/synthesis/regime-evaluation-history.json`
+
 ### SKILL 7: Thesis Generator & Monitor
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/07-thesis-generator-monitor.md`
 Read: synthesis + active theses in `outputs/theses/active/` + analyst themes index (`outputs/collection/analyst-themes.md`) + current week analyst monitor output (`outputs/collection/YYYY-Www-analyst-monitor.md`) + data snapshot. If a theme in the index is relevant to an active thesis, follow the Detail link to read the full weekly analyst file for substance.
@@ -192,9 +210,9 @@ For analyst-sourced investigations: the analyst's framework is a hypothesis to t
 Save to: `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
 ### SKILL 8: Self-Improvement Loop
-Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs (including Skill 14 decade horizon meta if it ran, Skill 13 structural scanner meta if it ran) + structural scanner last-run tracker (`outputs/structural/last-scan.json`) + decade horizon last-run tracker (`outputs/strategic/last-horizon.json` if exists) + prior improvement output (if exists).
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs (including Skill 14 decade horizon meta if it ran, Skill 13 structural scanner meta if it ran) + structural scanner last-run tracker (`outputs/structural/last-scan.json`) + decade horizon last-run tracker (`outputs/strategic/last-horizon.json` if exists) + regime evaluator output (`outputs/synthesis/YYYY-Www-regime-evaluation.md`) + evaluation history (`outputs/synthesis/regime-evaluation-history.json`) + prior improvement output (if exists).
 CRITICAL: Read the amendment tracker (`outputs/improvement/amendment-tracker.md`) FIRST to check which amendments are already implemented. Do not re-propose implemented amendments. Evaluate implemented amendments against current metrics and update the tracker with results.
-Assess both data quality AND reasoning quality. Includes scanner health checks: emptiness ratio, kill rate, provenance distribution, domain recurrence, and sector clustering.
+Assess both data quality AND reasoning quality. Includes scanner health checks: emptiness ratio, kill rate, provenance distribution, domain recurrence, and sector clustering. Includes regime evaluator health checks: divergence frequency, lead time, CHALLENGE accuracy (transition-aware), reasoning audit hit rate.
 Save to: `outputs/improvement/YYYY-Www-improvement.md`
 Update: `outputs/improvement/amendment-tracker.md` with evaluation results.
 Update: `outputs/improvement/accuracy-tracker.md` with this week's scorecard.
@@ -261,7 +279,7 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 
 1. Read RULES.md before anything else and re-read before each skill.
 2. Run Skill 0 first. Everything depends on it.
-3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9.
+3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9.
 4. Every number must be sourced. Never fabricate.
 5. All investment views use specific ETF tickers. User's preferred currency where available.
 6. Write briefing and theses in accessible language.
@@ -275,3 +293,4 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 14. Structural theses require a Skill 11 research brief before generation. Flag if missing.
 15. Analyst-sourced thesis candidates must be tagged with provenance. Max 2 per week. Skill 11 is the quality filter — not a human approval gate.
 16. Analyst-sourced investigations must produce independent evidence. If evidence base relies primarily on the originating analyst, conviction is reduced.
+17. Skill 6b reads no regime history and no evaluation history. The divergence streak comes from a deterministic script, not from the LLM reading the history file.

@@ -52,6 +52,7 @@ Skill 10: External Analyst Monitor (8 analysts: Steno, Gromen, Peccatiello, Macr
 Skill 14: Decade Horizon Strategic Map (quarterly: 3-5 mega-forces, causal chain mapping, thesis book blind spot analysis)
 Skill 13: Structural Scanner (bi-weekly: 7 signal detectors including technology displacement — data-first with subagent deep research)
 Skill 6:  Weekly Macro Synthesis (reads Skills 1-5 + Skill 10 — NOT Skills 13/14; structural findings enter via thesis pipeline → regime assessment + sector view + 6/12M forecast)
+Skill 6b: Regime Evaluator (independent blind regime check — reads Skills 1-5 raw, not regime history — produces PASS/REVIEW/CHALLENGE verdict for Skill 8)
 Skill 7:  Thesis Generator & Monitor (3 sources: data-pattern + analyst-sourced + scanner candidates; combined 5-investigation cap for Skill 11)
 Skill 11: Structural Research (first-principles research — 5 trigger paths: data-pattern, analyst, scanner, decade-horizon blind spots, manual)
 Skill 8:  Self-Improvement Loop (observe → inspect → amend → evaluate + accuracy scoring + Skill 13 health: kill rate, emptiness, provenance ratio + Skill 14 health: force stability, blind spot conversion)
@@ -59,7 +60,7 @@ Skill 12: Thesis Presentation (renders theses into visual reports + briefing car
 Skill 9:  Monday Morning Briefing (reads synthesis + theses + presentation cards + improvement → HTML dashboard)
 ```
 
-Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
+Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
 
 ### Data Foundation
 
@@ -268,10 +269,10 @@ Theses are specific, falsifiable investment bets classified into two types:
 
 **Tactical theses** are generated from weekly data patterns (divergences, regime shifts, positioning extremes). They use a standard template with mechanism, assumptions, kill switches, and ETF expressions. Time horizon: weeks to quarters. Generated directly from Skill 6 synthesis output.
 
-**Structural theses** are grounded in first-principles research on physical, economic, or structural constraints that take years to resolve. They require a Skill 11 Structural Research Brief before generation — quantified binding constraints, supply-demand analysis, capital flow data, and a steelmanned contrarian stress-test. The expanded structural template separates thesis conviction from expression selection from entry timing, requires independently testable assumptions ("What We Have To Believe"), and monitors through weekly kill switch checks with full structural reviews triggered by data changes (assumption pressure, binding constraint updates, regime shifts) rather than fixed calendar intervals.
+**Structural theses** are grounded in first-principles research on physical, economic, or structural constraints that take years to resolve. They require a Skill 11 Structural Research Brief before generation — quantified binding constraints, supply-demand analysis, capital flow data, and a steelmanned contrarian stress-test. The expanded structural template separates thesis conviction from expression selection from entry timing, requires independently testable assumptions ("What Has To Stay True"), and monitors through weekly kill switch checks with full structural reviews triggered by data changes (assumption pressure, binding constraint updates, regime shifts) rather than fixed calendar intervals.
 
 Both types share:
-- Plain English summary (readable by a non-specialist)
+- Summary (readable by a non-specialist)
 - Testable assumptions (each checked weekly)
 - First/second/third-order ETF expressions (verified via etf_lookup.py, listed in user's preferred currency where available)
 - Kill switches (specific, measurable — if met, thesis is INVALIDATED, no negotiation)
@@ -287,7 +288,7 @@ Both types share:
 
 **Combined investigation cap:** No more than 5 total investigation candidates are sent to Skill 11 in a single weekly run (across all three pipelines). If the combined count exceeds 5, prioritize by gap size, novelty, and distance from consensus. Defer the rest.
 
-No fixed limit on thesis count. Quality over quantity. The thesis monitor reads the analyst monitor output to cross-reference assumptions. Parameter Reviews from analyst cross-referencing are written directly to the thesis file under an `## Analyst Cross-References` section so findings travel with the thesis.
+No fixed limit on thesis count. Quality over quantity. The thesis monitor reads the analyst monitor output to cross-reference assumptions. Parameter Reviews from analyst cross-referencing are written directly to the thesis file under an `## External Views` section so findings travel with the thesis.
 
 Lifecycle: DRAFT → ACTIVE → STRENGTHENING / WEAKENING → INVALIDATED / TIME EXPIRED → CLOSED
 
@@ -297,7 +298,7 @@ Theses exist in three layers, each serving a different consumption mode:
 
 **Layer 1: Structured file** (the thesis markdown in `outputs/theses/active/`). Machine-readable, for monitoring. This is what Skill 7 writes and maintains.
 
-**Layer 2: Full thesis report** (rendered by Skill 12 into `outputs/theses/presentations/`). The deep-read version with charts, evidence tables, steelmanned bear case, and status history. This is what a human opens when they want to understand a thesis in full. Structural theses get expanded treatment: Structural Foundation section, "What We Have To Believe" table, quantified bear claims, and supply-demand trajectory charts.
+**Layer 2: Full thesis report** (rendered by Skill 12 into `outputs/theses/presentations/`). The deep-read version with charts, evidence tables, steelmanned bear case, and status history. This is what a human opens when they want to understand a thesis in full. Structural theses get expanded treatment: What Can't Change section, "What Has To Stay True" table, quantified bear claims, and supply-demand trajectory charts.
 
 **Layer 3: Briefing card** (generated by Skill 12, consumed by Skill 9). A compressed summary for the Monday Briefing — status, one-line bet, what changed this week, key risk. Includes a tactical/structural badge so the reader knows the thesis depth at a glance.
 

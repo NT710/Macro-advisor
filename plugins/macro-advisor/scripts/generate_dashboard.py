@@ -256,32 +256,36 @@ def format_thesis_from_json(sidecar):
     of parsing bugs (em-dash splits, missing status keywords, bold marker confusion)
     that affect the markdown parser.
 
+    Supports both old and new key names with fallback to old keys for backward compatibility.
+
     Returns markdown-like text that md_to_html() can render (same as format_thesis_html).
     """
     lines = []
 
     # Plain English Summary
-    if sidecar.get("plain_english_summary"):
-        lines.append('## Plain English Summary')
+    summary = sidecar.get("summary", sidecar.get("plain_english_summary"))
+    if summary:
+        lines.append('## Summary')
         lines.append('')
-        lines.append(sidecar["plain_english_summary"])
-        lines.append('')
-
-    # Claim / Mechanism
-    if sidecar.get("claim"):
-        lines.append('## Claim')
-        lines.append('')
-        lines.append(sidecar["claim"])
+        lines.append(summary)
         lines.append('')
 
-    # What We Have To Believe / Assumptions
-    assumptions = sidecar.get("assumptions", [])
+    # The Bet (formerly Claim)
+    bet = sidecar.get("the_bet", sidecar.get("claim"))
+    if bet:
+        lines.append('## The Bet')
+        lines.append('')
+        lines.append(bet)
+        lines.append('')
+
+    # What Has To Stay True (formerly Assumptions)
+    assumptions = sidecar.get("what_has_to_stay_true", sidecar.get("assumptions", []))
     if assumptions:
         has_testable = any(a.get("testable_by") for a in assumptions)
         has_status = any(a.get("status") for a in assumptions)
 
         if has_testable:
-            lines.append('## What We Have To Believe')
+            lines.append('## What Has To Stay True')
             lines.append('')
             if has_status:
                 lines.append('| # | Assumption | Testable By | Status |')
@@ -295,7 +299,7 @@ def format_thesis_from_json(sidecar):
                 for n, a in enumerate(assumptions, 1):
                     lines.append(f'| {n} | {a.get("text", "")} | {a.get("testable_by", "")} |')
         else:
-            lines.append('## Assumptions')
+            lines.append('## What Has To Stay True')
             lines.append('')
             if has_status:
                 lines.append('| # | Assumption | Status |')
@@ -310,10 +314,10 @@ def format_thesis_from_json(sidecar):
                     lines.append(f'| {n} | {a.get("text", "")} |')
         lines.append('')
 
-    # Quantified Causal Chain
-    chain = sidecar.get("causal_chain", [])
+    # Mechanism (formerly Causal Chain)
+    chain = sidecar.get("mechanism", sidecar.get("causal_chain", []))
     if chain:
-        lines.append('## Quantified Causal Chain')
+        lines.append('## Mechanism')
         lines.append('')
         lines.append('| # | Link | Quantified |')
         lines.append('|---|------|-----------|')
@@ -327,10 +331,10 @@ def format_thesis_from_json(sidecar):
             lines.append(f'| {n} | **{link}** | {quant} |')
         lines.append('')
 
-    # Structural Foundation
-    foundation = sidecar.get("structural_foundation")
+    # What Can't Change (formerly Structural Foundation)
+    foundation = sidecar.get("what_cant_change", sidecar.get("structural_foundation"))
     if foundation:
-        lines.append('## Structural Foundation')
+        lines.append('## What Can\'t Change')
         lines.append('')
         lines.append('| Binding Constraint | Quantified | Source |')
         lines.append('|-------------------|-----------|--------|')
@@ -338,17 +342,21 @@ def format_thesis_from_json(sidecar):
             lines.append(f'| {f.get("constraint", "")} | {f.get("quantified", "")} | {f.get("source", "")} |')
         lines.append('')
 
-    # Consensus View
-    if sidecar.get("consensus_view"):
-        lines.append('## Consensus View')
+    # Where The Market Stands (formerly Consensus View)
+    market_view = sidecar.get("where_the_market_stands", sidecar.get("consensus_view"))
+    if market_view:
+        lines.append('## Where The Market Stands')
         lines.append('')
-        lines.append(sidecar["consensus_view"])
+        lines.append(market_view)
         lines.append('')
 
-    # ETF Expression
-    etf = sidecar.get("etf_expression")
+    # The Trade (contains what_to_buy, when_to_buy_more, when_to_get_out, how_long)
+    trade = sidecar.get("the_trade", {})
+
+    # What to buy (formerly ETF Expression)
+    etf = trade.get("what_to_buy", sidecar.get("etf_expression"))
     if etf and isinstance(etf, dict):
-        lines.append('## ETF Expression')
+        lines.append('## What to buy')
         lines.append('')
         lines.append('| Order | ETF | Size | Rationale |')
         lines.append('|-------|-----|------|-----------|')
@@ -368,24 +376,26 @@ def format_thesis_from_json(sidecar):
         lines.append(sidecar["conviction"])
         lines.append('')
 
-    # Kill Switch
-    if sidecar.get("kill_switch"):
+    # When to get out (formerly Kill Switch)
+    kill_switch = trade.get("when_to_get_out", sidecar.get("kill_switch"))
+    if kill_switch:
         lines.append(f'<div class="kill-switch-card">')
-        lines.append(f'<strong>KILL SWITCH:</strong> {sidecar["kill_switch"]}')
+        lines.append(f'<strong>KILL SWITCH:</strong> {kill_switch}')
         lines.append(f'</div>')
         lines.append('')
 
-    # Trigger to Add
-    if sidecar.get("trigger_to_add"):
-        lines.append('## Trigger to Add')
+    # When to buy more (formerly Trigger to Add)
+    trigger = trade.get("when_to_buy_more", sidecar.get("trigger_to_add"))
+    if trigger:
+        lines.append('## When to buy more')
         lines.append('')
-        lines.append(sidecar["trigger_to_add"])
+        lines.append(trigger)
         lines.append('')
 
-    # Contrarian Stress Test
-    stress = sidecar.get("contrarian_stress_test")
+    # What Could Break It (formerly Contrarian Stress Test)
+    stress = sidecar.get("what_could_break_it", sidecar.get("contrarian_stress_test"))
     if stress and isinstance(stress, dict):
-        lines.append('## Contrarian Stress-Test')
+        lines.append('## What Could Break It')
         lines.append('')
         if stress.get("strongest_counter"):
             lines.append(f'**Strongest counter-argument:** {stress["strongest_counter"]}')
@@ -481,8 +491,8 @@ def format_thesis_html(md_text):
             output_lines.append('')
             continue
 
-        # --- What We Have To Believe: numbered list → table ---
-        if _match_section(lower, 'what we have to believe'):
+        # --- What Has To Stay True (formerly What We Have To Believe): numbered list → table ---
+        if _match_section(lower, 'what has to stay true') or _match_section(lower, 'what we have to believe'):
             output_lines.append(_emit_h2(line))
             output_lines.append('')
             i += 1
@@ -528,8 +538,8 @@ def format_thesis_html(md_text):
             output_lines.append('')
             continue
 
-        # --- Structural Foundation: prose + bullet list → table ---
-        if _match_section(lower, 'structural foundation'):
+        # --- What Can't Change (formerly Structural Foundation): prose + bullet list → table ---
+        if _match_section(lower, 'what can\'t change') or _match_section(lower, 'structural foundation'):
             output_lines.append(_emit_h2(line))
             output_lines.append('')
             i += 1
@@ -576,8 +586,8 @@ def format_thesis_html(md_text):
                 output_lines.append('')
             continue
 
-        # --- Quantified Causal Chain: numbered list → table ---
-        if _match_section(lower, 'quantified causal chain'):
+        # --- Mechanism (formerly Quantified Causal Chain): numbered list → table ---
+        if _match_section(lower, 'mechanism') or _match_section(lower, 'quantified causal chain'):
             output_lines.append(_emit_h2(line))
             output_lines.append('')
             i += 1
@@ -759,19 +769,28 @@ def format_thesis_html(md_text):
             continue
 
         # --- Prose sections: emit h2 header, content stays as prose ---
-        # Mechanism, Claim, Plain English Summary, Consensus view,
-        # Contrarian Stress-Test, Trigger to add, Time horizon, Entry timing,
-        # Monitoring cadence
+        # Current names + old names for migration compatibility
         prose_sections = [
-            'mechanism:', 'mechanism',
-            'claim:', 'claim',
+            'summary:', 'summary',
             'plain english summary:', 'plain english summary',
+            'the bet:', 'the bet',
+            'claim:', 'claim',
+            'where the market stands:', 'where the market stands',
             'consensus view:', 'consensus view',
+            'what could break it:', 'what could break it',
             'contrarian stress-test:', 'contrarian stress-test',
+            'when to buy more:', 'when to buy more',
             'trigger to add:', 'trigger to add',
+            'how long:', 'how long',
             'time horizon:', 'time horizon',
+            'when to buy:', 'when to buy',
             'entry timing:', 'entry timing',
+            'when to get out:', 'when to get out',
+            'kill switch:', 'kill switch',
+            'what to buy:', 'what to buy',
+            'etf expression:', 'etf expression',
             'monitoring cadence:', 'monitoring cadence',
+            'external views', 'external views:',
             'analyst cross-references', 'analyst cross-references:',
         ]
         matched_prose = False
@@ -1896,7 +1915,9 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             provenance = thesis_sidecar.get("provenance", "")
             generated = thesis_sidecar.get("generated", "")
             updated = thesis_sidecar.get("updated", "")
-            horizon = thesis_sidecar.get("time_horizon", "")
+            # time_horizon can be nested under the_trade or at top level
+            trade = thesis_sidecar.get("the_trade", {})
+            horizon = trade.get("how_long", thesis_sidecar.get("time_horizon", ""))
         else:
             provenance = ""
             prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
@@ -1982,7 +2003,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         # Inject conviction into the markdown before rendering
         if conviction:
             render_content = re.sub(
-                r'(## Plain English Summary)',
+                r'(## (?:Summary|Plain English Summary))',
                 f'**Conviction:** {conviction}\n\n\\1',
                 render_content, count=1
             )

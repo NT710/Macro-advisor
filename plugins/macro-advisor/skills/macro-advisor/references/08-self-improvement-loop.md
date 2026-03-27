@@ -28,6 +28,7 @@ Read ALL of the following:
 7. Thesis Monitor meta
 8. Structural Scanner meta (bi-weekly — read from `outputs/structural/YYYY-Www-structural-scan.md` if it ran this cycle)
 9. Structural Scanner last-run tracker (`outputs/structural/last-scan.json` — always read, even on weeks the scanner didn't run)
+10. Regime Evaluator output (`outputs/synthesis/YYYY-Www-regime-evaluation.md`) and evaluation history (`outputs/synthesis/regime-evaluation-history.json`)
 
 Also read the prior improvement loop output (if it exists) for trend context and to check whether previous amendments were effective.
 
@@ -50,6 +51,7 @@ From each skill's meta block, extract and compile:
 | Synthesis | [score] | [conf] | [inputs: n/5] | — | — | — |
 | Thesis Monitor | [score] | [conf] | — | — | — | — |
 | Structural Scanner | [score or "skipped"] | [conf] | [signals: n/6] | [n] | [date] | [date] |
+| Regime Evaluator | [score] | [conf] | blind_diverged: [Y/N] | verdict: [P/R/C] | streak: [N] | — |
 ```
 
 Also compile the complete list of gaps across all skills:
@@ -134,6 +136,34 @@ Read `outputs/strategic/last-horizon.json` if it exists. This is a quarterly che
 
 4. **Horizon-scanner alignment:** When both Skill 14 and Skill 13 run, do the horizon's blind spots align with scanner findings? Convergence suggests the system is internally consistent. Divergence isn't necessarily bad — the two skills look at different things — but persistent total divergence may indicate one layer is miscalibrated.
 
+### 2g-iv. Regime Evaluator Health (from Skill 6b output + evaluation history)
+
+Read `outputs/synthesis/YYYY-Www-regime-evaluation.md` and `outputs/synthesis/regime-evaluation-history.json`. Check:
+
+1. **Divergence frequency:** Over the last 8 weeks, how often did the blind classification disagree with Skill 6? A healthy rate is 20-40%. If divergence is 0% over 8+ weeks, the evaluator may be too agreeable — check whether it's anchoring on data that naturally confirms the regime rather than stress-testing. If divergence is >60%, either the evaluator's classification logic is miscalibrated or Skill 6's confirmation filter is holding a stale regime.
+
+2. **Divergence-to-change lead time:** When a regime DID change (in Skill 6), how many weeks in advance did Skill 6b's blind classification start diverging? Track this as "early warning lead time." A healthy lead time is 3-6 weeks before the official change. If the evaluator diverges at the same time as Skill 6 changes (lead time = 0), it's not adding value — it's a redundant check. If lead time is consistently >8 weeks, the evaluator may be too trigger-happy and the signal gets diluted by false alarms.
+
+3. **CHALLENGE verdict accuracy (transition-aware):** When CHALLENGE was issued, did Skill 6 eventually change its regime call within the next 4 weeks? Track hit rate. But distinguish between two contexts:
+   - **CHALLENGE during regime stability** (Skill 6 did NOT change regime in the surrounding 8-week window): A healthy false-alarm rate is 30-50%. Some false CHALLENGEs are expected — the evaluator should be skeptical. If false-alarm rate is >70% during stable periods, the evaluator is generating noise.
+   - **CHALLENGE during regime transitions** (Skill 6 DID change regime within 4 weeks): This is the evaluator doing its job. Track whether CHALLENGE preceded the change (early warning = good) or followed it (redundant = not useful).
+
+   Do NOT blend these two contexts into a single accuracy number. A CHALLENGE that fires during a genuine transition is categorically different from one that fires during stability.
+
+4. **Reasoning audit hit rate:** What percentage of Skill 6b's flagged reasoning gaps were confirmed by Skill 8's accuracy scorecard? If Skill 6b flags "claim X is unsupported" and the next week's scorecard shows the corresponding call was WRONG, that's a confirmed hit. Track over time.
+
+5. **CHALLENGE frequency check:** If CHALLENGE fires >25% of the time over a 12-week window AND none of those CHALLENGEs preceded a regime change, the evaluator's thresholds are too loose. Propose an amendment to tighten the CHALLENGE criteria. But if >25% of CHALLENGEs occurred during a period that included a regime transition, that's expected behavior — do not flag it.
+
+For each issue found, produce a note:
+```
+EVALUATOR HEALTH: [description]
+Metric: [which metric]
+Value: [current value]
+Healthy range: [expected range]
+Context: [during stability / during transition]
+Implication: [what to do about it]
+```
+
 ### 2h. Analytical Accuracy (Prior Week Scorecard)
 
 Read last week's briefing and synthesis from `outputs/briefings/` and `outputs/synthesis/`. Compare what we said against what actually happened this week. This is the most important quality metric over time — not whether we collected the data, but whether our conclusions were right.
@@ -195,6 +225,9 @@ Produce an inspection report:
 
 **Reasoning Quality:**
 [Any missed connections between skills. Any insights that were found but not used downstream. Any thesis parameters that should have been reviewed based on new information.]
+
+**Regime Evaluator Health:**
+[Divergence frequency, lead time, CHALLENGE accuracy (split by stability vs. transition context), reasoning audit hit rate. If fewer than 4 weeks of data, note "insufficient data for evaluator health assessment."]
 ```
 
 ---

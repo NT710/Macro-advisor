@@ -49,7 +49,7 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 | Command | Description |
 |---------|-------------|
 | `/macro-advisor:setup` | First-run configuration — explains the model, then sets up dependencies, API keys, currency, ETFs, and schedule |
-| `/macro-advisor:run-weekly` | Run the full 15-skill analysis cycle manually |
+| `/macro-advisor:run-weekly` | Run the full 16-skill analysis cycle manually |
 | `/macro-advisor:investigate-theme` | Investigate a macro theme idea — runs deep research (Skill 11) and thesis evaluation (Skill 7) against the latest data |
 | `/macro-advisor:structural-scan` | Run the structural scanner manually (bi-weekly, 7 signal detectors) |
 | `/macro-advisor:activate-thesis` | List draft theses with numbered selection, activate the ones you want to monitor |
@@ -65,14 +65,14 @@ CFTC COT positioning data (9 key futures contracts) is pulled automatically from
 
 ## How It Works
 
-The system runs 15 skills in a specific sequence, each building on the previous. Some skills run on special cadences (quarterly, bi-weekly) while the rest run every week:
+The system runs 16 skills in a specific sequence, each building on the previous. Some skills run on special cadences (quarterly, bi-weekly) while the rest run every week:
 
 ```
 Data Collection → Central Bank Watch → Liquidity Monitor → Macro Tracker →
 Geopolitical Scanner → Positioning & Sentiment → Analyst Monitor →
 Decade Horizon (quarterly) → Structural Scanner (bi-weekly) →
-Weekly Synthesis (regime + 6/12-month forecasts) → Thesis Generator →
-Structural Research (if triggered) → Self-Improvement →
+Weekly Synthesis (regime + 6/12-month forecasts) → Regime Evaluator →
+Thesis Generator → Structural Research (if triggered) → Self-Improvement →
 Thesis Presentation → Monday Briefing
 ```
 

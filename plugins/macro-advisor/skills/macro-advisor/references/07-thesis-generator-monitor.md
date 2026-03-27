@@ -88,7 +88,7 @@ Read `outputs/structural/candidates/` for any advancing candidates from Skill 13
 2. ALL scanner candidates are routed to Skill 11 for research. The scanner candidate file IS the investigation brief for Skill 11. The candidate's "recommended investigation depth" (Full / Focused / Quick check) is passed to Skill 11 as a suggestion for how much work to do — but Skill 11 always runs its first-principles framing and contrarian stress-test regardless of depth. No scanner candidate bypasses Skill 11, even if the base rate looks strong — the scanner's own assessment is not a substitute for independent first-principles validation.
 3. Scanner candidates always classify as **structural** (by definition — the scanner only flags imbalances with >12-month resolution timelines).
 
-**Deduplication:** Before processing, check whether an existing active thesis or current-week data-pattern candidate already covers the same domain. If the scanner candidate points in the same direction as the existing thesis (e.g., both say energy is supply-constrained), the scanner candidate becomes supporting evidence (add to its Analyst Cross-References section under "Structural Scanner Corroboration"), not a separate investigation. However, if the scanner candidate's reading conflicts with the existing thesis (e.g., thesis says supply-constrained but scanner detects demand destruction signals, or scanner flags a different binding constraint), flag the conflict explicitly: "SCANNER-THESIS CONFLICT: [domain] — existing thesis assumes [X], scanner detects [Y]." This conflict is a high-value signal and should trigger a review of the existing thesis's assumptions, not silent absorption.
+**Deduplication:** Before processing, check whether an existing active thesis or current-week data-pattern candidate already covers the same domain. If the scanner candidate points in the same direction as the existing thesis (e.g., both say energy is supply-constrained), the scanner candidate becomes supporting evidence (add to its External Views section under "Structural Scanner Corroboration"), not a separate investigation. However, if the scanner candidate's reading conflicts with the existing thesis (e.g., thesis says supply-constrained but scanner detects demand destruction signals, or scanner flags a different binding constraint), flag the conflict explicitly: "SCANNER-THESIS CONFLICT: [domain] — existing thesis assumes [X], scanner detects [Y]." This conflict is a high-value signal and should trigger a review of the existing thesis's assumptions, not silent absorption.
 
 **Provenance:** Scanner-originated theses carry `provenance: structural-scanner` through the entire pipeline. This is distinct from `data-pattern` and `analyst-sourced` to enable separate performance tracking by Skill 8.
 
@@ -106,19 +106,25 @@ For tactical theses (the default), produce:
 **Source:** Weekly Synthesis [Week reference] OR Analyst-sourced: [analyst name] via [Week reference] analyst monitor
 **Provenance:** [data-pattern / analyst-sourced]
 
-**Plain English Summary:**
+## Summary
 [One paragraph for a smart non-specialist. What are we betting on, why, what ETFs would we use, and what would make us exit? No jargon. If your non-finance friend couldn't understand this paragraph, rewrite it.]
 
-**Claim:** [One sentence. What is the bet? Be specific — not "equities will go up" but "US large cap growth (QQQ) will underperform US large cap value (VTV) by >5% as the regime shifts from Goldilocks to Overheating." Include the expected time horizon only if the mechanism implies one — some theses resolve in weeks, others play out over a year or more.]
+## The Bet
+[One sentence. What is the bet? Be specific — not "equities will go up" but "US large cap growth (QQQ) will underperform US large cap value (VTV) by >5% as the regime shifts from Goldilocks to Overheating." Include the expected time horizon only if the mechanism implies one — some theses resolve in weeks, others play out over a year or more.]
 
-**Mechanism:** [How does this play out? What is the causal chain from macro data to price action? 3-5 sentences tracing the logic step by step. Explain WHY each link in the chain works, not just that it does.]
+## Why It Works
 
-**Assumptions:** [What has to be true for this thesis to work? List each explicitly and make them testable.]
+### Mechanism
+[How does this play out? What is the causal chain from macro data to price action? 3-5 sentences tracing the logic step by step. Explain WHY each link in the chain works, not just that it does.]
+
+## What Has To Stay True
+[What has to be true for this thesis to work? List each explicitly and make them testable.]
 1. [Assumption 1 — specific, measurable]
 2. [Assumption 2]
 3. [Assumption 3]
 
-**Consensus view:** [What does the market currently believe? Where is the specific mispricing? Reference positioning data if available.]
+## Where The Market Stands
+[What does the market currently believe? Where is the specific mispricing? Reference positioning data if available — CFTC COT readings, ETF flow trends, fund allocation data, speculator positioning. Show both what people think and where money actually sits.]
 
 **Conviction:** [High / Medium / Low]
 Conviction is an honest assessment of how much evidence supports this thesis RIGHT NOW — not how exciting the thesis is or how large the potential payoff. Score it on two primary dimensions and one veto gate:
@@ -137,7 +143,10 @@ Conviction is an honest assessment of how much evidence supports this thesis RIG
 
 If you find yourself wanting to call something High because the narrative is compelling despite Moderate data support, that's Medium. The narrative is not evidence.
 
-**ETF Expression:** Trace the causal chain from the thesis to specific ETFs. Every thesis has first, second, and third-order effects — name the ETF for each.
+## The Trade
+
+### What to buy
+Trace the causal chain from the thesis to specific ETFs. Every thesis has first, second, and third-order effects — name the ETF for each.
 
 - **First-order** (obvious, direct exposure): [ETF ticker(s)] — [tilt size] — [why this is the direct play]
 - **Second-order** (less obvious, slower to price in): [ETF ticker(s)] — [tilt size] — [what causal link connects this to the thesis? why might the market be slower to see it?]
@@ -156,13 +165,16 @@ This searches ~160 curated ETFs (Layer 1) plus live Yahoo Finance discovery (Lay
 
 The non-obvious second/third-order plays are often the better risk/reward because the market prices the first-order effect fastest.
 
-**Trigger to add:** [What specific, measurable data point would increase conviction? e.g., "NFCI crosses above zero for 3 consecutive weeks" or "ISM Manufacturing drops below 48." Explain in plain language why this trigger matters.]
+### When to buy more
+[What specific, measurable data point would increase conviction? e.g., "NFCI crosses above zero for 3 consecutive weeks" or "ISM Manufacturing drops below 48." Explain in plain language why this trigger matters.]
 
-**Kill switch:** [What specific, measurable outcome invalidates this thesis? This is the most important field. If this condition is met, the thesis is dead. No negotiating. Include the plain English meaning: "If oil goes above $100 (meaning the geopolitical situation is getting worse, not better), exit the trade."]
+### When to get out
+[What specific, measurable outcome invalidates this thesis? This is the most important field. If this condition is met, the thesis is dead. No negotiating. Include the plain English meaning: "If oil goes above $100 (meaning the geopolitical situation is getting worse, not better), exit the trade."]
 
-**Time horizon:** [When should this thesis be re-evaluated if neither trigger nor kill switch fires? The horizon should follow from the mechanism, not from a default. A thesis driven by a single policy meeting might resolve in weeks. A thesis about a credit cycle turning might play out over 12-18 months. A structural shift in energy policy could be multi-year. Don't force a short horizon on a long thesis or vice versa. Examples: "Reassess after June Fed meeting", "12 months from generation — credit cycles are slow", "Reassess when US election outcome is known."]
+### How long
+[When should this thesis be re-evaluated if neither trigger nor kill switch fires? The horizon should follow from the mechanism, not from a default. A thesis driven by a single policy meeting might resolve in weeks. A thesis about a credit cycle turning might play out over 12-18 months. A structural shift in energy policy could be multi-year. Don't force a short horizon on a long thesis or vice versa. Examples: "Reassess after June Fed meeting", "12 months from generation — credit cycles are slow", "Reassess when US election outcome is known."]
 
-## Analyst Cross-References
+## External Views
 [Initially empty. Populated by Function B monitoring step 7 when external analyst insight is relevant to this thesis.]
 ```
 
@@ -190,19 +202,22 @@ For structural theses (requires Skill 11 research brief as input), produce:
 **Provenance:** [data-pattern / analyst-sourced]
 **Research Brief:** `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
-**Plain English Summary:**
+## Summary
 [One paragraph for a smart non-specialist. What are we betting on, why, what is the structural reality driving it, what ETFs would we use, and what would make us exit? No jargon.]
 
-**Claim:** [One sentence. What is the bet? Be specific. Include the time horizon derived from the structural constraint — not from convention.]
+## The Bet
+[One sentence. What is the bet? Be specific. Include the time horizon derived from the structural constraint — not from convention.]
 
-**Structural Foundation:**
+## Why It Works
+
+### What Can't Change
 [The physical, economic, or structural reality this thesis rests on. Drawn directly from the Skill 11 research brief. Each claim quantified with source and date. This section answers: why can't the market resolve this quickly?]
 
 - [Binding constraint 1] — [quantified] — [source, date]
 - [Binding constraint 2] — [quantified] — [source, date]
 - [Binding constraint 3] — [quantified] — [source, date]
 
-**Quantified Causal Chain:**
+### Mechanism
 [The mechanism, but every link carries a number. Not "demand exceeds supply" but "demand growing at X%/yr while supply is constrained by Y-year development timelines, producing a deficit of Z units by [date]." Trace from the structural reality through to the price implication. Each link must explain WHY it works, not just that it does.]
 
 1. [Link 1 — quantified, with causal explanation]
@@ -210,7 +225,7 @@ For structural theses (requires Skill 11 research brief as input), produce:
 3. [Link 3 — quantified, with causal explanation]
 4. [Link 4 — price implication, quantified where possible]
 
-**What We Have To Believe:**
+## What Has To Stay True
 [Independently testable assumptions, drawn from the Skill 11 research brief. Each one stands alone — if any single assumption breaks, the thesis weakens or dies.]
 
 1. [Assumption] — Testable by: [specific observable data point or event]
@@ -218,9 +233,10 @@ For structural theses (requires Skill 11 research brief as input), produce:
 3. [Assumption] — Testable by: [specific observable data point or event]
 4. [Assumption] — Testable by: [specific observable data point or event]
 
-**Consensus view:** [What does the market currently believe? Where is the specific mispricing? Quantify the gap between current positioning and what the structural picture implies.]
+## Where The Market Stands
+[What does the market currently believe? Where is the specific mispricing? Quantify the gap between current positioning and what the structural picture implies. Include positioning data: CFTC COT readings, investor allocation percentages, ETF flow trends, speculator positioning, capital flow data from the research brief.]
 
-**Contrarian Stress-Test:**
+## What Could Break It
 [The strongest case against this thesis, steelmanned. Not a kill switch — this is the structural risk that could weaken the entire causal chain. Attributed to specific analysts or frameworks where possible.]
 
 - Strongest counter-argument: [1-2 paragraphs]
@@ -228,29 +244,33 @@ For structural theses (requires Skill 11 research brief as input), produce:
 - Key risk 2: [specific, with assessment of likelihood]
 - Assessment after considering contrarian case: [Does conviction hold? At what level?]
 
-**ETF Expression:** Separate thesis conviction from expression selection from entry timing.
+## The Trade
 
 *Thesis conviction:* [High / Medium / Low — based on structural evidence vs. contrarian case]
 
-*Expression:*
+### What to buy
 - **First-order** (obvious, direct exposure): [ETF ticker(s)] — [tilt size] — [why this is the direct play]
 - **Second-order** (less obvious, slower to price in): [ETF ticker(s)] — [tilt size] — [what causal link connects this to the thesis? why might the market be slower to see it?]
 - **Third-order** (contrarian or defensive): [ETF ticker(s)] — [tilt size] — [what's the non-consensus play or the hedge?]
 - **Reduce/Avoid:** [ETF ticker(s) that underperform if this thesis plays out]
 
-*Entry timing:* [Is the cyclical picture (current regime, positioning) reinforcing or working against the structural thesis right now? Should entry be immediate, scaled, or deferred?]
+### When to buy
+[Is the cyclical picture (current regime, positioning) reinforcing or working against the structural thesis right now? Should entry be immediate, scaled, or deferred? Provide specific scaling plan if applicable.]
 
-**Trigger to add:** [What specific, measurable data point would increase conviction?]
+### When to buy more
+[What specific, measurable data point would increase conviction?]
 
-**Kill switch:** [What specific, measurable outcome invalidates this thesis? For structural theses, also include a "structural break" condition — what would change the binding constraint itself?]
+### When to get out
+[What specific, measurable outcome invalidates this thesis? For structural theses, also include a "structural break" condition — what would change the binding constraint itself?]
 
-**Time horizon:** [Derived from the structural constraint. Include monitoring approach for long-duration theses — e.g., "18-month thesis, weekly kill switch check, full structural review triggered by assumption pressure or binding constraint data changes."]
+### How long
+[Derived from the structural constraint. Include monitoring approach for long-duration theses — e.g., "18-month thesis, weekly kill switch check, full structural review triggered by assumption pressure or binding constraint data changes."]
 
 **Monitoring cadence:** Weekly kill switch and assumption status check. Full structural review is data-triggered, not calendar-based.
 
 **Weekly check (same as tactical):** Kill switches, assumption status (INTACT / UNDER PRESSURE / BROKEN), regime alignment.
 
-**Full structural review triggers** — run a complete re-examination of the Structural Foundation, all "What We Have To Believe" assumptions, and the contrarian case when ANY of these occur:
+**Full structural review triggers** — run a complete re-examination of the "What Can't Change" section, all "What Has To Stay True" assumptions, and the "What Could Break It" case when ANY of these occur:
 - Any assumption moves from INTACT to UNDER PRESSURE
 - A major data release directly impacts a binding constraint (e.g., new supply data, policy change affecting the structural dynamic)
 - The macro regime shifts in a way that changes how the structural thesis expresses in markets
@@ -259,7 +279,7 @@ For structural theses (requires Skill 11 research brief as input), produce:
 
 If a full review reveals material changes to the structural picture, flag for Skill 11 research update.
 
-## Analyst Cross-References
+## External Views
 [Initially empty. Populated by Function B monitoring step 7 when external analyst insight is relevant to this thesis.]
 ```
 
@@ -267,13 +287,31 @@ If a full review reveals material changes to the structural picture, flag for Sk
 
 All standards from the tactical template apply, plus:
 - **Requires a Skill 11 research brief.** Do not generate a structural thesis on narrative conviction alone. The quantified research foundation is what makes these theses rigorous.
-- **Minimum 3 quantified claims in the Structural Foundation.** Each must have a source and date.
-- **Minimum 4 independently testable assumptions in "What We Have To Believe."** Each must specify how it would be tested.
-- **The Contrarian Stress-Test must be genuinely argued.** If you can't write a credible paragraph against the thesis, the research is incomplete — go back to Skill 11.
+- **Minimum 3 quantified claims in "What Can't Change."** Each must have a source and date.
+- **Minimum 4 independently testable assumptions in "What Has To Stay True."** Each must specify how it would be tested.
+- **"What Could Break It" must be genuinely argued.** If you can't write a credible paragraph against the thesis, the research is incomplete — go back to Skill 11.
 - **Separate conviction from entry timing.** A structural thesis can have high conviction but poor entry timing if the cyclical picture is working against it. Say so explicitly rather than suppressing the thesis or ignoring the timing.
-- **Carry forward sampling bias and evidence independence warnings.** If the Skill 11 research brief flags that the evidence base has sampling bias (e.g., multiple analysts sharing the same intellectual framework, all data sourced from one industry group, or geographically concentrated evidence), that warning must appear in the thesis body — not just implicitly in the conviction level. Specifically: if the brief rates evidence independence as "Medium" or lower, or explicitly names a sampling bias, the thesis must state the limitation in plain language — add an "**Evidence Independence:**" line directly below the Structural Foundation section. Do not present correlated sources as independent validation. Two analysts who share a framework are one voice, not two — say so.
+- **Carry forward sampling bias and evidence independence warnings.** If the Skill 11 research brief flags that the evidence base has sampling bias (e.g., multiple analysts sharing the same intellectual framework, all data sourced from one industry group, or geographically concentrated evidence), that warning must appear in the thesis body — not just implicitly in the conviction level. Specifically: if the brief rates evidence independence as "Medium" or lower, or explicitly names a sampling bias, the thesis must state the limitation in plain language — add an "**Evidence Independence:**" line directly below the "What Can't Change" subsection. Do not present correlated sources as independent validation. Two analysts who share a framework are one voice, not two — say so.
 - **Surface internal data contradictions — do not resolve them silently.** When the research brief contains data points that contradict each other, or when the brief's findings conflict with other skills' assessments (e.g., a Skill 2 liquidity reading that runs counter to the thesis direction), the thesis must acknowledge the contradiction explicitly. State both sides: "[Source A] indicates [X], while [Source B / Skill N] shows [Y]. These are in tension." Then assess which you weight more heavily and why. A thesis that filters out its own system's contrary data to present a cleaner narrative is not a thesis — it's advocacy.
-- **Time horizon must be internally consistent.** Cross-check the `**Time horizon:**` field, the `**Claim:**` sentence, and the `**Monitoring cadence:**` section before finalizing. If the structural constraint implies a 2-5 year horizon, the claim cannot reference a different timeframe, and the monitoring cadence cannot default to tactical-length language (e.g., "18-month thesis" when the mechanism is multi-year). All three must agree. If they disagree, reconcile them — don't publish the inconsistency.
+- **Time horizon must be internally consistent.** Cross-check the "How long" subsection, the "The Bet" sentence, and the monitoring cadence before finalizing. If the structural constraint implies a 2-5 year horizon, the bet cannot reference a different timeframe, and the monitoring cadence cannot default to tactical-length language (e.g., "18-month thesis" when the mechanism is multi-year). All three must agree. If they disagree, reconcile them — don't publish the inconsistency.
+
+### Pre-Write Verification (structural theses only)
+
+After drafting a structural thesis but **before writing it to disk**, re-read the Skill 11 research brief one more time alongside the draft. Run this checklist mechanically — each item is a binary pass/fail. If any item fails, fix the draft before writing.
+
+1. **Bet bounded by brief?** Does the thesis's bet (magnitude and direction) fall within what the research brief's conviction assessment supports? If the brief concluded "Low conviction" for a specific target, the bet cannot include that target in its range. FAIL if the bet's upper or lower bound exceeds what the brief explicitly supported.
+
+2. **Evidence independence stated?** If the brief rates evidence independence below "High" or flags any sampling bias, does the thesis contain an explicit `**Evidence Independence:**` disclosure? FAIL if the limitation exists in the brief but is absent from the thesis.
+
+3. **Internal contradictions surfaced?** Does the thesis acknowledge every data conflict identified in the brief — including conflicts between the brief's sources and other skills' assessments? FAIL if the thesis presents a clean narrative when the brief contained unresolved tensions.
+
+4. **Time horizon consistent?** Do "The Bet", "How long", and the monitoring cadence all reference the same timeframe? FAIL if any two disagree.
+
+5. **Contrarian case not weakened?** Compare the thesis's "What Could Break It" against the brief's "Quantified contrarian claims" table. Does the thesis give the bear case equal or greater weight than the brief did? FAIL if the thesis softened, omitted, or downplayed any contrarian claim that the brief presented with evidence.
+
+If all five pass, write the file. If any fail, the fix is usually a 1-2 sentence edit — not a thesis rewrite. The point is to catch drift between what the research found and what the thesis asserts.
+
+This checklist also applies to the JSON sidecar: verify the sidecar's `conviction`, `the_bet`, `the_trade.how_long`, and `what_could_break_it` fields match the corrected draft, not the pre-verification version.
 
 ---
 
@@ -299,6 +337,38 @@ NEW TO MONITOR: [Thesis name] — created by [investigate-theme / structural-sca
 
 This ensures no thesis falls through the cracks regardless of how it entered the system.
 
+### Format Migration (run after reconciliation, before monitoring)
+
+While reading each thesis file, check whether it uses old-format section headings. If any of the following headings are found, rewrite them to the current format. Content stays identical — only the heading text changes.
+
+| Old heading | Current heading |
+|---|---|
+| `## Plain English Summary` | `## Summary` |
+| `## Claim` | `## The Bet` |
+| `## Structural Foundation` | `### What Can't Change` (under `## Why It Works`) |
+| `## Quantified Causal Chain` | `### Mechanism` (under `## Why It Works`) |
+| `## Assumptions` | `## What Has To Stay True` |
+| `## Consensus view` or `## Consensus View` | `## Where The Market Stands` |
+| `## Contrarian Stress-Test` | `## What Could Break It` |
+| `## ETF Expression` | `### What to buy` (under `## The Trade`) |
+| `## Trigger to add` | `### When to buy more` (under `## The Trade`) |
+| `## Entry timing` | `### When to buy` (under `## The Trade`) |
+| `## Kill switch` | `### When to get out` (under `## The Trade`) |
+| `## Time horizon` | `### How long` (under `## The Trade`) |
+| `## Analyst Cross-References` | `## External Views` |
+
+For structural theses with old format: wrap "What Can't Change" and "Mechanism" under a new `## Why It Works` parent heading. Wrap trade subsections under a new `## The Trade` parent heading.
+
+If a companion JSON sidecar exists with old key names (`causal_chain`, `structural_foundation`, `assumptions`, `etf_expression`, `kill_switch`, `trigger_to_add`, `time_horizon`, `plain_english_summary`, `claim`, `consensus_view`, `contrarian_stress_test`), rewrite it using the current key names (`mechanism`, `what_cant_change`, `what_has_to_stay_true`, nested `the_trade` object, `summary`, `the_bet`, `where_the_market_stands`, `what_could_break_it`). Remove any `_legacy_backward_compat` block.
+
+Flag each migrated file in the monitor output:
+
+```
+FORMAT MIGRATED: [Thesis name] — headings updated to current template format.
+```
+
+This is a one-time migration per file. Once a file has current-format headings, this step is a no-op.
+
 ### Monitoring Process
 
 For each thesis in `outputs/theses/active/` (the full directory listing, not a subset), check:
@@ -311,8 +381,8 @@ For each thesis in `outputs/theses/active/` (the full directory listing, not a s
 6. **[Structural theses only] Has a full structural review been triggered?** Structural theses get a weekly kill switch check like everything else. A full structural review fires when: (a) any assumption moves to UNDER PRESSURE, (b) a major data release impacts a binding constraint, (c) the regime shifts in a way that changes thesis expression, or (d) the thesis has been ACTIVE 6+ months without any trigger firing (staleness check). When triggered:
    - **Read the original Skill 11 research brief.** Follow the `**Research Brief:**` path in the thesis file to `outputs/research/`. The brief contains the full supply-demand quantification, binding constraint evidence, and contrarian claims table that the thesis was built from. Use this as the evidentiary baseline — not as confirmation that the thesis is still correct. The question is: have the numbers in the brief changed?
    - **Start with the contrarian case — before re-examining bull assumptions.** The brief's "Quantified contrarian claims" table lists specific bear case data points with sources and dates. Check whether any of those claims have strengthened since the brief was written. Then ask: what new bear arguments have emerged since the brief was written that aren't in the original contrarian table? Technology shifts, policy changes, new supply sources, demand destruction evidence — anything that weakens the structural thesis but postdates the research. The brief can only contain the contrarian case as it stood at generation time. A thesis active for 6+ months may face risks the brief never anticipated.
-   - Re-examine each "What We Have To Believe" assumption against updated data. Check whether the specific quantified claims in the research brief still hold — not just whether the thesis's condensed assumption text "feels" intact.
-   - Check whether the binding constraints in the Structural Foundation have changed. The brief's "Binding Constraints" section has the original numbers — compare against current data.
+   - Re-examine each "What Has To Stay True" assumption against updated data. Check whether the specific quantified claims in the research brief still hold — not just whether the thesis's condensed assumption text "feels" intact.
+   - Check whether the binding constraints in "What Can't Change" have changed. The brief's "Binding Constraints" section has the original numbers — compare against current data.
    - If a Skill 11 research update is warranted (new data materially changes the picture), flag it. Be specific: "Research brief from [date] assumes [X]. Current data shows [Y]. Recommend Skill 11 re-investigation."
 7. **Does any external analyst insight directly challenge or refine a thesis parameter?** Cross-reference the analyst monitor output against each thesis's assumptions, kill switches, and mechanism. If an analyst publishes data or a framework that is directly relevant to a thesis parameter — for example, a different threshold for the same variable, or new evidence about the mechanism — flag it as a "Parameter Review" recommendation. Do not automatically change the parameter, but surface the conflict:
    ```
@@ -324,10 +394,10 @@ For each thesis in `outputs/theses/active/` (the full directory listing, not a s
    ```
    This is not about adopting external views uncritically. It's about ensuring the system doesn't ignore relevant information just because it arrived through a different skill.
 
-   **Write the finding to the thesis file.** When a Parameter Review is generated, append it to the relevant thesis file in `outputs/theses/active/`. Add it under an `## Analyst Cross-References` section at the bottom of the file. If the section doesn't exist yet, create it. Each entry is timestamped and attributed:
+   **Write the finding to the thesis file.** When a Parameter Review is generated, append it to the relevant thesis file in `outputs/theses/active/`. Add it under an `## External Views` section at the bottom of the file. If the section doesn't exist yet, create it. Each entry is timestamped and attributed:
 
    ```markdown
-   ## Analyst Cross-References
+   ## External Views
 
    ### [Date] — [Analyst name]
    **Parameter reviewed:** [which assumption, kill switch, or mechanism element]
@@ -422,20 +492,19 @@ The markdown file continues to be the human-readable research note. The JSON is 
   "updated": "2026-03-25",
   "provenance": "data-pattern",
   "conviction": "High",
-  "time_horizon": "2-5 yr",
-  "claim": "[The one-sentence claim]",
-  "plain_english_summary": "[The full summary paragraph]",
 
-  "assumptions": [
+  "summary": "[The full summary paragraph]",
+  "the_bet": "[The one-sentence bet]",
+
+  "what_cant_change": [
     {
-      "text": "Data center power demand continues growing at 25%+ annually for 3+ years",
-      "testable_by": "quarterly data center construction starts, EIA electricity consumption data, hyperscaler capex announcements",
-      "current_status_detail": "McKinsey 3.5x by 2030, EIA +3% for 2027",
-      "status": "INTACT"
+      "constraint": "Transformer manufacturing capacity deficit",
+      "quantified": "30% deficit, new factory capacity not online until 2027",
+      "source": "Wood Mackenzie"
     }
   ],
 
-  "causal_chain": [
+  "mechanism": [
     {
       "step": 1,
       "link": "Data center demand is growing at infrastructure speed, but supply is constrained at regulatory speed.",
@@ -444,43 +513,49 @@ The markdown file continues to be the human-readable research note. The JSON is 
     }
   ],
 
-  "structural_foundation": [
+  "what_has_to_stay_true": [
     {
-      "constraint": "Transformer manufacturing capacity deficit",
-      "quantified": "30% deficit, new factory capacity not online until 2027",
-      "source": "Wood Mackenzie"
+      "text": "Data center power demand continues growing at 25%+ annually for 3+ years",
+      "testable_by": "quarterly data center construction starts, EIA electricity consumption data, hyperscaler capex announcements",
+      "current_status_detail": "McKinsey 3.5x by 2030, EIA +3% for 2027",
+      "status": "INTACT"
     }
   ],
 
-  "etf_expression": {
-    "first_order": [{"ticker": "XLUS.SW", "size": "Core (3-5%)", "rationale": "Diversified regulated utility exposure"}],
-    "second_order": [{"ticker": "GRID", "size": "Satellite (1-2%)", "rationale": "Grid infrastructure pure-play"}],
-    "third_order": [],
-    "reduce_avoid": [{"ticker": "CSNDX.SW", "rationale": "Long-duration growth vulnerable if grid constraints hit data center buildout"}]
-  },
+  "where_the_market_stands": "[Market consensus + positioning data paragraph]",
 
-  "trigger_to_add": "PJM capacity auction clears above $350/MW-day",
-  "kill_switch": "FERC interconnection reform reduces queue to <2 years AND transformer deficit narrows below 5%",
-
-  "consensus_view": "[Market consensus paragraph]",
-  "contrarian_stress_test": {
+  "what_could_break_it": {
     "strongest_counter": "[The steelmanned counter-argument]",
     "key_risks": [
       {"risk": "AI efficiency gains compress demand growth to <15% annually", "probability": "30-40%"},
       {"risk": "Off-grid generation absorbs >30% of incremental data center demand", "probability": "25-35%"}
     ],
     "post_test_conviction": "High"
-  }
+  },
+
+  "the_trade": {
+    "what_to_buy": {
+      "first_order": [{"ticker": "XLUS.SW", "size": "Core (3-5%)", "rationale": "Diversified regulated utility exposure"}],
+      "second_order": [{"ticker": "GRID", "size": "Satellite (1-2%)", "rationale": "Grid infrastructure pure-play"}],
+      "third_order": [],
+      "reduce_avoid": [{"ticker": "CSNDX.SW", "rationale": "Long-duration growth vulnerable if grid constraints hit data center buildout"}]
+    },
+    "when_to_buy": "[Entry timing — structural only, null for tactical]",
+    "when_to_buy_more": "PJM capacity auction clears above $350/MW-day",
+    "when_to_get_out": "FERC interconnection reform reduces queue to <2 years AND transformer deficit narrows below 5%",
+    "how_long": "2-5 yr"
+  },
+
 }
 ```
 
 **Rules:**
-- The JSON must contain **all** structured data from the thesis — assumptions, causal chain, structural foundation, ETF expression. Full text, never truncated.
+- The JSON must contain **all** structured data from the thesis — "what_has_to_stay_true", "mechanism", "what_cant_change", "the_trade". Full text, never truncated.
 - Status values for assumptions: `INTACT`, `DEVELOPING`, `UNDER PRESSURE`, `WEAKENING`, `STRENGTHENING`, `WATCH`, `BROKEN`, `INVALIDATED`, `FAILED`.
-- Tactical theses omit `structural_foundation` and `contrarian_stress_test` (set to `null`). Their `causal_chain` field maps the mechanism steps instead.
-- For tactical theses, `assumptions` uses the simpler format (no `testable_by` if not specified in the markdown — set to `""`).
+- Tactical theses omit `what_cant_change` and `what_could_break_it` (set to `null`). Tactical theses also omit `the_trade.when_to_buy` (set to `null`).
+- For tactical theses, `what_has_to_stay_true` uses the simpler format (no `testable_by` if not specified in the markdown — set to `""`).
 - When Function B (monitor) updates a thesis, update both the markdown and the JSON sidecar. The JSON `updated` field and assumption `status` values must stay in sync with the markdown.
-- The dashboard generator reads the JSON when present, falling back to markdown parsing for legacy files without a sidecar.
+- The dashboard generator reads the JSON when present, falling back to markdown parsing for files without a sidecar.
 
 ## Meta Block
 
