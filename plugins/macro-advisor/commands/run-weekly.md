@@ -230,7 +230,7 @@ Skill 12 does NOT rewrite thesis content. The dashboard renders raw thesis files
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/09-monday-briefing.md` + synthesis + thesis monitor + Skill 12 presentation cards + improvement summary + analyst monitor (Skill 10) output.
 **List `outputs/theses/active/` to get the authoritative set of theses.** The directory listing is the source of truth — not Skill 7's monitor output, not Skill 12's card list. Every thesis on disk must appear in the JSON sidecar. In the memo prose, reference theses naturally where the week's data is relevant — don't force-list every thesis.
 Read Skill 12 briefing cards from `outputs/theses/presentations/` for thesis context. If any thesis exists on disk without a Skill 12 card, read the thesis file directly.
-The memo is narrative prose — no tables, no bullet lists. Structured data (cross-asset, sector, thesis tables) goes in the JSON sidecar for the Overview and Theses tabs. Write for a smart non-specialist. Keep under 5 minutes reading time.
+The memo is narrative prose — no markdown tables, no bullet lists, no formatted regime badges. All structured data (cross-asset tables, sector tables, thesis status tables) belongs in the JSON sidecar for the Overview and Theses tabs — never in the memo itself. Do not mimic the format of any prior week's briefing; follow the Memo Structure section in the Skill 9 reference. Write for a smart non-specialist. Keep under 5 minutes reading time.
 Save memo to: `outputs/briefings/YYYY-Www-briefing.md`
 Save JSON sidecar to: `outputs/briefings/YYYY-Www-briefing-data.json` (e.g. `2026-W13-briefing-data.json` — the week prefix is mandatory)
 

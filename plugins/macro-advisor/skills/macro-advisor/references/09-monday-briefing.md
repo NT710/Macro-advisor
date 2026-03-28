@@ -16,7 +16,7 @@ Write a weekly macro memo. Not a data dump — a narrative. The reader opens the
 - Thesis presentation briefing cards (Skill 12) — read from `outputs/theses/presentations/`. Skill 12 runs before Skill 9 in the chain and should always produce these. If Skill 12 output is missing (error recovery only), generate cards directly from thesis files using the same format.
 - **Reconciliation:** Compare the Skill 12 briefing cards against the actual files in `outputs/theses/active/`. If any thesis file exists on disk that does NOT have a corresponding Skill 12 card, generate a briefing card directly from the thesis file. This catches theses created mid-cycle by `/investigate-theme` or `/structural-scan` that may have been missed by earlier skills. Every thesis on disk must appear in the briefing — referenced naturally in prose, not forced into a table.
 - Improvement Loop summary (Skill 8 — system health only)
-- **Prior week's briefing** (if it exists in `outputs/briefings/`) — read the most recent briefing from a **previous ISO week** (Www strictly less than current week) to check whether last week's calls played out. On a same-week rerun, the current week's own briefing is not "prior." This is the accountability loop.
+- **Prior week's briefing** (if it exists in `outputs/briefings/`) — read the most recent briefing from a **previous ISO week** (Www strictly less than current week) to check whether last week's calls played out. On a same-week rerun, the current week's own briefing is not "prior." This is the accountability loop. **IMPORTANT: Use the prior briefing for factual content only** (what claims were made, what data was cited). Do NOT mimic its formatting, structure, or layout. The prior briefing may not have followed this spec correctly — prior formatting errors must not propagate forward. Always follow the Memo Structure section below, regardless of what the prior briefing looks like.
 - External analyst monitor output (Skill 10) — for surfacing views that challenge ours
 
 ## Dashboard Data JSON (mandatory)
@@ -132,7 +132,7 @@ This file provides the dashboard with all structured data it needs. The dashboar
 - `direction`: stance (e.g. "Favor", "Avoid").
 - `etfs`: ticker string.
 - `entry_trigger`, `kill_switch`, `assumption_status`, `mechanism`, `analyst_support`: context fields.
-- Every thesis on disk must appear.
+- **Reconciliation (mandatory):** List `outputs/theses/active/` and verify every thesis file on disk has a corresponding entry in the `theses` object. Theses may have been created after earlier skills ran (via `/investigate-theme` or `/structural-scan`) and will be missing from Skill 12 cards and the thesis monitor output. For any thesis on disk without upstream coverage, read the thesis file directly and generate the JSON entry from it. Zero thesis files may be omitted — the dashboard reads this object to populate recommendations on the Overview tab, and a missing entry means a blank recommendation.
 
 `cross_asset` array (required):
 - One object per asset class row.
@@ -337,3 +337,15 @@ The language quality is the single most important quality standard for this docu
 - If the regime hasn't changed, say so conversationally — "Goldilocks for the sixth straight week" woven into the opening, not as a standalone badge
 - Every number sourced — never invented
 - Dynamic headlines that reflect this specific week — never generic template labels
+
+---
+
+## Pre-Output Format Check (mandatory)
+
+Before finalizing the memo, run this self-check. If any item fails, fix it before writing the file.
+
+1. **No markdown tables.** Search the memo for pipe characters (`|`). If any line contains `|` as a table delimiter, move that data into the JSON sidecar and rewrite the narrative to reference it in prose. Zero exceptions.
+2. **No template headings.** The only fixed headings are `## Checking Our Work` and `## Looking Ahead`. All other headings must be thematic and specific to this week. If you see "The Big Picture", "What Changed This Week", "Active Positions", "Cross-Asset View", "Sector Breakdown", "Signal vs. Noise", "System Health", or "The Four Regimes" — these are dashboard tab content, not memo content. Remove them and integrate any relevant information into the narrative body.
+3. **Three anchors present.** Opening paragraph (no heading), `## Checking Our Work`, narrative body (1-3 thematic sections), `## Looking Ahead`. In that order. Nothing else.
+4. **No regime badge.** The opening should not contain formatted metadata like "**Regime:** X" or "**Confidence:** Y". The regime is woven into the opening narrative sentence.
+5. **Prior briefing not copied.** If the current memo's structure matches the prior week's structure (same section headings, same layout), something went wrong. The narrative body headings should be different every week because the themes are different every week.

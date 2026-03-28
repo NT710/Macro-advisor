@@ -644,10 +644,10 @@ def format_thesis_html(md_text):
                 output_lines.append('')
             continue
 
-        # --- ETF Expression: bullet list with order labels → table ---
-        # Matches: **ETF Expression:**, ## ETF Expression, *Expression:*
-        if (_match_section(lower, 'etf expression') or lower == '*expression:*'
-                or lower.startswith('## etf expression')):
+        # --- ETF Expression / What to buy: bullet list with order labels → table ---
+        # Matches: ### What to buy (current), **ETF Expression:**, ## ETF Expression, *Expression:*
+        if (_match_section(lower, 'what to buy') or _match_section(lower, 'etf expression')
+                or lower == '*expression:*' or lower.startswith('## etf expression')):
             output_lines.append(_emit_h2('ETF Expression'))
             output_lines.append('')
             i += 1
@@ -742,12 +742,19 @@ def format_thesis_html(md_text):
             # Rubric lines include **Primary dimensions:**, **Veto gate:**, **Scoring:**
             # which look like section boundaries but are actually rubric content
             major_sections = [
-                'etf expression', 'trigger to add', 'kill switch', 'time horizon',
-                'consensus view', 'entry timing', 'monitoring cadence',
-                'analyst cross-references', 'mechanism', 'claim',
-                'plain english summary', 'structural foundation',
-                'quantified causal chain', 'what we have to believe',
-                'contrarian stress-test', 'assumptions',
+                'what to buy', 'etf expression',
+                'when to buy more', 'trigger to add',
+                'when to get out', 'kill switch',
+                'how long', 'time horizon',
+                'when to buy', 'entry timing',
+                'where the market stands', 'consensus view',
+                'what could break it', 'contrarian stress-test',
+                'what has to stay true', 'what we have to believe', 'assumptions',
+                'external views', 'analyst cross-references',
+                'summary', 'plain english summary',
+                'the bet', 'claim',
+                'mechanism', 'structural foundation',
+                'quantified causal chain', 'monitoring cadence',
             ]
             while i < len(lines):
                 l = lines[i].strip().lower()
@@ -787,7 +794,6 @@ def format_thesis_html(md_text):
             'entry timing:', 'entry timing',
             'when to get out:', 'when to get out',
             'kill switch:', 'kill switch',
-            'what to buy:', 'what to buy',
             'etf expression:', 'etf expression',
             'monitoring cadence:', 'monitoring cadence',
             'external views', 'external views:',
@@ -1587,7 +1593,8 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                    all_weeks=None, all_weeks_data=None, regime_history=None,
                    skill_files=None, methodology=None, output_dir=None,
                    closed_theses=None, horizon_map=None, horizon_json_data=None,
-                   thesis_json_sidecars=None):
+                   thesis_json_sidecars=None, accuracy_tracker=None,
+                   improvement_json=None):
     """Generate the full HTML dashboard with multi-week history support."""
 
     all_weeks = all_weeks or [week]
@@ -1596,6 +1603,77 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     skill_files = skill_files or []
     methodology = methodology or ""
     thesis_json_sidecars = thesis_json_sidecars or {}
+    accuracy_tracker = accuracy_tracker or ""
+    improvement_json = improvement_json or None
+
+    # --- Parse accuracy and system health data ---
+    # Priority 1: improvement-data.json sidecar (stable contract)
+    # Priority 2: accuracy-tracker.md (persistent cross-week file, markdown parsing)
+    accuracy_pct = None
+    accuracy_cumulative_html = ""
+    accuracy_scorecard_html = ""
+
+    if improvement_json and "accuracy" in improvement_json:
+        acc = improvement_json["accuracy"]
+        accuracy_pct = acc.get("cumulative_pct")
+
+        # Build cumulative table from JSON
+        by_cat = acc.get("by_category", [])
+        if by_cat:
+            rows = ['| Category | Correct | Partial | Wrong | Total | Accuracy | Confidence |',
+                    '|----------|---------|---------|-------|-------|----------|------------|']
+            for cat in by_cat:
+                rows.append(f'| {cat.get("category", "")} | {cat.get("correct", "")} | {cat.get("partial", "")} | {cat.get("wrong", "")} | {cat.get("total", "")} | **{cat.get("accuracy_pct", "")}%** | {cat.get("confidence", "")} |')
+            # Add cumulative row
+            rows.append(f'| **CUMULATIVE** | **{acc.get("correct", "")}** | **{acc.get("partial", "")}** | **{acc.get("wrong", "")}** | **{acc.get("total_calls", "")}** | **{accuracy_pct}%** | |')
+            accuracy_cumulative_html = md_to_html('\n'.join(rows))
+
+        # Build scorecard detail from JSON
+        scorecard = acc.get("scorecard", [])
+        if scorecard:
+            sc_rows = ['| Call | Outcome | Verdict | Reasoning |',
+                       '|------|---------|---------|-----------|']
+            for sc in scorecard:
+                verdict = sc.get("verdict", "")
+                verdict_icon = {"CORRECT": "✓", "PARTIALLY CORRECT": "~", "WRONG": "✗", "TOO EARLY": "⏳"}.get(verdict.upper(), "")
+                sc_rows.append(f'| {sc.get("call", "")} | {sc.get("outcome", "")} | {verdict_icon} {verdict} | {sc.get("reasoning", "")} |')
+            accuracy_scorecard_html = md_to_html('\n'.join(sc_rows))
+
+    # Fallback: parse accuracy-tracker.md if JSON not available
+    if accuracy_pct is None and accuracy_tracker:
+        cum_match = re.search(r'\*\*CUMULATIVE\*\*.*?\*\*(\d+)%\*\*', accuracy_tracker)
+        if cum_match:
+            accuracy_pct = int(cum_match.group(1))
+
+        if not accuracy_cumulative_html:
+            in_cumulative = False
+            cum_lines = []
+            for line in accuracy_tracker.split('\n'):
+                if 'Cumulative Accuracy' in line and line.strip().startswith('#'):
+                    in_cumulative = True
+                    continue
+                if in_cumulative:
+                    if line.strip().startswith('|'):
+                        cum_lines.append(line)
+                    elif line.strip().startswith('#') or (line.strip() and not line.strip().startswith('|') and cum_lines):
+                        break
+            if cum_lines:
+                accuracy_cumulative_html = md_to_html('\n'.join(cum_lines))
+
+        if not accuracy_scorecard_html:
+            in_detail = False
+            detail_lines = []
+            for line in accuracy_tracker.split('\n'):
+                if 'Scorecard Detail' in line:
+                    in_detail = True
+                    continue
+                if in_detail:
+                    if line.strip().startswith('#') and 'Scorecard Detail' not in line:
+                        break
+                    if line.strip():
+                        detail_lines.append(line)
+            if detail_lines:
+                accuracy_scorecard_html = md_to_html('\n'.join(detail_lines))
 
     # Regime: Try synthesis-data.json sidecar first (stable contract),
     # fall back to markdown parsing (legacy) if not available.
@@ -1934,9 +2012,11 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             if upd_match:
                 updated = upd_match.group(1).strip()
 
-            # Extract time horizon (first line after ## Time Horizon)
+            # Extract time horizon (first line after ### How long or ## Time Horizon)
             horizon = ""
-            horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
+            horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
+            if not horizon_match:
+                horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
             if horizon_match:
                 # Grab just the short duration label (e.g. "1-3 months", "2-5 years")
                 h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?))', horizon_match.group(1).strip(), re.IGNORECASE)
@@ -2166,9 +2246,11 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             generated_date = m.group(1).strip().split()[0]  # just the date part
 
         # Parse horizon to estimate end date
-        # Match both ## Time Horizon (h2) and **Time horizon:** (bold inline)
+        # Match ### How long (current), ## Time Horizon (legacy), **Time horizon:** (bold inline)
         horizon_text = ""
-        horizon_match = re.search(r'## Time [Hh]orizon\s*\n+(.+)', content)
+        horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
+        if not horizon_match:
+            horizon_match = re.search(r'## Time [Hh]orizon\s*\n+(.+)', content)
         if not horizon_match:
             horizon_match = re.search(r'\*\*Time [Hh]orizon:\*\*\s*(.+)', content)
         if not horizon_match:
@@ -2253,7 +2335,26 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             improvement_parsed = parse_improvement_report(content)
 
     # Build structured system health components
+    # Priority 1: improvement-data.json sidecar; Priority 2: markdown parsing
     imp = improvement_parsed
+    if improvement_json:
+        ij_health = improvement_json.get("health", {})
+        if ij_health.get("score") is not None:
+            imp["health_score"] = str(ij_health["score"])
+        if ij_health.get("trend"):
+            imp["health_trend"] = ij_health["trend"]
+        if ij_health.get("skills_at_risk"):
+            imp["skills_at_risk"] = ij_health["skills_at_risk"]
+        ij_skills = improvement_json.get("skill_scores", [])
+        if ij_skills:
+            imp["observation_rows"] = ij_skills
+        ij_amend = improvement_json.get("amendments", [])
+        if ij_amend:
+            imp["amendments"] = ij_amend
+        ij_gaps = improvement_json.get("data_gaps", [])
+        if ij_gaps:
+            imp["gaps"] = ij_gaps
+
     health_score = imp.get("health_score", "")
     health_trend = imp.get("health_trend", "")
     skills_at_risk = imp.get("skills_at_risk", "")
@@ -2331,8 +2432,8 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         a_id = (row.get("amendment id", "") or row.get("id", ""))
         proposed = (row.get("proposed", "") or row.get("skill", ""))
         status = (row.get("status", ""))
-        target = (row.get("target metric", "") or row.get("amendment", "")
-                  or row.get("type", ""))
+        target = (row.get("target metric", "") or row.get("target", "")
+                  or row.get("amendment", "") or row.get("type", ""))
         before = row.get("before", "")
         after = (row.get("after", "") or row.get("after (run 3)", ""))
         verdict = (row.get("verdict", "") or row.get("recommendation", ""))
@@ -2362,7 +2463,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             v_style = 'color: var(--accent);'
 
         # Build expanded detail content
+        description = row.get("description", "")
         detail_parts = []
+        if description:
+            detail_parts.append(f'<strong>Description:</strong> {description}')
         if impact:
             detail_parts.append(f'<strong>Impact:</strong> {impact}')
         if before:
@@ -2393,7 +2497,8 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     for row in gaps:
         skill = row.get("skill", "")
         gap = row.get("gap description", row.get("gap", ""))
-        weeks_missing = row.get("consecutive weeks", row.get("consecutive weeks missing", ""))
+        weeks_missing = row.get("consecutive weeks", row.get("consecutive weeks missing",
+                        row.get("weeks", "")))
         severity = row.get("severity", "")
 
         sev_style = ""
@@ -2833,19 +2938,28 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     if amend_match:
         amendments_pending = amend_match.group(1)
 
-    # Track record — extract from improvement or briefing
+    # Track record — from accuracy tracker (authoritative), with briefing/improvement fallback
     track_record = "Collecting data..."
     track_record_color = "var(--text-muted)"
-    # Try briefing first (system health section usually has accuracy)
-    briefing_lower = briefing.lower() if briefing else ""
-    regime_accuracy_match = re.search(r'regime\s*(?:call)?\s*accuracy[:\s]+(\d+)%', briefing_lower)
-    if regime_accuracy_match:
-        pct = int(regime_accuracy_match.group(1))
-        track_record = f"{pct}%"
-        track_record_color = '#22c55e' if pct >= 70 else ('#f59e0b' if pct >= 50 else '#ef4444')
-    elif 'too early' in briefing_lower or 'collecting data' in improvement_lower:
-        track_record = "Collecting..."
-        track_record_color = "var(--text-muted)"
+    if accuracy_pct is not None:
+        track_record = f"{accuracy_pct}%"
+        track_record_color = '#22c55e' if accuracy_pct >= 70 else ('#f59e0b' if accuracy_pct >= 50 else '#ef4444')
+    else:
+        # Fallback: regex search in briefing or improvement text
+        briefing_lower = briefing.lower() if briefing else ""
+        for text in [briefing_lower, improvement_lower]:
+            accuracy_fallback = re.search(r'(\d+)%\s*(?:cumulative\s*)?accuracy', text)
+            if not accuracy_fallback:
+                accuracy_fallback = re.search(r'accuracy[:\s]+(\d+)%', text)
+            if accuracy_fallback:
+                pct = int(accuracy_fallback.group(1))
+                track_record = f"{pct}%"
+                track_record_color = '#22c55e' if pct >= 70 else ('#f59e0b' if pct >= 50 else '#ef4444')
+                break
+        else:
+            if 'too early' in (briefing_lower or '') or 'collecting data' in improvement_lower:
+                track_record = "Collecting..."
+                track_record_color = "var(--text-muted)"
 
     # Health score color
     try:
@@ -3899,6 +4013,8 @@ tr:hover td {{
             '</div></div>' +
         '</div>' if health_score else ''}
 
+        {'<div class="panel" style="margin-bottom: 8px;"><div class="panel-header"><span class="panel-title">ACCURACY SCORECARD</span><span class="panel-meta">' + (f'{accuracy_pct}% cumulative' if accuracy_pct is not None else 'Collecting data') + '</span></div><div class="panel-body-dense">' + ('<div style="margin-bottom: 12px;">' + accuracy_cumulative_html + '</div>' if accuracy_cumulative_html else '') + ('<div><h4 style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin: 12px 0 8px 0;">Scorecard Detail</h4>' + accuracy_scorecard_html + '</div>' if accuracy_scorecard_html else '') + '</div></div>' if (accuracy_cumulative_html or accuracy_scorecard_html) else ''}
+
         {'<div class="panel"><div class="panel-header"><span class="panel-title">SKILL SCORES</span><span class="panel-meta">' + week + '</span></div><div class="panel-body-dense"><table><thead><tr><th>Skill</th><th>Score</th><th>Δ</th><th>Data Points</th><th>Gaps</th><th>Freshest</th></tr></thead><tbody>' + obs_table_rows + '</tbody></table></div></div>' if obs_table_rows else ''}
 
         {'<div class="panel" style="margin-top: 8px;"><div class="panel-header"><span class="panel-title">AMENDMENT LOG</span><span class="panel-meta">' + week + '</span></div><div class="panel-body-dense"><table><thead><tr><th>ID</th><th>Proposed</th><th>Target / Description</th><th>Status</th><th>Verdict</th></tr></thead><tbody>' + amendment_table_rows + '</tbody></table></div></div>' if amendment_table_rows else ''}
@@ -4648,6 +4764,18 @@ def main():
     # Read improvement
     improvement = read_file(output_dir / "improvement" / f"{args.week}-improvement.md")
 
+    # Read accuracy tracker (persistent cross-week file)
+    accuracy_tracker = read_file(output_dir / "improvement" / "accuracy-tracker.md")
+
+    # Read improvement JSON sidecar (structured data for System Health tab)
+    improvement_json = None
+    improvement_json_path = output_dir / "improvement" / f"{args.week}-improvement-data.json"
+    if improvement_json_path.exists():
+        try:
+            improvement_json = json.loads(improvement_json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"Warning: failed to parse {improvement_json_path}: {e}", file=sys.stderr)
+
     # Read synthesis (for regime data)
     synthesis = read_file(output_dir / "synthesis" / f"{args.week}-synthesis.md")
 
@@ -4735,6 +4863,8 @@ def main():
         horizon_map=horizon_map,
         horizon_json_data=horizon_json_data,
         thesis_json_sidecars=thesis_json_sidecars,
+        accuracy_tracker=accuracy_tracker,
+        improvement_json=improvement_json,
     )
 
     # Write output

@@ -153,6 +153,17 @@ The 6-month forecast should be grounded in visible policy paths and data trends 
 
 These forecasts feed into the regime map visualization in the dashboard. They appear as projected dots on the chart, clearly labelled as projections with stated assumptions — not predictions.
 
+After the prose forecasts, include a **Regime Forecast Summary Table** that condenses the trajectory into a single table. This table feeds the dashboard's Regime tab forecast panel via the `forecast_table` JSON array. Every row below must appear.
+
+| Time Horizon | Regime | Growth Score | Inflation Score | Key Driver | Confidence |
+|---|---|---|---|---|---|
+| W[current] (current) | [current regime] | [score] | [score] | [one-sentence driver] | [High/Medium/Low] |
+| W[+2]-W[+4] (2-4 weeks) | [expected regime] | [score range] | [score range] | [what to watch] | [confidence] |
+| 6-month | [forecast regime] | [score range] | [score range] | [key assumption] | [confidence] |
+| 12-month | [forecast regime] | [score range] | [score range] | [key assumption] | [confidence] |
+
+The first row is the current state. Rows 2-4 project forward. The JSON `forecast_table` array must mirror this table exactly — one object per row with keys `time_horizon`, `regime`, `growth_score`, `inflation_score`, `key_driver`, `confidence`.
+
 ### External Analyst Check
 Read the analyst monitor output from Skill 10 (`outputs/collection/YYYY-Www-analyst-monitor.md`). Summarize the key cross-reference points here:
 

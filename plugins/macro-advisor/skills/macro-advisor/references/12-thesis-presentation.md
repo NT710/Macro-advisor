@@ -123,7 +123,7 @@ Before writing each chart JSON, verify:
 
 ## Output 2: Briefing Cards
 
-A compressed summary for the Monday Briefing thesis table. Skill 9 consumes this directly. The format below matches what Skill 9's Active Theses section expects.
+A compressed summary that Skill 9 consumes as input data. Skill 9 weaves thesis references into its narrative prose — these cards are NOT rendered as a table in the memo. The format below gives Skill 9 the structured facts it needs to reference each thesis naturally in the briefing narrative.
 
 ```markdown
 ### [Thesis Name] [TACTICAL/STRUCTURAL badge]

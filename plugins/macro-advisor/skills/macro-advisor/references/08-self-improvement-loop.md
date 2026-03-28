@@ -305,6 +305,109 @@ Read `outputs/improvement/amendment-tracker.md`. For each amendment with status 
 
 Save the full improvement loop output as `YYYY-Www-improvement.md` in the improvement outputs directory.
 
+### Dashboard Data JSON (mandatory)
+
+After writing the markdown report, write a structured JSON sidecar alongside it:
+
+**Path:** `outputs/improvement/YYYY-Www-improvement-data.json` (e.g. `2026-W13-improvement-data.json` — week prefix must match the markdown filename)
+
+This file provides the dashboard's System Health tab with all structured data. The dashboard reads this JSON for tables and KPI cards. The markdown report stays as the expandable full report.
+
+```json
+{
+  "meta": {
+    "week": "2026-W13",
+    "run_date": "2026-03-28",
+    "skill": "self-improvement-loop",
+    "skill_version": "1.1"
+  },
+  "health": {
+    "score": 0.82,
+    "trend": "stable",
+    "skills_at_risk": "None"
+  },
+  "skill_scores": [
+    {
+      "skill": "Macro Data (Skill 3)",
+      "score": 0.85,
+      "delta": "+0.02",
+      "data_points": "52/55",
+      "gaps": "3",
+      "freshest": "2026-03-28"
+    }
+  ],
+  "accuracy": {
+    "cumulative_pct": 85,
+    "total_calls": 13,
+    "correct": 10,
+    "partial": 2,
+    "wrong": 1,
+    "by_category": [
+      {
+        "category": "Regime",
+        "correct": 1,
+        "partial": 0,
+        "wrong": 0,
+        "total": 1,
+        "accuracy_pct": 100,
+        "confidence": "High"
+      },
+      {
+        "category": "Asset Tilts",
+        "correct": 4,
+        "partial": 1,
+        "wrong": 0,
+        "total": 5,
+        "accuracy_pct": 90,
+        "confidence": "High"
+      }
+    ],
+    "scorecard": [
+      {
+        "call": "Regime: Stagflation (5th week)",
+        "outcome": "NFP -92K, Michigan 53.3, oil $99.64 — deepening confirmed",
+        "verdict": "CORRECT",
+        "reasoning": "All growth/inflation indicators confirmed stagflation continuation"
+      },
+      {
+        "call": "Tilt A: Defensives > Cyclicals",
+        "outcome": "Utilities OW +6%, Tech UW -5%",
+        "verdict": "CORRECT",
+        "reasoning": "Defensive rotation played out as expected in risk-off regime"
+      }
+    ]
+  },
+  "amendments": [
+    {
+      "id": "A-2026W13-001",
+      "proposed": "2026-W13",
+      "target": "Skill 3 — FRED search terms",
+      "description": "Add TGA balance alternative series",
+      "status": "PENDING",
+      "verdict": ""
+    }
+  ],
+  "data_gaps": [
+    {
+      "skill": "Skill 3",
+      "gap": "TGA balance (FRED WTREGEN)",
+      "weeks": 3,
+      "severity": "Low"
+    }
+  ]
+}
+```
+
+**Rules for the JSON sidecar:**
+1. `health.score` is a float (0.0-1.0), NOT a percentage string. The dashboard renders it.
+2. `accuracy.cumulative_pct` is an integer (0-100). This feeds the Track Record KPI card on the Overview tab.
+3. `accuracy.scorecard` must include **every scored call** from the current week's scoring — not just a summary. Each entry needs `call` (what we predicted), `outcome` (what happened), `verdict` ("CORRECT", "PARTIALLY CORRECT", "WRONG", or "TOO EARLY"), and `reasoning` (one sentence why).
+4. `accuracy.by_category` must include all categories from the cumulative accuracy table in the accuracy tracker.
+5. `skill_scores` mirrors the Observation Summary table. One object per skill.
+6. `amendments` mirrors the Amendment Evaluation table.
+7. `data_gaps` mirrors the Data Gaps Inventory table.
+8. All values must be the **actual data** from the analysis — not placeholders. Copy from the corresponding markdown sections.
+
 ```markdown
 ## Self-Improvement Loop — Week of [Date]
 
