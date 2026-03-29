@@ -118,10 +118,13 @@ For tactical theses (the default), produce:
 [How does this play out? What is the causal chain from macro data to price action? 3-5 sentences tracing the logic step by step. Explain WHY each link in the chain works, not just that it does.]
 
 ## What Has To Stay True
-[What has to be true for this thesis to work? List each explicitly and make them testable.]
-1. [Assumption 1 — specific, measurable]
-2. [Assumption 2]
-3. [Assumption 3]
+[What has to be true for this thesis to work? Each assumption must be independently testable — name the specific data point, threshold, or event that would confirm or deny it. Use the exact format below.]
+
+1. [Assumption] — Testable by: [specific observable data point, threshold, or event]
+2. [Assumption] — Testable by: [specific observable data point, threshold, or event]
+3. [Assumption] — Testable by: [specific observable data point, threshold, or event]
+
+For DRAFT theses where one assumption's testable criterion is genuinely unclear (emerging pattern, no established data series yet), a single placeholder is permitted: `— Testable by: [to be specified — monitor for [specific data release/event] that would clarify]`. No more than one placeholder per thesis. Any thesis promoted from DRAFT to ACTIVE must have all placeholders resolved with concrete testable criteria.
 
 ## Where The Market Stands
 [What does the market currently believe? Where is the specific mispricing? Reference positioning data if available — CFTC COT readings, ETF flow trends, fund allocation data, speculator positioning. Show both what people think and where money actually sits.]
@@ -187,6 +190,18 @@ The non-obvious second/third-order plays are often the better risk/reward becaus
 - The claim must be falsifiable. "Things might go down" is not a thesis.
 - **Quality over quantity.** One thesis with a rigorous mechanism and specific kill switch is worth more than three with vague logic. If a candidate doesn't survive scrutiny during generation, discard it rather than shipping a weak thesis.
 - **Time horizons follow the mechanism.** Do not default to 3-6 months. A policy-driven thesis might resolve in weeks. A structural thesis about demographics, energy transition, or credit cycles might have a 12-24 month horizon. The time horizon is set by the causal chain in the mechanism, not by a convention. Longer theses need monitoring checkpoints (e.g., "12-month thesis, weekly kill switch check, full review triggered by assumption pressure or constraint data changes") but should not be artificially shortened to fit a medium-term template.
+
+### Pre-Write Verification (tactical theses)
+
+After drafting a tactical thesis but **before writing it to disk**, run this checklist mechanically. Each item is a binary pass/fail. If any item fails, fix the draft before writing.
+
+1. **Every assumption testable?** Does each item under "What Has To Stay True" include a "Testable by:" clause naming a specific data point, threshold, or event? A single `[to be specified]` placeholder is permitted for DRAFT theses (see template note above), but no more than one per thesis. FAIL if any assumption lacks a testable criterion beyond the one allowed placeholder.
+2. **Kill switch specific?** Is the "When to get out" condition specific enough that there's no ambiguity about whether it's been triggered? FAIL if it uses vague language ("if the economy weakens") rather than a measurable threshold ("ISM Manufacturing drops below 48 for 2 consecutive months").
+3. **Mechanism traceable?** Does each link in the Mechanism section name a measurable indicator or observable event? FAIL if any link is pure narrative without a data reference.
+
+If all three pass, write the file. If any fail, the fix is usually a 1-2 sentence edit — not a thesis rewrite.
+
+---
 
 ### Structural Thesis Template
 
@@ -411,7 +426,24 @@ For each thesis in `outputs/theses/active/` (the full directory listing, not a s
 
    Keep the entries chronological. Don't remove old entries even if the parameter was later adjusted — the history of what was considered and why matters for the self-improvement loop.
 
-8. **Update the `**Updated:**` field.** After monitoring each thesis, set the `**Updated:**` line in the thesis file to the current date. This stamps when the thesis was last reviewed, regardless of whether anything changed. The dashboard uses this field to show when each thesis was last touched.
+8. **Write monitoring results back to the thesis file.** After monitoring each thesis, update the file with three changes:
+
+   a. **Update the `**Updated:**` field** to the current date. This stamps when the thesis was last reviewed.
+
+   b. **Update the "What Has To Stay True" section** with the current status of each assumption. For each numbered item, append the status assessment to the end of the existing line:
+
+      `1. [Assumption] — Testable by: [criterion]. Current status: INTACT (one-sentence evidence)`
+      `2. [Assumption] — Testable by: [criterion]. Current status: UNDER PRESSURE (one-sentence evidence)`
+      `3. [Assumption] — Testable by: [criterion]. Current status: BROKEN (one-sentence evidence)`
+
+      **Write-back rules (to prevent file corruption):**
+      - Append `. Current status: [STATUS] ([evidence])` to the end of each existing numbered item. If a status already exists from a prior week, replace only the status portion — not the assumption text or testable criterion.
+      - Do NOT rewrite the assumption text itself. Do NOT change the numbering. Do NOT add or remove items.
+      - Only modify lines within the "What Has To Stay True" section. Do not touch any other section of the thesis file.
+
+      **One-time backfill for legacy theses:** If an assumption lacks a "Testable by:" clause (generated before this requirement), add one based on the data you used to assess the assumption this week. Format: insert `— Testable by: [criterion]` before the status append. This is a one-time enrichment — once a testable criterion exists, maintain it going forward. Do not invent vague criteria; if you genuinely cannot identify a testable data point for an assumption, note: `— Testable by: [manual review required — no automated data source identified]`.
+
+   c. **Update or create the JSON sidecar.** If a companion JSON sidecar exists (e.g., `ACTIVE-thesis-name-data.json` alongside `ACTIVE-thesis-name.md`), update it. If no sidecar exists, create one following the schema defined in the "Structured Data Sidecar" section below. The dashboard reads JSON sidecars as the primary structured data source — without a sidecar, the dashboard falls back to markdown parsing, which is fragile. For each assumption in `what_has_to_stay_true`, set or update the `status` field to `"INTACT"`, `"UNDER PRESSURE"`, or `"BROKEN"`, and add a `status_evidence` field with the one-sentence evidence. Also set `testable_by` for each assumption. Update the top-level `updated` field to the current date.
 
 ### Status Table
 

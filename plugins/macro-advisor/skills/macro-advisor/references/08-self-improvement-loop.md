@@ -91,6 +91,11 @@ Calculate the ratio: searches_with_useful_results / searches_attempted. If this 
 ### 2f. Thesis Quality
 Are thesis candidates specific enough? Do they have measurable kill switches? Are active theses being monitored with actual data references, or are the monitoring notes vague?
 
+Additionally, check these two specific quality metrics across all active theses:
+
+- **Testable criteria coverage:** What percentage of "What Has To Stay True" assumptions across all active theses include a "Testable by:" clause? Target: 100%. If below 80%, flag as a data quality gap — Skill 7 Function A is generating assumptions without testable criteria, or legacy theses have not been backfilled by Function B.
+- **Status assessment coverage:** What percentage of assumptions across all active theses have a current status assessment (INTACT / UNDER PRESSURE / BROKEN) written back to the thesis file? Target: 100% for theses that have been through at least one monitoring cycle. If any thesis has assumptions without status after being monitored, Skill 7 Function B is not writing back its monitoring results — flag as a process gap and propose an amendment.
+
 ### 2g. Reasoning Quality (Cross-Skill Information Flow)
 This is not about data collection — it's about whether the system is connecting information across skills. Check:
 
@@ -318,30 +323,30 @@ This file provides the dashboard's System Health tab with all structured data. T
   "meta": {
     "week": "2026-W13",
     "run_date": "2026-03-28",
-    "skill": "self-improvement-loop",
-    "skill_version": "1.1"
+    "skill": "skill-8-improvement-loop",
+    "version": "1.0"
   },
   "health": {
-    "score": 0.82,
+    "overall_score": 88,
     "trend": "stable",
     "skills_at_risk": "None"
   },
   "skill_scores": [
     {
-      "skill": "Macro Data (Skill 3)",
-      "score": 0.85,
-      "delta": "+0.02",
-      "data_points": "52/55",
-      "gaps": "3",
-      "freshest": "2026-03-28"
+      "skill": "Central Bank Watch",
+      "self_score": 0.92,
+      "data_points_extracted": 24,
+      "data_points_expected": 18,
+      "confidence": "high",
+      "freshest_data": "2026-03-28"
     }
   ],
   "accuracy": {
-    "cumulative_pct": 85,
-    "total_calls": 13,
-    "correct": 10,
-    "partial": 2,
-    "wrong": 1,
+    "cumulative_accuracy": 0.85,
+    "scoreable_calls": 13,
+    "correct_predictions": 10,
+    "partial_predictions": 2,
+    "wrong_predictions": 1,
     "by_category": [
       {
         "category": "Regime",
@@ -351,15 +356,6 @@ This file provides the dashboard's System Health tab with all structured data. T
         "total": 1,
         "accuracy_pct": 100,
         "confidence": "High"
-      },
-      {
-        "category": "Asset Tilts",
-        "correct": 4,
-        "partial": 1,
-        "wrong": 0,
-        "total": 5,
-        "accuracy_pct": 90,
-        "confidence": "High"
       }
     ],
     "scorecard": [
@@ -368,44 +364,47 @@ This file provides the dashboard's System Health tab with all structured data. T
         "outcome": "NFP -92K, Michigan 53.3, oil $99.64 — deepening confirmed",
         "verdict": "CORRECT",
         "reasoning": "All growth/inflation indicators confirmed stagflation continuation"
-      },
-      {
-        "call": "Tilt A: Defensives > Cyclicals",
-        "outcome": "Utilities OW +6%, Tech UW -5%",
-        "verdict": "CORRECT",
-        "reasoning": "Defensive rotation played out as expected in risk-off regime"
       }
     ]
   },
   "amendments": [
     {
       "id": "A-2026W13-001",
-      "proposed": "2026-W13",
-      "target": "Skill 3 — FRED search terms",
-      "description": "Add TGA balance alternative series",
-      "status": "PENDING",
-      "verdict": ""
+      "proposed": "2026-03-28",
+      "skill": 3,
+      "title": "Remove Non-Existent FRED Series",
+      "description": "Remove NAPMNOI, NAPMPI (confirmed non-existent on FRED)",
+      "target_metric": "data_success_rate",
+      "status": "approved_for_immediate_implementation",
+      "verdict": "approved",
+      "before": 0.954,
+      "after": 1.0
     }
   ],
   "data_gaps": [
     {
-      "skill": "Skill 3",
-      "gap": "TGA balance (FRED WTREGEN)",
-      "weeks": 3,
-      "severity": "Low"
+      "gap_id": "DG-001",
+      "title": "TGA balance (FRED WTREGEN)",
+      "skill": 3,
+      "severity": "HIGH",
+      "consecutive_weeks": 3,
+      "status": "escalated",
+      "action": "Add alternative series"
     }
   ]
 }
 ```
 
+> **Dashboard compatibility:** The dashboard normalizes key variations. For example, `overall_score` and `score` both work for health; `self_score` and `score` both work for skill scores; `cumulative_accuracy` (0-1 float) and `cumulative_pct` (0-100 int) both work for accuracy. Use the key names above (matching the W13 actual output) as the canonical schema going forward.
+
 **Rules for the JSON sidecar:**
-1. `health.score` is a float (0.0-1.0), NOT a percentage string. The dashboard renders it.
-2. `accuracy.cumulative_pct` is an integer (0-100). This feeds the Track Record KPI card on the Overview tab.
-3. `accuracy.scorecard` must include **every scored call** from the current week's scoring — not just a summary. Each entry needs `call` (what we predicted), `outcome` (what happened), `verdict` ("CORRECT", "PARTIALLY CORRECT", "WRONG", or "TOO EARLY"), and `reasoning` (one sentence why).
-4. `accuracy.by_category` must include all categories from the cumulative accuracy table in the accuracy tracker.
-5. `skill_scores` mirrors the Observation Summary table. One object per skill.
-6. `amendments` mirrors the Amendment Evaluation table.
-7. `data_gaps` mirrors the Data Gaps Inventory table.
+1. `health.overall_score` is an integer (0-100). The dashboard normalizes to percentage display. Include `trend` ("stable", "improving", "degrading") when determinable.
+2. `accuracy.cumulative_accuracy` is a float (0.0-1.0) OR `cumulative_pct` as integer (0-100). Both work. This feeds the Track Record KPI card on the Overview tab.
+3. `accuracy.by_category` should include all categories from the cumulative accuracy table in the accuracy tracker. Each entry: `category`, `correct`, `partial`, `wrong`, `total`, `accuracy_pct`, `confidence`.
+4. `accuracy.scorecard` should include **every scored call** from the current week's scoring — not just a summary. Each entry needs `call` (what we predicted), `outcome` (what happened), `verdict` ("CORRECT", "PARTIALLY CORRECT", "WRONG", or "TOO EARLY"), and `reasoning` (one sentence why). If the scorecard is too large to include inline, the dashboard falls back to `accuracy-tracker.md`.
+5. `skill_scores` — one object per skill. Use `self_score` (float 0-1), `skill` (name string), `data_points_extracted`, `data_points_expected`, `freshest_data`, `confidence`.
+6. `amendments` — one object per amendment. Use `id`, `proposed` (date), `skill` (number or string), `title`, `description`, `target_metric`, `status`, `verdict`, `before`, `after`.
+7. `data_gaps` — one object per gap. Use `gap_id`, `title`, `skill` (number), `severity` (HIGH/MEDIUM/LOW), `consecutive_weeks`, `status`, `action`.
 8. All values must be the **actual data** from the analysis — not placeholders. Copy from the corresponding markdown sections.
 
 ```markdown

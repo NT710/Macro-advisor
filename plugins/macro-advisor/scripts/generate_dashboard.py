@@ -520,21 +520,62 @@ def format_thesis_html(md_text):
                     text, status = _extract_status(text)
                     if not status:
                         testable, status = _extract_status(testable)
-                    items.append((text, testable, status))
+                    # Strip "Current status: (...)" residue from both fields after status extraction
+                    text = re.sub(r'\s*[Cc]urrent\s+status:\s*\(.*?\)\.?\s*$', '', text).strip()
+                    testable = re.sub(r'\s*[Cc]urrent\s+status:\s*\(.*?\)\.?\s*$', '', testable).strip()
+                    # Collect sub-bullets (indented lines or - lines) that follow this numbered item
+                    # These often contain **Test:** and **Observable:** info
                     i += 1
+                    sub_test_parts = []
+                    while i < len(lines):
+                        sl = lines[i].strip()
+                        if not sl:
+                            # Blank line — peek to see if next non-blank is another numbered item or section
+                            peek = _peek_past_blanks(lines, i + 1)
+                            if peek < len(lines):
+                                peek_l = lines[peek].strip()
+                                if re.match(r'^\d+\.\s', peek_l) or _is_section_boundary(peek_l):
+                                    break
+                            i += 1
+                            continue
+                        if re.match(r'^\d+\.\s', sl) or _is_section_boundary(sl):
+                            break
+                        # Sub-bullet: extract Test/Observable content
+                        if sl.startswith('- ') or sl.startswith('* '):
+                            sub_text = sl[2:].strip()
+                            # Strip bold markers for cleaner display
+                            sub_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', sub_text)
+                            # Extract Test/Observable content into testable column
+                            test_m = re.match(r'(?:Test|Testable by|Observable|Verify):\s*(.+)', sub_text, re.IGNORECASE)
+                            if test_m:
+                                sub_test_parts.append(test_m.group(1).strip())
+                            elif not testable:
+                                # Generic sub-bullet — append to testable if empty
+                                sub_test_parts.append(sub_text)
+                        elif lines[i].startswith('   ') or lines[i].startswith('\t'):
+                            # Indented continuation line
+                            sub_text = sl
+                            sub_text = re.sub(r'\*\*([^*]+)\*\*', r'\1', sub_text)
+                            test_m = re.match(r'(?:Test|Testable by|Observable|Verify):\s*(.+)', sub_text, re.IGNORECASE)
+                            if test_m:
+                                sub_test_parts.append(test_m.group(1).strip())
+                        else:
+                            break
+                        i += 1
+                    # Merge sub-bullet test info into testable column
+                    if sub_test_parts and not testable:
+                        testable = '; '.join(sub_test_parts)
+                    elif sub_test_parts and testable:
+                        testable = testable + '; ' + '; '.join(sub_test_parts)
+                    items.append((text, testable, status))
                 else:
                     break
-            has_any_status = any(s for _, _, s in items)
-            if has_any_status:
-                output_lines.append('| # | Assumption | Testable By | Status |')
-                output_lines.append('|---|-----------|-------------|--------|')
-                for n, (text, testable, status) in enumerate(items, 1):
-                    output_lines.append(f'| {n} | {text} | {testable} | {_status_html(status)} |')
-            else:
-                output_lines.append('| # | Assumption | Testable By |')
-                output_lines.append('|---|-----------|-------------|')
-                for n, (text, testable, _) in enumerate(items, 1):
-                    output_lines.append(f'| {n} | {text} | {testable} |')
+            # Always show Status column for consistency
+            output_lines.append('| # | Assumption | Testable By | Status |')
+            output_lines.append('|---|-----------|-------------|--------|')
+            for n, (text, testable, status) in enumerate(items, 1):
+                status_display = _status_html(status) if status else '—'
+                output_lines.append(f'| {n} | {text} | {testable} | {status_display} |')
             output_lines.append('')
             continue
 
@@ -848,14 +889,76 @@ def _regime_coords(regime_name):
     return coords.get(regime_name, (0, 0))
 
 
-def _build_forecast_table_md(forecast_table):
-    """Convert a forecast_table JSON array into a markdown table string."""
+def _fmt_score(val):
+    """Format a score value that may be a number, list/range, or string."""
+    if val is None or val == "":
+        return ""
+    if isinstance(val, list):
+        return " – ".join(str(v) for v in val)
+    return str(val)
+
+
+def _build_forecast_table_md(forecast_table, forecasts=None):
+    """Convert a forecast_table JSON array into a markdown table string.
+
+    Handles two JSON schemas:
+      - New spec: time_horizon, regime, growth_score, inflation_score, key_driver, confidence
+      - Legacy W13: period, regime, growth_annualized, cpi_core, fed_funds_rate, notes
+    The optional `forecasts` array (6m/12m forecast objects) can supply confidence
+    when the forecast_table rows lack it.
+    """
     if not forecast_table:
         return ""
-    headers = ["Time Horizon", "Regime", "Growth Score", "Inflation Score", "Key Driver", "Confidence"]
-    rows = []
-    for row in forecast_table:
-        rows.append(f'| **{row.get("time_horizon", "")}** | {row.get("regime", "")} | {row.get("growth_score", "")} | {row.get("inflation_score", "")} | {row.get("key_driver", "")} | {row.get("confidence", "")} |')
+    forecasts = forecasts or []
+
+    # Build a confidence lookup from the forecasts array (e.g. "High (75%)")
+    confidence_lookup = {}
+    for fc in forecasts:
+        h = fc.get("horizon", "").lower()
+        c = fc.get("confidence", "")
+        if "6" in h:
+            confidence_lookup["6m"] = c
+        elif "12" in h:
+            confidence_lookup["12m"] = c
+
+    # Detect schema: if first row has 'time_horizon' → new spec; else legacy
+    sample = forecast_table[0] if forecast_table else {}
+    is_new = "time_horizon" in sample
+
+    if is_new:
+        headers = ["Time Horizon", "Regime", "Growth Score", "Inflation Score", "Key Driver", "Confidence"]
+        rows = []
+        for row in forecast_table:
+            rows.append(
+                f'| **{row.get("time_horizon", "")}** '
+                f'| {row.get("regime", "")} '
+                f'| {_fmt_score(row.get("growth_score", ""))} '
+                f'| {_fmt_score(row.get("inflation_score", ""))} '
+                f'| {row.get("key_driver", "")} '
+                f'| {row.get("confidence", "")} |'
+            )
+    else:
+        # Legacy schema — show the macro data the JSON actually contains
+        headers = ["Time Horizon", "Regime", "Growth (ann.)", "Core CPI", "Unemployment", "S&P 500", "Key Driver"]
+        rows = []
+        for row in forecast_table:
+            period = row.get("time_horizon", "") or row.get("period", "")
+            regime = row.get("regime", "")
+            growth = _fmt_score(row.get("growth_score", "") or row.get("growth_annualized", ""))
+            infl = _fmt_score(row.get("inflation_score", "") or row.get("cpi_core", ""))
+            unemp = _fmt_score(row.get("unemployment", ""))
+            sp500 = row.get("sp500_target", "")
+            driver = row.get("key_driver", "") or row.get("notes", "")
+            rows.append(
+                f'| **{period}** '
+                f'| {regime} '
+                f'| {growth} '
+                f'| {infl} '
+                f'| {unemp} '
+                f'| {sp500} '
+                f'| {driver} |'
+            )
+
     header_line = "| " + " | ".join(headers) + " |"
     sep_line = "|" + "|".join(["---"] * len(headers)) + "|"
     return "\n".join([header_line, sep_line] + rows)
@@ -914,7 +1017,7 @@ def parse_regime_from_json(json_data):
     regime_narrative = narrative_block.get("regime_assessment", "") or ""
 
     # Build forecast section as markdown from the forecast_table array
-    forecast_section_md = _build_forecast_table_md(forecast_table)
+    forecast_section_md = _build_forecast_table_md(forecast_table, forecasts=forecasts)
 
     # What changed
     what_changed_md = narrative_block.get("what_changed", "") or ""
@@ -1615,20 +1718,43 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
     if improvement_json and "accuracy" in improvement_json:
         acc = improvement_json["accuracy"]
-        accuracy_pct = acc.get("cumulative_pct")
 
-        # Build cumulative table from JSON
+        # Extract cumulative accuracy — handles both spec and actual schemas:
+        #   Spec: "cumulative_pct": 85 (integer percentage)
+        #   Actual: "cumulative_accuracy": 0.85 (float 0-1)
+        raw_pct = acc.get("cumulative_pct")
+        if raw_pct is None:
+            raw_pct = acc.get("cumulative_accuracy")
+        if raw_pct is not None:
+            pct_val = float(raw_pct)
+            accuracy_pct = int(pct_val) if pct_val > 1 else int(pct_val * 100)
+
+        # Build cumulative table from JSON — handles both schemas
         by_cat = acc.get("by_category", [])
         if by_cat:
             rows = ['| Category | Correct | Partial | Wrong | Total | Accuracy | Confidence |',
                     '|----------|---------|---------|-------|-------|----------|------------|']
             for cat in by_cat:
                 rows.append(f'| {cat.get("category", "")} | {cat.get("correct", "")} | {cat.get("partial", "")} | {cat.get("wrong", "")} | {cat.get("total", "")} | **{cat.get("accuracy_pct", "")}%** | {cat.get("confidence", "")} |')
-            # Add cumulative row
-            rows.append(f'| **CUMULATIVE** | **{acc.get("correct", "")}** | **{acc.get("partial", "")}** | **{acc.get("wrong", "")}** | **{acc.get("total_calls", "")}** | **{accuracy_pct}%** | |')
+            total_calls = acc.get("total_calls", acc.get("scoreable_calls", ""))
+            correct = acc.get("correct", acc.get("correct_predictions", ""))
+            partial = acc.get("partial", acc.get("partial_predictions", ""))
+            wrong = acc.get("wrong", acc.get("wrong_predictions", ""))
+            rows.append(f'| **CUMULATIVE** | **{correct}** | **{partial}** | **{wrong}** | **{total_calls}** | **{accuracy_pct}%** | |')
             accuracy_cumulative_html = md_to_html('\n'.join(rows))
+        elif accuracy_pct is not None:
+            # No by_category but we have aggregate numbers — build a summary row
+            total_calls = acc.get("total_calls", acc.get("scoreable_calls", ""))
+            correct = acc.get("correct", acc.get("correct_predictions", ""))
+            partial = acc.get("partial", acc.get("partial_predictions", ""))
+            wrong = acc.get("wrong", acc.get("wrong_predictions", ""))
+            if total_calls:
+                rows = ['| Correct | Partial | Wrong | Total | Accuracy |',
+                        '|---------|---------|-------|-------|----------|',
+                        f'| {correct} | {partial} | {wrong} | {total_calls} | **{accuracy_pct}%** |']
+                accuracy_cumulative_html = md_to_html('\n'.join(rows))
 
-        # Build scorecard detail from JSON
+        # Build scorecard detail from JSON (if present)
         scorecard = acc.get("scorecard", [])
         if scorecard:
             sc_rows = ['| Call | Outcome | Verdict | Reasoning |',
@@ -2012,19 +2138,39 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             if upd_match:
                 updated = upd_match.group(1).strip()
 
-            # Extract time horizon (first line after ### How long or ## Time Horizon)
+            # Extract time horizon — multi-strategy extraction
             horizon = ""
-            horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
-            if not horizon_match:
-                horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
-            if horizon_match:
-                # Grab just the short duration label (e.g. "1-3 months", "2-5 years")
-                h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?))', horizon_match.group(1).strip(), re.IGNORECASE)
+
+            # Strategy 1: Look for explicit **Time Horizon: X-Y years** anywhere in the file
+            # Handles two bold formats:
+            #   **Time Horizon:** 2-4 years  (bold label, plain value)
+            #   **Time Horizon: 2-4 years (Specific)**  (entire phrase bold)
+            th_explicit = re.search(
+                r'\*\*Time Horizon:\s*(.+?)(?:\*\*|$)',
+                content
+            )
+            if th_explicit:
+                raw = th_explicit.group(1).strip().rstrip('*').strip()
+                h_match = re.search(r'(\d+[-–]\d+\s*(?:months?|years?|yr|mo|weeks?))', raw, re.IGNORECASE)
                 if h_match:
                     horizon = h_match.group(1)
                 else:
-                    # Fallback: take first phrase before period or parenthesis
-                    horizon = horizon_match.group(1).strip().split('.')[0].split('(')[0].strip()
+                    horizon = raw.split('.')[0].split('(')[0].strip()[:40]
+
+            # Strategy 2: First line after ### How long or ## Time Horizon heading
+            if not horizon:
+                horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
+                if not horizon_match:
+                    horizon_match = re.search(r'## Time Horizon\s*\n+(.+)', content)
+                if horizon_match:
+                    first_line = horizon_match.group(1).strip()
+                    # Only use if it looks like a duration (not a table or position sizing text)
+                    h_match = re.match(r'([\d]+-[\d]+\s*(?:months?|years?|weeks?|yr|mo))', first_line, re.IGNORECASE)
+                    if h_match:
+                        horizon = h_match.group(1)
+                    elif not first_line.startswith('|') and not first_line.startswith('**Position'):
+                        # Fallback: take first phrase before period or parenthesis
+                        horizon = first_line.split('.')[0].split('(')[0].strip()[:40]
 
         # Legacy fallback: look up recommendation from briefing table (only if JSON didn't provide one)
         if not recommendation:
@@ -2050,7 +2196,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         type_badge = "S" if is_structural else "T"
         badge_type_cls = "badge-structural" if is_structural else "badge-tactical"
         conv_bar = _conviction_bar_html(conviction)
-        horizon_short = (horizon or "—").replace("months", "mo").replace("month", "mo").replace("years", "yr").replace("year", "yr").replace("weeks", "wk").replace("week", "wk")
+        _h = horizon or "—"
+        horizon_short = re.sub(r'(?i)\bmonths?\b', lambda m: 'mo', _h)
+        horizon_short = re.sub(r'(?i)\byears?\b', lambda m: 'yr', horizon_short)
+        horizon_short = re.sub(r'(?i)\bweeks?\b', lambda m: 'wk', horizon_short)
 
         thesis_table_rows += (
             f'<tr class="thesis-row {selected_class}" onclick="showThesis({i})" data-idx="{i}" data-status="{status_lower}" data-type="{type_lower}"'
@@ -2073,7 +2222,6 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             f'<td><span class="badge {badge_status_cls}" title="{status}">{status_badge}</span></td>'
             f'<td><span class="badge {badge_type_cls}" title="{thesis_type}">{type_badge}</span></td>'
             f'<td>{conv_bar}</td>'
-            f'<td><span class="thesis-rec {rec_class}">{recommendation or "—"}</span></td>'
             f'</tr>\n'
         )
 
@@ -2112,7 +2260,11 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                         source_lines.append(line.strip())
 
             research_brief_content = ""
-            brief_match = re.search(r'`outputs/research/(.+?)`', content)
+            # Match research brief path in multiple formats:
+            #   `outputs/research/FILENAME` (spec)
+            #   `/outputs/research/FILENAME` (leading slash variant)
+            #   `/sessions/.../outputs/research/FILENAME` (full session path from older runs)
+            brief_match = re.search(r'`(?:[^`]*/)?outputs/research/([^`]+)`', content)
             if brief_match and output_dir is not None:
                 brief_path = output_dir / "research" / brief_match.group(1)
                 if brief_path.exists():
@@ -2246,18 +2398,24 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             generated_date = m.group(1).strip().split()[0]  # just the date part
 
         # Parse horizon to estimate end date
-        # Match ### How long (current), ## Time Horizon (legacy), **Time horizon:** (bold inline)
+        # Priority 1: explicit **Time Horizon: X-Y years** (most reliable, always has duration)
+        # Priority 2: first line after ### How long (if it looks like a duration, not a table)
+        # Priority 3: ## Time Horizon heading
         horizon_text = ""
-        horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
-        if not horizon_match:
+        th_explicit = re.search(r'\*\*Time [Hh]orizon:\s*(.+?)(?:\*\*|$)', content)
+        if th_explicit:
+            horizon_text = th_explicit.group(1).strip().rstrip('*').strip()
+        if not horizon_text:
+            horizon_match = re.search(r'###?\s*How long\s*\n+(.+)', content)
+            if horizon_match:
+                first_line = horizon_match.group(1).strip()
+                # Only use if it looks like a duration, not a table or position sizing
+                if re.search(r'\d+\s*[-–]\s*\d+\s*(?:weeks?|months?|years?)', first_line, re.IGNORECASE):
+                    horizon_text = first_line
+        if not horizon_text:
             horizon_match = re.search(r'## Time [Hh]orizon\s*\n+(.+)', content)
-        if not horizon_match:
-            horizon_match = re.search(r'\*\*Time [Hh]orizon:\*\*\s*(.+)', content)
-        if not horizon_match:
-            # Also try **Time horizon:** on its own line followed by content on next line
-            horizon_match = re.search(r'\*\*Time [Hh]orizon:\*\*\s*\n+(.+)', content)
-        if horizon_match:
-            horizon_text = horizon_match.group(1).strip()
+            if horizon_match:
+                horizon_text = horizon_match.group(1).strip()
 
         # Extract numeric range from horizon (e.g., "2-8 weeks", "6-18 months", "1-3 months")
         horizon_weeks = 0
@@ -2336,24 +2494,71 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
     # Build structured system health components
     # Priority 1: improvement-data.json sidecar; Priority 2: markdown parsing
+    # The JSON schema may vary between runs — normalize actual keys to what renderers expect.
     imp = improvement_parsed
     if improvement_json:
         ij_health = improvement_json.get("health", {})
-        if ij_health.get("score") is not None:
-            imp["health_score"] = str(ij_health["score"])
+        # Health score: may be "score" (0-1 float) or "overall_score" (0-100 int)
+        raw_score = ij_health.get("score") if ij_health.get("score") is not None else ij_health.get("overall_score")
+        if raw_score is not None:
+            # Normalize to string for display; if > 1 treat as percentage, else multiply by 100
+            score_val = float(raw_score)
+            if score_val > 1:
+                imp["health_score"] = f"{int(score_val)}%"
+            else:
+                imp["health_score"] = f"{int(score_val * 100)}%"
         if ij_health.get("trend"):
             imp["health_trend"] = ij_health["trend"]
         if ij_health.get("skills_at_risk"):
             imp["skills_at_risk"] = ij_health["skills_at_risk"]
+
+        # Skill scores: normalize varying key names to what obs_table_rows renderer expects
         ij_skills = improvement_json.get("skill_scores", [])
         if ij_skills:
-            imp["observation_rows"] = ij_skills
+            normalized_skills = []
+            for sk in ij_skills:
+                normalized_skills.append({
+                    "skill": sk.get("skill", ""),
+                    "score": sk.get("score", sk.get("self_score", "")),
+                    "delta": sk.get("delta", ""),
+                    "data_points": sk.get("data_points",
+                                   f'{sk.get("data_points_extracted", "")}/{sk.get("data_points_expected", "")}'
+                                   if sk.get("data_points_extracted") is not None else ""),
+                    "gaps": sk.get("gaps", ""),
+                    "freshest": sk.get("freshest", sk.get("freshest_data", "")),
+                })
+            imp["observation_rows"] = normalized_skills
+
+        # Amendments: normalize key names for renderer
         ij_amend = improvement_json.get("amendments", [])
         if ij_amend:
-            imp["amendments"] = ij_amend
+            normalized_amend = []
+            for am in ij_amend:
+                normalized_amend.append({
+                    "id": am.get("id", ""),
+                    "proposed": am.get("proposed", am.get("originally_proposed", am.get("applied", ""))),
+                    "target": am.get("target", am.get("target_metric", am.get("title", ""))),
+                    "description": am.get("description", ""),
+                    "status": am.get("status", ""),
+                    "verdict": am.get("verdict", ""),
+                    "before": str(am.get("before", "")),
+                    "after": str(am.get("after", "")),
+                    "impact": am.get("impact", ""),
+                })
+            imp["amendments"] = normalized_amend
+
+        # Data gaps: normalize key names for renderer
         ij_gaps = improvement_json.get("data_gaps", [])
         if ij_gaps:
-            imp["gaps"] = ij_gaps
+            normalized_gaps = []
+            for g in ij_gaps:
+                normalized_gaps.append({
+                    "skill": f'Skill {g["skill"]}' if isinstance(g.get("skill"), int) else str(g.get("skill", "")),
+                    "gap": g.get("gap", g.get("title", "")),
+                    "weeks": str(g.get("weeks", g.get("consecutive_weeks", ""))),
+                    "severity": g.get("severity", ""),
+                })
+            imp["gaps"] = normalized_gaps
 
     health_score = imp.get("health_score", "")
     health_trend = imp.get("health_trend", "")
@@ -2362,17 +2567,27 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     amendments = imp.get("amendments", [])
     gaps = imp.get("gaps", [])
 
-    # Count non-resolved amendments (PROPOSED or verdict INCONCLUSIVE)
-    pending_count = sum(1 for a in amendments if (
-        a.get("status", "").lower() in ("proposed", "pending") or
-        "inconclusive" in a.get("verdict", "").lower()
-    ))
+    # Count non-resolved amendments (pending, proposed, approved-not-yet-implemented, escalated)
+    pending_count = 0
+    for a in amendments:
+        s = a.get("status", "").lower()
+        v = a.get("verdict", "").lower()
+        # Resolved if evaluated, implemented+evaluated, or explicitly rejected
+        is_resolved = (
+            "evaluated" in s or "effective" in s or "rejected" in s or "reverted" in s
+            or ("implemented" in s and "pending" not in s and "pending" not in v)
+        )
+        if not is_resolved:
+            pending_count += 1
 
-    # Health score color
-    try:
-        hs_val = float(health_score) if health_score else 0
-    except ValueError:
-        hs_val = 0
+    # Health score color — handles "0.88", "88%", "88", "—"
+    hs_val = 0
+    if health_score and health_score != "—":
+        try:
+            hs_num = float(health_score.rstrip('%'))
+            hs_val = hs_num / 100 if hs_num > 1 else hs_num
+        except ValueError:
+            hs_val = 0
     if hs_val >= 0.8:
         hs_color = "var(--green)"
     elif hs_val >= 0.6:
@@ -2439,15 +2654,19 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         verdict = (row.get("verdict", "") or row.get("recommendation", ""))
         impact = row.get("impact", "")
 
-        # Badge for status
+        # Badge for status — use substring matching for compound statuses
         s_lower = status.lower().strip()
-        if s_lower in ("approved", "implemented"):
+        if "evaluated" in s_lower or "effective" in s_lower:
             badge_cls = "badge-active"
-        elif s_lower in ("proposed", "new"):
-            badge_cls = "badge-draft"
-        elif s_lower in ("rejected", "reverted"):
+        elif "implemented" in s_lower and "pending" not in s_lower:
+            badge_cls = "badge-active"
+        elif "approved" in s_lower:
+            badge_cls = "badge-active"
+        elif "rejected" in s_lower or "reverted" in s_lower:
             badge_cls = "badge-invalidated"
-        elif s_lower == "pending":
+        elif "escalated" in s_lower:
+            badge_cls = "badge-draft"  # amber for escalated items needing attention
+        elif "proposed" in s_lower or "new" in s_lower or "pending" in s_lower or "monitoring" in s_lower:
             badge_cls = "badge-draft"
         else:
             badge_cls = "badge-draft"
@@ -2924,19 +3143,31 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         if isinstance(meta, dict):
             briefing_data_date = meta.get("run_date", "") or meta.get("week", "")
 
-    # Extract system health score from improvement text
-    health_score = "—"
+    # Extract system health score from improvement text (fallback)
+    # Note: health_score may already be set from improvement_json above (line ~2508).
+    # This markdown parsing is a fallback; JSON takes priority below.
+    overview_health_score = "—"
     amendments_pending = "—"
     data_freshness = "100%"
 
     improvement_lower = improvement.lower()
     score_match = re.search(r'(?:overall.*?score|system score)[:\s]+(\d+\.?\d*)', improvement_lower)
     if score_match:
-        health_score = score_match.group(1)
+        overview_health_score = score_match.group(1)
 
     amend_match = re.search(r'(\d+)\s*(?:carry-forward|pending|amendments pending)', improvement_lower)
     if amend_match:
         amendments_pending = amend_match.group(1)
+
+    # If improvement_json provided a health score, use it (overrides markdown fallback)
+    if health_score and health_score != "—":
+        overview_health_score = health_score
+    else:
+        health_score = overview_health_score
+
+    # Override amendments_pending from structured data if available
+    if pending_count > 0:
+        amendments_pending = str(pending_count)
 
     # Track record — from accuracy tracker (authoritative), with briefing/improvement fallback
     track_record = "Collecting data..."
@@ -2961,9 +3192,12 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 track_record = "Collecting..."
                 track_record_color = "var(--text-muted)"
 
-    # Health score color
+    # Health score color (for Overview tab)
     try:
-        score_val = float(health_score) if health_score != "—" else 0
+        ov_score_str = overview_health_score.rstrip('%') if overview_health_score != "—" else "0"
+        score_val = float(ov_score_str)
+        if score_val <= 1:
+            score_val = score_val * 100
         health_color = '#22c55e' if score_val > 80 else ('#f59e0b' if score_val > 60 else '#ef4444')
     except ValueError:
         health_color = '#8b8fa3'
@@ -3832,7 +4066,7 @@ tr:hover td {{
             </div>
             <div class="kpi-card">
                 <div class="kpi-label">SYSTEM HEALTH</div>
-                <div class="kpi-number" style="color: {health_color};">{health_score}</div>
+                <div class="kpi-number" style="color: {health_color};">{overview_health_score}</div>
                 <div class="kpi-sub">{amendments_pending} pending</div>
             </div>
             <div class="kpi-card">
@@ -3859,7 +4093,6 @@ tr:hover td {{
                                 <th>St</th>
                                 <th>Ty</th>
                                 <th>Conv</th>
-                                <th>Rec</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -4390,6 +4623,52 @@ Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
                         y: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }} }},
                     }},
                     plugins: {{ legend: {{ labels: {{ color: '#a0a0a0' }} }} }},
+                }},
+            }});
+            canvas._chartRendered = true;
+        }}
+    }} else if (spec.charts && spec.charts.length > 0) {{
+        // FORMAT-C: spec.charts array (newer presentation format)
+        const chartDef = spec.charts[0];
+        const ds = (chartDef.datasets || []).map((d, idx) => {{
+            const colors = ['#3b82f6', '#22c55e', '#ef4444', '#f59e0b'];
+            return {{
+                label: d.label || 'Series',
+                data: (d.data || []).map(pt => typeof pt === 'object' ? pt.y : pt),
+                borderColor: d.borderColor || colors[idx % 4],
+                backgroundColor: d.backgroundColor || 'transparent',
+                borderWidth: d.borderWidth || 2,
+                pointRadius: 3,
+                tension: 0.3,
+            }};
+        }});
+        const labels = chartDef.x_axis && chartDef.x_axis.data
+            ? chartDef.x_axis.data
+            : (chartDef.datasets && chartDef.datasets[0] && chartDef.datasets[0].data
+                ? chartDef.datasets[0].data.map(pt => typeof pt === 'object' ? (pt.x || pt.date || '') : '')
+                : []);
+        if (ds.length > 0) {{
+            const yAxis = {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }} }};
+            if (chartDef.y_axis) {{
+                if (chartDef.y_axis.min !== undefined) yAxis.min = chartDef.y_axis.min;
+                if (chartDef.y_axis.max !== undefined) yAxis.max = chartDef.y_axis.max;
+                if (chartDef.y_axis.label) yAxis.title = {{ display: true, text: chartDef.y_axis.label, color: '#a0a0a0' }};
+            }}
+            new Chart(canvas.getContext('2d'), {{
+                type: chartDef.type || 'line',
+                data: {{ labels: labels, datasets: ds }},
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    aspectRatio: 2.5,
+                    scales: {{
+                        x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10 }} }},
+                        y: yAxis,
+                    }},
+                    plugins: {{
+                        legend: {{ labels: {{ color: '#a0a0a0' }} }},
+                        title: chartDef.title ? {{ display: true, text: chartDef.title, color: '#e0e0e0', font: {{ size: 14 }} }} : {{ display: false }},
+                    }},
                 }},
             }});
             canvas._chartRendered = true;
