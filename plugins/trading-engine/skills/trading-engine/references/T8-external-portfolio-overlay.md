@@ -188,6 +188,60 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/external_portfolio.py \
 - `outputs/external/YYYY-MM-DD-external-snapshot.json` — dated copy for historical tracking
 - `outputs/external/external-value-history.json` — append total portfolio value + date for the value-over-time chart in the dashboard
 
+### Step 8b: Write Dashboard Sidecar JSONs
+
+After saving the snapshot, write three additional JSON files that the dashboard generator reads directly. These are **structured versions of the analysis already computed in Steps 3–6** — not new analysis. Write them from the data you already have.
+
+**`outputs/external/latest-exposure.json`** — exposure aggregations from Step 3:
+```json
+{
+  "by_asset_class": { "Global Equities": 91.3, "Crypto": 3.3, "Cash": 5.4 },
+  "by_geography":   { "Global Developed (ex-US)": 50.0, "US": 40.0, "Denmark": 5.1, "Crypto": 3.3, "Cash": 1.6 },
+  "by_currency":    { "EUR": 91.3, "USD": 3.5, "CHF": 5.2 }
+}
+```
+Keys are human-readable labels. Values are allocation percentages (floats).
+
+**`outputs/external/latest-thesis-overlap.json`** — thesis alignment from Step 5:
+```json
+{
+  "overlaps": [
+    {
+      "thesis_name": "short-duration-capital-preservation",
+      "type": "tactical",
+      "status": "ACTIVE",
+      "direction": "Long short-duration USD bonds",
+      "overlapping_positions": [
+        { "ticker": "IS3S.DE", "allocation_pct": 26.52, "overlap_reason": "Value equities outperform in rising-inflation regimes — weak positive alignment" }
+      ],
+      "opposing_positions": [],
+      "conclusion": "Weak positive alignment. No contradiction."
+    }
+  ]
+}
+```
+Include one entry per active thesis. `overlapping_positions` and `opposing_positions` are lists of `{ticker, allocation_pct, overlap_reason}`. Use empty lists if none.
+
+**`outputs/external/latest-kill-switches.json`** — kill switch status from Step 6:
+```json
+{
+  "propagations": [],
+  "approaching": [
+    {
+      "thesis_name": "structural-metals-supercycle",
+      "condition": "LME copper below $8,000/ton",
+      "proximity": "APPROACHING",
+      "external_positions": [
+        { "ticker": "IS3S.DE", "allocation_pct": 26.52, "overlap_reason": "Index weight in BHP/Rio/Glencore — incidental, not thesis expression" }
+      ]
+    }
+  ]
+}
+```
+`propagations` = fully invalidated theses (closed since last T8 run). `approaching` = kill switch status APPROACHING or NEAR. Use empty lists when none apply.
+
+These three files replace the need for the dashboard to parse prose markdown, giving it reliable structured data for all comparison tables and charts.
+
 ---
 
 ## Dashboard Integration

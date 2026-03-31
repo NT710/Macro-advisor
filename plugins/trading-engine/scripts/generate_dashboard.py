@@ -201,35 +201,168 @@ def generate_sparkline(values, width=80, height=20, color="currentColor", stroke
 
 
 def parse_amendment_tracker(improvement_dir):
-    """Parse amendment-tracker.md for active and reverted amendments."""
+    """Parse amendment-tracker.md for all amendments across all sections.
+
+    Reads every table row under any ## section whose heading contains
+    'Amendment' (Active, New, Implemented, Pending, Closed, Rejected,
+    Reverted).  Per-row Status column determines whether an amendment is
+    pending vs. implemented — the section heading is NOT used for
+    classification so that amendments marked IMPLEMENTED inside a 'New
+    Amendments Proposed' section are correctly shown as implemented.
+
+    Pending = status is PROPOSED or empty (no Status field populated yet).
+    All other status values (IMPLEMENTED, APPROVED, EFFECTIVE, CLOSED, etc.)
+    are treated as non-pending.
+    """
     tracker_path = os.path.join(improvement_dir, "amendment-tracker.md")
     amendments = []
+    seen_ids = set()
     try:
         with open(tracker_path, "r") as f:
             content = f.read()
 
-        # Parse the Active Amendments table
-        in_active = False
-        for line in content.split("\n"):
-            if "## Active Amendments" in line:
-                in_active = True
+        # Collect all ## section blocks whose heading mentions 'amendment'
+        # (case-insensitive).  Stop each block at the next ## or end-of-file.
+        section_blocks = re.split(r'^(## .+)$', content, flags=re.MULTILINE)
+
+        in_amendment_section = False
+        current_section = ""
+        for chunk in section_blocks:
+            if chunk.startswith("## "):
+                in_amendment_section = "amendment" in chunk.lower()
+                current_section = chunk.strip() if in_amendment_section else ""
                 continue
-            if in_active and line.startswith("## "):
-                break
-            if in_active and line.startswith("|") and not line.startswith("| ID") and not line.startswith("|----") and "(append" not in line:
+            if not in_amendment_section:
+                continue
+
+            for line in chunk.split("\n"):
+                if not line.startswith("|"):
+                    continue
+                # Skip header and separator rows
+                stripped = line.strip()
+                if stripped.startswith("| ID") or stripped.startswith("| id") or \
+                   stripped.startswith("| Amendment") or \
+                   stripped.startswith("|---") or stripped.startswith("| --") or \
+                   "(append" in stripped:
+                    continue
+
                 cols = [c.strip() for c in line.split("|")[1:-1]]
-                if len(cols) >= 9:
-                    amendments.append({
-                        "id": cols[0],
-                        "skill": cols[1],
-                        "proposed": cols[2],
-                        "implemented": cols[3],
+                if len(cols) < 2:
+                    continue
+
+                amendment_id = cols[0]
+                if not amendment_id or amendment_id.startswith("-"):
+                    continue
+
+                # Avoid duplicates (same ID can appear in multiple sections
+                # as it moves through Active → Implemented → Closed)
+                if amendment_id in seen_ids:
+                    continue
+                seen_ids.add(amendment_id)
+
+                # Normalise to a consistent dict regardless of column count.
+                #
+                # Every amendment section uses a different column layout.
+                # We detect the layout by checking the section heading stored
+                # in the current `section_heading` variable (set below).
+                # Canonical layouts:
+                #
+                #   Active Amendments (9 cols):
+                #     ID | Proposed | Skill | Description | Status | Target | Before | After | Verdict
+                #
+                #   New Amendments Proposed (7 cols):
+                #     ID | Proposed | Skill | Description | Status | Target | Rationale
+                #
+                #   Implemented Amendments (7 cols):
+                #     ID | Applied | Metric | Before | After | Status | Eval Timeline
+                #
+                #   Pending Implementation (5+ cols):
+                #     ID | Skill | Action Required | Priority | Notes
+                #
+                #   Closed / Rejected / Reverted (5 cols):
+                #     ID | Closed/Date | Skill | Description | Reason
+                #
+                # For all layouts col[0]=ID. We use col count + section name
+                # to pick the right mapping so skill/proposed/description are
+                # always in their correct fields in the output dict.
+
+                n = len(cols)
+
+                if n >= 9:
+                    # Active / full-history table
+                    entry = {
+                        "id": amendment_id,
+                        "proposed": cols[1],       # date proposed
+                        "skill": cols[2],           # skill number / name
+                        "description": cols[3],     # amendment description
                         "status": cols[4],
                         "target_metric": cols[5],
                         "before": cols[6],
                         "after": cols[7],
                         "verdict": cols[8],
-                    })
+                        "section": current_section,
+                    }
+                elif n >= 7 and "implement" in current_section.lower():
+                    # Implemented Amendments table: ID|Applied|Metric|Before|After|Status|Eval
+                    entry = {
+                        "id": amendment_id,
+                        "proposed": "",
+                        "skill": "",
+                        "description": cols[2],    # metric as description
+                        "status": cols[5],
+                        "target_metric": cols[2],
+                        "before": cols[3],
+                        "after": cols[4],
+                        "verdict": cols[6],
+                        "section": current_section,
+                    }
+                elif n >= 7:
+                    # New Amendments Proposed: ID|Proposed|Skill|Desc|Status|Target|Rationale
+                    entry = {
+                        "id": amendment_id,
+                        "proposed": cols[1],
+                        "skill": cols[2],
+                        "description": cols[3],
+                        "status": cols[4],
+                        "target_metric": cols[5],
+                        "before": "",
+                        "after": "",
+                        "verdict": cols[6] if n > 6 else "",
+                        "section": current_section,
+                    }
+                else:
+                    # Closed / Rejected / Pending Implementation (5-6 cols)
+                    entry = {
+                        "id": amendment_id,
+                        "proposed": cols[1] if n > 1 else "",
+                        "skill": cols[2] if n > 2 else "",
+                        "description": cols[3] if n > 3 else "",
+                        "status": "",   # will be inferred from section below
+                        "target_metric": "",
+                        "before": "",
+                        "after": "",
+                        "verdict": cols[4] if n > 4 else "",
+                        "section": current_section,
+                    }
+
+                # Strip markdown bold/italic markers from key fields
+                for field in ("status", "verdict", "description"):
+                    entry[field] = re.sub(r'\*+', '', entry[field]).strip()
+
+                # Infer status from section heading when the row itself has none
+                if not entry["status"]:
+                    sl = current_section.lower()
+                    if "closed" in sl:
+                        entry["status"] = "CLOSED"
+                    elif "reject" in sl:
+                        entry["status"] = "REJECTED"
+                    elif "revert" in sl:
+                        entry["status"] = "REVERTED"
+                    elif "implement" in sl:
+                        entry["status"] = "IMPLEMENTED"
+
+                amendments.append(entry)
+
     except FileNotFoundError:
         pass
     return amendments
@@ -640,72 +773,137 @@ def parse_external_overlay(external_dir):
         with open(overlay_files[0], "r") as f:
             content = f.read()
 
+        # Helper: find a markdown table under a heading that matches a keyword.
+        # Heading may be any level (####, ###, **Bold:**) followed by the keyword.
+        # Skips any non-table lines (blank lines, italic notes, bold labels)
+        # between the heading and the first table row.
+        def _find_table_after(keyword, text):
+            # Find the heading line
+            heading_pat = re.search(
+                r"(?:#+\s*|\*\*)" + re.escape(keyword) + r"[^\n]*\n",
+                text, re.IGNORECASE
+            )
+            if not heading_pat:
+                return []
+            # From the end of the heading, skip non-table lines and grab the table
+            remainder = text[heading_pat.end():]
+            table_pat = re.search(r"((?:\|.+\n)+)", remainder)
+            # Only accept the table if it appears before the next heading (##)
+            next_heading = re.search(r"^#{1,4} ", remainder, re.MULTILINE)
+            if not table_pat:
+                return []
+            if next_heading and table_pat.start() > next_heading.start():
+                return []
+            return _parse_md_table(table_pat.group(1))
+
         # Parse exposure by asset class
-        ac_match = re.search(r"\*\*By Asset Class:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
-        if ac_match:
-            result["exposure_by_asset_class"] = _parse_md_table(ac_match.group(1))
+        result["exposure_by_asset_class"] = _find_table_after("By Asset Class", content)
 
         # Parse exposure by geography
-        geo_match = re.search(r"\*\*By Geography:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
-        if geo_match:
-            result["exposure_by_geography"] = _parse_md_table(geo_match.group(1))
+        result["exposure_by_geography"] = _find_table_after("By Geography", content)
 
-        # Parse exposure by sector
-        sec_match = re.search(r"\*\*By Sector[^*]*:\*\*\s*\n(\|.+?\n(?:\|.+?\n)*)", content, re.DOTALL)
-        if sec_match:
-            result["exposure_by_sector"] = _parse_md_table(sec_match.group(1))
+        # Parse exposure by currency (stored in sector slot when no equity sector data)
+        sector_data = _find_table_after("By Sector", content)
+        if not sector_data:
+            sector_data = _find_table_after("By Currency", content)
+        result["exposure_by_sector"] = sector_data
 
-        # Parse thesis alignment scan
+        # Parse gap analysis table (#### Gap Analysis → first table after it)
+        gap_table = _find_table_after("Gap Analysis", content)
+        if gap_table:
+            for row in gap_table:
+                # Expect columns like: Exposure | Paper % | External % | Delta | Paper Source
+                title = row.get("Exposure", row.get("exposure", ""))
+                delta = row.get("Delta", row.get("delta", ""))
+                source = row.get("Paper Source", row.get("paper_source", ""))
+                desc_parts = []
+                for k, v in row.items():
+                    if k not in ("Exposure", "exposure"):
+                        desc_parts.append(f"{k}: {v}")
+                result["gap_analysis"].append({
+                    "title": title,
+                    "description": " | ".join(desc_parts),
+                })
+        else:
+            # Fall back: numbered gap items in prose
+            gap_blocks = re.findall(
+                r"\d+\.\s+\*\*(.+?)\*\*\s*(.+?)(?=\n\d+\.|\n###|\n---|\Z)",
+                content, re.DOTALL
+            )
+            for title, body in gap_blocks:
+                result["gap_analysis"].append({
+                    "title": title.strip(),
+                    "description": body.strip().replace("\n", " "),
+                })
+
+        # Parse thesis alignment scan.
+        # T8 writes thesis blocks as:
+        #   #### N. Thesis Name (Type — STATUS)
+        #   **Paper direction:** ...
+        #   **External alignment:**
+        #   - ...
+        #   **Conclusion:** ...
         thesis_blocks = re.findall(
-            r"\*\*Thesis:\s*(.+?)\s*\(([^)]+)\)\*\*\s*\n(.*?)(?=\n\*\*Thesis:|\n###|\Z)",
+            r"####\s+\d+\.\s+(.+?)\s*\(([^)]+)\)\s*\n(.*?)(?=\n####|\n###|\Z)",
             content, re.DOTALL
         )
-        for name, status, body in thesis_blocks:
+        for name, type_status, body in thesis_blocks:
+            # type_status is e.g. "Tactical — ACTIVE" or "Structural — ACTIVE"
+            parts = re.split(r"\s*[—–-]\s*", type_status, maxsplit=1)
+            status = parts[-1].strip() if len(parts) > 1 else type_status.strip()
+
             alignment = {
                 "thesis_name": name.strip(),
-                "status": status.strip(),
+                "status": status,
                 "direction": "",
                 "overlapping": "",
                 "opposing": "",
                 "kill_switch": "",
             }
-            dir_m = re.search(r"- Direction:\s*(.+)", body)
+
+            # Paper direction
+            dir_m = re.search(r"\*\*Paper direction:\*\*\s*(.+)", body)
             if dir_m:
                 alignment["direction"] = dir_m.group(1).strip()
-            over_m = re.search(r"- External positions with overlapping exposure:\s*(.+?)(?=\n-|\Z)", body, re.DOTALL)
-            if over_m:
-                alignment["overlapping"] = over_m.group(1).strip()
-            opp_m = re.search(r"- External positions with opposing exposure:\s*(.+?)(?=\n-|\Z)", body, re.DOTALL)
-            if opp_m:
-                alignment["opposing"] = opp_m.group(1).strip()
-            ks_m = re.search(r"- Kill switch status:\s*(.+)", body)
+
+            # Overlapping / opposing from bullet points
+            # "Conclusion: OVERLAPPING" or "External positions with overlapping"
+            if re.search(r"overlapping|overlap", body, re.IGNORECASE):
+                # Grab the alignment detail lines
+                bullets = re.findall(r"^- (.+)", body, re.MULTILINE)
+                overlap_lines = [b for b in bullets if "IS3S" in b or "overlap" in b.lower() or "EUNL" in b]
+                if overlap_lines:
+                    alignment["overlapping"] = " ".join(overlap_lines)
+                else:
+                    conc = re.search(r"\*\*Conclusion[^*]*:\*\*\s*(.+)", body)
+                    if conc:
+                        alignment["overlapping"] = conc.group(1).strip()
+
+            opposing_m = re.search(r"\*\*Opposing[^*]*:\*\*\s*(.+?)(?=\n\*\*|\Z)", body, re.DOTALL)
+            if opposing_m:
+                alignment["opposing"] = opposing_m.group(1).strip().replace("\n", " ")
+
+            ks_m = re.search(r"Kill switch[^:]*:\s*(.+)", body, re.IGNORECASE)
             if ks_m:
                 alignment["kill_switch"] = ks_m.group(1).strip()
+
             result["thesis_alignments"].append(alignment)
 
-        # Parse gap analysis
-        gap_blocks = re.findall(
-            r"\d+\.\s+\*\*(.+?)\*\*\s*(.+?)(?=\n\d+\.|\n\*\*Non-investable|\n###|\Z)",
+        # Non-investable summary — look for the blockquote or bold marker
+        ni_match = re.search(
+            r"(?:> |\*\*Outside your investable universe[^*]*\*\*[^:]*:?)\s*(.+?)(?=\n\n|\n###|\Z)",
             content, re.DOTALL
         )
-        for title, body in gap_blocks:
-            result["gap_analysis"].append({
-                "title": title.strip(),
-                "description": body.strip().replace("\n", " "),
-            })
-
-        # Parse non-investable summary
-        ni_match = re.search(r"\*\*Non-investable exposure[^*]*:\*\*\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
         if ni_match:
             result["non_investable_summary"] = ni_match.group(1).strip().replace("\n", " ")
 
         # Kill switch propagation section
-        ks_match = re.search(r"### Kill Switch Propagation\s*\n(.+?)(?=\n###|\Z)", content, re.DOTALL)
+        ks_match = re.search(r"### Kill Switch Propagation\s*\n(.*?)(?=\n###|\n---|\Z)", content, re.DOTALL)
         if ks_match:
             result["kill_switch_status"] = ks_match.group(1).strip()
 
-        # Summary
-        sum_match = re.search(r"### Summary\s*\n(.+?)(?=\n---|\Z)", content, re.DOTALL)
+        # Summary — look for a ### Summary or ### Structural observations section
+        sum_match = re.search(r"### (?:Summary|Structural observations?)\s*\n(.+?)(?=\n---|\n###|\Z)", content, re.DOTALL)
         if sum_match:
             result["summary"] = sum_match.group(1).strip()
 
@@ -799,9 +997,32 @@ def _build_improvements_tab(report, amendments):
 
     # Pending proposals
     proposals = report.get("proposals", [])
-    pending_amendments = [a for a in amendments if a.get("status", "").upper() in ("PROPOSED", "")]
+    # An amendment is pending only if status is explicitly PROPOSED or blank.
+    # Any other status (IMPLEMENTED, APPROVED, EFFECTIVE, CLOSED, REVERTED,
+    # INCONCLUSIVE, EVALUATED, RESOLVED, OBSOLETE) means it has been acted on
+    # and should NOT appear in the pending section.
+    _NON_PENDING = {
+        "IMPLEMENTED", "APPROVED", "EFFECTIVE", "INEFFECTIVE", "INCONCLUSIVE",
+        "EVALUATED", "RESOLVED", "CLOSED", "OBSOLETE", "REVERTED", "REJECTED",
+    }
+    pending_amendments = [
+        a for a in amendments
+        if re.sub(r'\*+', '', a.get("status", "")).strip().upper() not in _NON_PENDING
+        and re.sub(r'\*+', '', a.get("status", "")).strip().upper() in ("PROPOSED", "")
+    ]
 
     proposals_html = '<div class="section"><h3>Pending Amendment Proposals</h3>'
+
+    # Cross-reference proposals against the amendment tracker: if a proposal ID
+    # appears in the tracker with a non-pending status, it has been implemented
+    # or evaluated and should not appear in the pending section.
+    implemented_ids = {
+        re.sub(r'\*+', '', a.get("id", "")).strip()
+        for a in amendments
+        if re.sub(r'\*+', '', a.get("status", "")).strip().upper() in _NON_PENDING
+        or re.sub(r'\*+', '', a.get("status", "")).strip().upper() not in ("PROPOSED", "")
+    }
+    proposals = [p for p in proposals if p.get("id", "").strip() not in implemented_ids]
 
     if proposals:
         for p in proposals:
@@ -836,7 +1057,9 @@ def _build_improvements_tab(report, amendments):
                     <span class="proposal-status status-pending">Pending</span>
                 </div>
                 <div class="proposal-detail"><strong>Skill:</strong> {esc(a.get('skill', ''))}</div>
+                <div class="proposal-detail"><strong>Description:</strong> {esc(a.get('description', ''))}</div>
                 <div class="proposal-detail"><strong>Target Metric:</strong> {esc(a.get('target_metric', ''))}</div>
+                <div class="proposal-detail"><strong>Current Verdict:</strong> {esc(a.get('verdict', '') or '—')}</div>
             </div>"""
         proposals_html += """
             <div class="action-hint">
@@ -847,20 +1070,51 @@ def _build_improvements_tab(report, amendments):
 
     proposals_html += "</div>"
 
-    # Evaluated amendments (from tracker)
-    evaluated = [a for a in amendments if a.get("verdict", "").strip() and a.get("verdict", "").strip() not in ("", "-")]
+    # Amendment History — show ALL non-pending amendments in a single table.
+    # This includes: implemented, approved, effective, inconclusive, closed,
+    # rejected, and reverted.  Pending (PROPOSED / blank) are shown above.
+    _STATUS_CLASS = {
+        "EFFECTIVE": "status-effective",
+        "INEFFECTIVE": "status-ineffective",
+        "INCONCLUSIVE": "status-inconclusive",
+        "RESOLVED": "status-inconclusive",
+        "IMPLEMENTED": "status-implemented",
+        "APPROVED": "status-implemented",
+        "EVALUATED": "status-implemented",
+        "CLOSED": "status-inconclusive",
+        "OBSOLETE": "status-inconclusive",
+        "REJECTED": "status-ineffective",
+        "REVERTED": "status-ineffective",
+        "SUPERSEDED": "status-inconclusive",
+        "PARTIALLY": "status-inconclusive",
+    }
+
+    def _status_class(status_str):
+        su = status_str.upper()
+        for key, cls in _STATUS_CLASS.items():
+            if key in su:
+                return cls
+        return "status-inconclusive"
+
+    history = [
+        a for a in amendments
+        if re.sub(r'\*+', '', a.get("status", "")).strip().upper() not in ("PROPOSED", "")
+        or re.sub(r'\*+', '', a.get("verdict", "")).strip() != ""
+    ]
+
     eval_html = '<div class="section"><h3>Amendment History</h3>'
 
-    if evaluated:
+    if history:
         eval_html += """
             <div style="overflow-x: auto;">
             <table>
                 <thead>
                     <tr>
                         <th>ID</th>
-                        <th>Skill</th>
                         <th>Proposed</th>
-                        <th>Implemented</th>
+                        <th>Skill</th>
+                        <th>Description</th>
+                        <th>Status</th>
                         <th>Target Metric</th>
                         <th>Before</th>
                         <th>After</th>
@@ -868,44 +1122,26 @@ def _build_improvements_tab(report, amendments):
                     </tr>
                 </thead>
                 <tbody>"""
-        for a in evaluated:
-            verdict = a.get("verdict", "").strip().upper()
-            v_class = "status-effective" if "EFFECTIVE" in verdict and "IN" not in verdict else "status-ineffective" if "INEFFECTIVE" in verdict else "status-inconclusive"
+        for a in history:
+            raw_status = re.sub(r'\*+', '', a.get("status", "")).strip()
+            raw_verdict = re.sub(r'\*+', '', a.get("verdict", "")).strip()
+            # Pick the most informative label: verdict if present, else status
+            display_label = raw_verdict if raw_verdict else raw_status
+            row_class = _status_class(display_label)
             eval_html += f"""<tr>
-                <td>{esc(a.get('id', ''))}</td>
-                <td>{esc(a.get('skill', ''))}</td>
-                <td>{esc(a.get('proposed', ''))}</td>
-                <td>{esc(a.get('implemented', ''))}</td>
+                <td style="white-space:nowrap">{esc(a.get('id', ''))}</td>
+                <td style="white-space:nowrap">{esc(a.get('proposed', ''))}</td>
+                <td style="white-space:nowrap">{esc(a.get('skill', ''))}</td>
+                <td style="min-width:160px">{esc(a.get('description', ''))}</td>
+                <td><span class="proposal-status {row_class}">{esc(display_label.upper())}</span></td>
                 <td>{esc(a.get('target_metric', ''))}</td>
                 <td>{esc(a.get('before', ''))}</td>
                 <td>{esc(a.get('after', ''))}</td>
-                <td><span class="proposal-status {v_class}">{esc(verdict)}</span></td>
+                <td>{esc(raw_verdict)}</td>
             </tr>"""
         eval_html += "</tbody></table></div>"
     else:
-        implemented = [a for a in amendments if a.get("implemented", "").strip() and a.get("implemented", "").strip() != "-"]
-        if implemented:
-            eval_html += """
-                <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr><th>ID</th><th>Skill</th><th>Proposed</th><th>Implemented</th><th>Status</th><th>Target Metric</th></tr>
-                    </thead>
-                    <tbody>"""
-            for a in implemented:
-                status = a.get("status", "").strip().upper()
-                s_class = "status-implemented" if status in ("IMPLEMENTED", "EVALUATED") else "status-pending"
-                eval_html += f"""<tr>
-                    <td>{esc(a.get('id', ''))}</td>
-                    <td>{esc(a.get('skill', ''))}</td>
-                    <td>{esc(a.get('proposed', ''))}</td>
-                    <td>{esc(a.get('implemented', ''))}</td>
-                    <td><span class="proposal-status {s_class}">{esc(status)}</span></td>
-                    <td>{esc(a.get('target_metric', ''))}</td>
-                </tr>"""
-            eval_html += "</tbody></table></div>"
-        else:
-            eval_html += '<p class="empty-state">No amendments evaluated yet. History will appear after amendments are implemented and evaluated.</p>'
+        eval_html += '<p class="empty-state">No amendments in history yet. History appears after amendments are implemented and evaluated.</p>'
 
     eval_html += "</div>"
 
