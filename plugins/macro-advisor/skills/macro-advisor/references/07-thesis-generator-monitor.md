@@ -199,7 +199,11 @@ After drafting a tactical thesis but **before writing it to disk**, run this che
 2. **Kill switch specific?** Is the "When to get out" condition specific enough that there's no ambiguity about whether it's been triggered? FAIL if it uses vague language ("if the economy weakens") rather than a measurable threshold ("ISM Manufacturing drops below 48 for 2 consecutive months").
 3. **Mechanism traceable?** Does each link in the Mechanism section name a measurable indicator or observable event? FAIL if any link is pure narrative without a data reference.
 
-If all three pass, write the file. If any fail, the fix is usually a 1-2 sentence edit — not a thesis rewrite.
+If all three pass, write **two files**:
+1. `outputs/theses/active/DRAFT-[slug].md` — the markdown thesis file
+2. `outputs/theses/active/DRAFT-[slug]-data.json` — the JSON sidecar, following the schema in the "Structured Data Sidecar" section below
+
+Both files are required outputs. A thesis is not complete until both exist. Do not write the markdown and skip the JSON.
 
 ---
 
@@ -324,9 +328,11 @@ After drafting a structural thesis but **before writing it to disk**, re-read th
 
 5. **Contrarian case not weakened?** Compare the thesis's "What Could Break It" against the brief's "Quantified contrarian claims" table. Does the thesis give the bear case equal or greater weight than the brief did? FAIL if the thesis softened, omitted, or downplayed any contrarian claim that the brief presented with evidence.
 
-If all five pass, write the file. If any fail, the fix is usually a 1-2 sentence edit — not a thesis rewrite. The point is to catch drift between what the research found and what the thesis asserts.
+If all five pass, write **two files**:
+1. `outputs/theses/active/DRAFT-[slug].md` — the markdown thesis file
+2. `outputs/theses/active/DRAFT-[slug]-data.json` — the JSON sidecar, following the schema in the "Structured Data Sidecar" section below
 
-This checklist also applies to the JSON sidecar: verify the sidecar's `conviction`, `the_bet`, `the_trade.how_long`, and `what_could_break_it` fields match the corrected draft, not the pre-verification version.
+Verify the sidecar's `conviction`, `the_bet`, `the_trade.how_long`, and `what_could_break_it` fields match the corrected draft, not the pre-verification version. Both files are required outputs. A thesis is not complete until both exist.
 
 ---
 
@@ -426,24 +432,24 @@ For each thesis in `outputs/theses/active/` (the full directory listing, not a s
 
    Keep the entries chronological. Don't remove old entries even if the parameter was later adjusted — the history of what was considered and why matters for the self-improvement loop.
 
-8. **Write monitoring results back to the thesis file.** After monitoring each thesis, update the file with three changes:
+8. **Write monitoring results back to the thesis.** Do this for each thesis immediately after finishing its monitoring — not as a batch at the end. Three separate steps, all mandatory:
 
-   a. **Update the `**Updated:**` field** to the current date. This stamps when the thesis was last reviewed.
+   **Step 8a — Update or create the JSON sidecar** (do this first — it is the primary structured data source for the dashboard). The sidecar path is `outputs/theses/active/[ACTIVE-or-DRAFT]-[slug]-data.json`. If it does not exist, create it now using the schema in the "Structured Data Sidecar" section below — do not defer this. For each assumption in `what_has_to_stay_true`, set or update: `status` ("INTACT", "UNDER PRESSURE", or "BROKEN"), `status_evidence` (one-sentence evidence), and `testable_by`. Update the top-level `updated` field to today's date. The dashboard reads the sidecar as its primary source — without it, the dashboard falls back to fragile markdown parsing and the Testable By and Status columns will be empty.
 
-   b. **Update the "What Has To Stay True" section** with the current status of each assumption. For each numbered item, append the status assessment to the end of the existing line:
+   **Step 8b — Update the markdown "What Has To Stay True" section.** For each numbered assumption, append the status to the end of the line:
 
       `1. [Assumption] — Testable by: [criterion]. Current status: INTACT (one-sentence evidence)`
       `2. [Assumption] — Testable by: [criterion]. Current status: UNDER PRESSURE (one-sentence evidence)`
       `3. [Assumption] — Testable by: [criterion]. Current status: BROKEN (one-sentence evidence)`
 
       **Write-back rules (to prevent file corruption):**
-      - Append `. Current status: [STATUS] ([evidence])` to the end of each existing numbered item. If a status already exists from a prior week, replace only the status portion — not the assumption text or testable criterion.
+      - If a status already exists from a prior week, replace only the status portion — not the assumption text or testable criterion.
       - Do NOT rewrite the assumption text itself. Do NOT change the numbering. Do NOT add or remove items.
       - Only modify lines within the "What Has To Stay True" section. Do not touch any other section of the thesis file.
 
-      **One-time backfill for legacy theses:** If an assumption lacks a "Testable by:" clause (generated before this requirement), add one based on the data you used to assess the assumption this week. Format: insert `— Testable by: [criterion]` before the status append. This is a one-time enrichment — once a testable criterion exists, maintain it going forward. Do not invent vague criteria; if you genuinely cannot identify a testable data point for an assumption, note: `— Testable by: [manual review required — no automated data source identified]`.
+      **One-time backfill for legacy theses:** If an assumption lacks a "Testable by:" clause (generated before this requirement), add one based on the data you used to assess it this week. Insert `— Testable by: [criterion]` before the status append. This is a one-time enrichment — once a testable criterion exists, maintain it going forward. If you genuinely cannot identify a testable data point, note: `— Testable by: [manual review required — no automated data source identified]`.
 
-   c. **Update or create the JSON sidecar.** If a companion JSON sidecar exists (e.g., `ACTIVE-thesis-name-data.json` alongside `ACTIVE-thesis-name.md`), update it. If no sidecar exists, create one following the schema defined in the "Structured Data Sidecar" section below. The dashboard reads JSON sidecars as the primary structured data source — without a sidecar, the dashboard falls back to markdown parsing, which is fragile. For each assumption in `what_has_to_stay_true`, set or update the `status` field to `"INTACT"`, `"UNDER PRESSURE"`, or `"BROKEN"`, and add a `status_evidence` field with the one-sentence evidence. Also set `testable_by` for each assumption. Update the top-level `updated` field to the current date.
+   **Step 8c — Update the `**Updated:**` field** in the markdown file to today's date.
 
 ### Status Table
 

@@ -13,6 +13,7 @@ Read the macro advisor output path from `config/user-config.json` → `macro_adv
 1. **Latest weekly synthesis** — find the most recent file in `{macro_advisor_outputs}/synthesis/`. If the synthesis directory is empty, check the briefing for embedded regime assessment.
 2. **Active theses** — all files in `{macro_advisor_outputs}/theses/active/`
 3. **Latest data snapshot** — `{macro_advisor_outputs}/data/latest-snapshot.json`
+4. **briefing-data.json (fallback)** — `{macro_advisor_outputs}/briefings/briefing-data.json` (if available). Used as a fallback source for cross-asset signals and thesis-level detail when synthesis-data.json sidecar does not cover this. See Step 2 below.
 4. **ETF reference** — look for `etf-reference.md` by checking these paths in order:
    - `{macro_advisor_outputs}/../skills/macro-advisor/references/etf-reference.md` (standard plugin layout — outputs/ is a sibling of skills/)
    - `{macro_advisor_outputs}/../../skills/macro-advisor/references/etf-reference.md` (if outputs path goes one level deeper)

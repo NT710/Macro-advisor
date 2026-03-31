@@ -133,6 +133,30 @@ Decision: [INCLUDE / SKIP]
 
 Skipping an expression is fine — but the reason should be "the reasoning doesn't support it," not "it's third-order so we skip by default."
 
+### Retry Gate (AT-2026W14-002)
+
+Before resubmitting any order that previously expired unfilled, check `retry_count` in `trade-log.json` for that symbol and side. This is a mandatory pre-check — not a recommendation to evaluate.
+
+**At `retry_count` = 2 (i.e., two prior attempts have expired, third submission is being considered):**
+
+Look up the current conviction signal for the asset in `latest-signals.json` (`sector_signals[].direction` for sector ETFs, or `asset_signals[].stance` for asset class ETFs).
+
+| Current conviction | Action |
+|--------------------|--------|
+| `neutral` or `avoid` / `reduce` | **SKIP.** Log as: `"SKIP — 2 expired attempts, conviction has not strengthened (neutral). Not worth a third run of turnover budget."` Do not submit. |
+| `favor` or `bull` | Third retry is permitted. Widen limit by +0.3% beyond previous attempt. Log the conviction basis explicitly. |
+| `bear` / `strong sell` (exit order) | **Escalate to market order.** An exit that has expired twice is a live risk exposure that wasn't closed. Market order removes the uncertainty. Log as: `"ESCALATED TO MARKET — 2 expired exit attempts, open exposure cannot be left unresolved."` |
+
+**At `retry_count` = 0 or 1:** No gate applies. Retry normally with the standard +0.3% limit widening.
+
+**What counts as an expired attempt:** Any prior log entry for the same symbol and side with `status: "pending"` that was subsequently not filled (i.e., a newer entry exists for the same symbol/side, indicating the prior limit was abandoned). The `retry_count` field written by T5 is the authoritative source — do not reconstruct this count manually.
+
+**This gate applies to:** All order types — regime entries, tactical thesis entries, structural thesis entries. The conviction lookup differs by layer:
+- Regime layer: use `sector_signals[].direction` for the relevant sector ETF
+- Thesis layer: use the thesis status from `latest-signals.json` (`ACTIVE` / `WEAKENING` / `APPROACHING kill switch`) — a WEAKENING or APPROACHING thesis is treated equivalently to `neutral` for retry purposes
+
+**This gate does NOT apply to:** Kill switch exits (Priority 1), which are always market orders and have no retry logic. Drawdown circuit breaker exits (Priority 2), same reason.
+
 ### Priority 5: Position Adjustments
 
 For existing positions that need resizing (delta from reconciliation):
@@ -259,13 +283,15 @@ The Wednesday check is defense only. Offense happens on Sunday.
 ---
 meta:
   skill: trade-reasoner
-  skill_version: "1.0"
+  skill_version: "1.1"
   run_date: "[ISO date]"
   run_type: "sunday_full|wednesday_check"
   orders_planned: [number]
   orders_urgent: [number]
   orders_new_positions: [number]
   orders_skipped: [number]
+  retry_gates_applied: [number]
+  retry_escalated_to_market: [number]
   devil_advocates_written: [number]
   devil_advocates_blocked: [number]
   estimated_turnover_pct: [number]

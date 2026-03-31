@@ -17,7 +17,7 @@ After each macro advisor weekly run, the trading engine:
 7. Logs every decision and non-decision
 8. Tracks performance — P&L attribution by layer (regime vs thesis), drawdown, Sharpe, win rates
 9. Self-improves execution quality through structured observation
-10. Delivers an HTML dashboard with Overview, P&L, Trades, Improvements, and External Portfolio tabs
+10. Delivers an HTML dashboard with Overview, Positions, Trades & Reasoning, Performance, External, Improvements, and Rules tabs
 
 ## Key Design Decisions
 

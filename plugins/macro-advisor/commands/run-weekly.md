@@ -258,6 +258,24 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/generate_dashboard.py \
 
 The dashboard generator reads `outputs/regime-history.json` and renders the regime trail on the scatter chart. Each historical week appears as a fading dot, showing the economy's trajectory through the four quadrants over time.
 
+## Output Contract Check
+
+Before presenting anything to the user, run the post-run contract check:
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
+  --week YYYY-Www \
+  --output-dir outputs/ \
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json
+```
+
+**If the check fails (non-zero exit code), do not present the dashboard.** The output lists exactly which files are missing and which skill is responsible. Re-run the failing skill(s) to produce the missing outputs, then re-run the check until it passes. Common failures:
+- Missing thesis sidecar (`-data.json`) — Skill 7 write-back step 8a did not complete. Re-run Skill 7 Function B for the affected thesis.
+- Stale `**Updated:**` date on a thesis — same cause. Re-run Skill 7 Function B for the affected thesis.
+- Missing briefing JSON — Skill 9 did not write `{week}-briefing-data.json`. Re-run Skill 9.
+
+Only proceed to the post-run summary once the check exits 0.
+
 ## Post-run
 
 **Calculate elapsed time.** Run `date +%s` again and subtract the start timestamp from pre-flight step 6. Convert to minutes.
@@ -267,7 +285,7 @@ Present to the user:
 1. **Dashboard** — link to the HTML dashboard file (this contains the full briefing, regime map, theses, and system health — no need to share the briefing markdown separately)
 2. **Regime identified** — which quadrant, confidence level, and whether it changed from last week
 3. **Active theses** — count of ACTIVE- and DRAFT- files, any new or invalidated this week
-4. **Draft thesis recommendations** — render a table of all DRAFT- theses from this week's briefing. Columns: Thesis Name | Direction | Key ETFs | Conviction | Catalyst/Timeline. Pull from the Skill 12 briefing cards. If no drafts exist, skip this item.
+4. **Draft thesis recommendations** — render a table of all DRAFT- theses. Source this by: (1) listing `outputs/theses/active/` and collecting every file with a `DRAFT-` prefix — this is the authoritative set, not the Skill 12 briefing cards; (2) for each draft thesis, read its JSON sidecar (`outputs/theses/active/DRAFT-[slug]-data.json`) for conviction, direction, and ETFs — the same source the dashboard uses; (3) if no sidecar exists for a thesis, read the thesis file directly and extract those fields. Columns: Thesis Name | Direction | Key ETFs | Conviction | Catalyst/Timeline. If no drafts exist, skip this item.
 5. **Decade horizon** — if it ran this cycle: mega-forces mapped, blind spots identified, blind spots flagged for scanner/research. If skipped: "Decade horizon: last ran [date], next cycle [date]."
 6. **Structural scanner** — if it ran this cycle: signal hit rate (X/7 detectors), domains advanced, candidates generated. If skipped: "Structural scanner: last ran [date], next cycle [date]."
 7. **Self-improvement** — system health score and count of proposed amendments

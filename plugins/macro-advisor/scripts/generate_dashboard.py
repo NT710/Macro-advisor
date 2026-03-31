@@ -2006,7 +2006,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         else:
             color = "var(--text-muted)"
         display = conviction_str.strip() if conviction_str else "—"
-        return f'<span class="conviction-label" style="color: {color}; font-size: 10px; font-weight: 600; white-space: nowrap;">{display}</span>'
+        return f'<span class="conviction-label" style="color: {color}; font-size: 10px; font-weight: 600;">{display}</span>'
 
     # Build thesis index table + detail panels
     thesis_table_rows = ""
@@ -3677,6 +3677,8 @@ tr:hover td {{
 }}
 .thesis-index table {{
     margin: 0;
+    width: 100%;
+    table-layout: fixed;
 }}
 .thesis-index th {{
     position: sticky;
@@ -3729,13 +3731,15 @@ tr:hover td {{
 .conviction-label {{
     font-size: 10px;
     font-weight: 600;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
     letter-spacing: 0.02em;
 }}
 .thesis-horizon {{
     font-size: 10px;
     color: var(--text-muted);
-    white-space: nowrap;
+    white-space: normal;
 }}
 /* Thesis detail panel */
 .thesis-detail-panel {{
@@ -4605,23 +4609,46 @@ Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
             tension: 0.3,
         }}));
         if (datasets.length > 0 && datasets[0].data.length > 0) {{
+            // Detect whether datasets have incompatible scales (ratio > 5x).
+            // If so, assign each dataset its own y-axis to prevent small-range
+            // series from being squashed to near-zero on a shared axis.
+            const maxVals = datasets.map(ds =>
+                Math.max(...ds.data.map(d => Math.abs(typeof d === 'object' ? (d.y || d.value || 0) : d)).filter(v => isFinite(v)))
+            );
+            const needsDualAxis = datasets.length >= 2 &&
+                maxVals[0] > 0 && maxVals[1] > 0 &&
+                (Math.max(maxVals[0], maxVals[1]) / Math.min(maxVals[0], maxVals[1])) > 5;
+
+            const mappedDatasets = datasets.map((ds, idx) => ({{
+                ...ds,
+                data: ds.data.map(d => d.y || d.value || d),
+                yAxisID: needsDualAxis ? (idx === 0 ? 'y' : 'y1') : 'y',
+            }}));
+
+            const scalesConfig = {{
+                x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10 }} }},
+                y: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }}, position: 'left' }},
+            }};
+            if (needsDualAxis) {{
+                scalesConfig.y1 = {{
+                    grid: {{ drawOnChartArea: false }},
+                    ticks: {{ color: datasets[1].borderColor || '#22c55e' }},
+                    position: 'right',
+                    title: {{ display: true, text: datasets[1].label || '', color: datasets[1].borderColor || '#22c55e', font: {{ size: 10 }} }},
+                }};
+            }}
+
             new Chart(canvas.getContext('2d'), {{
                 type: spec.chart_type || 'line',
                 data: {{
                     labels: datasets[0].data.map(d => d.x || d.date || ''),
-                    datasets: datasets.map(ds => ({{
-                        ...ds,
-                        data: ds.data.map(d => d.y || d.value || d),
-                    }})),
+                    datasets: mappedDatasets,
                 }},
                 options: {{
                     responsive: true,
                     maintainAspectRatio: true,
                     aspectRatio: 2.5,
-                    scales: {{
-                        x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10 }} }},
-                        y: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }} }},
-                    }},
+                    scales: scalesConfig,
                     plugins: {{ legend: {{ labels: {{ color: '#a0a0a0' }} }} }},
                 }},
             }});
@@ -4648,23 +4675,47 @@ Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
                 ? chartDef.datasets[0].data.map(pt => typeof pt === 'object' ? (pt.x || pt.date || '') : '')
                 : []);
         if (ds.length > 0) {{
-            const yAxis = {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }} }};
+            const yAxis = {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }}, position: 'left' }};
             if (chartDef.y_axis) {{
                 if (chartDef.y_axis.min !== undefined) yAxis.min = chartDef.y_axis.min;
                 if (chartDef.y_axis.max !== undefined) yAxis.max = chartDef.y_axis.max;
                 if (chartDef.y_axis.label) yAxis.title = {{ display: true, text: chartDef.y_axis.label, color: '#a0a0a0' }};
             }}
+
+            // Detect incompatible scales across datasets (ratio > 5x → dual axis)
+            const cMaxVals = ds.map(d =>
+                Math.max(...d.data.filter(v => isFinite(v) && v !== null).map(v => Math.abs(v)))
+            );
+            const cNeedsDual = ds.length >= 2 &&
+                cMaxVals[0] > 0 && cMaxVals[1] > 0 &&
+                (Math.max(cMaxVals[0], cMaxVals[1]) / Math.min(cMaxVals[0], cMaxVals[1])) > 5;
+
+            const mappedDs = ds.map((d, idx) => ({{
+                ...d,
+                yAxisID: cNeedsDual ? (idx === 0 ? 'y' : 'y1') : 'y',
+            }}));
+
+            const scalesC = {{
+                x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10 }} }},
+                y: yAxis,
+            }};
+            if (cNeedsDual) {{
+                scalesC.y1 = {{
+                    grid: {{ drawOnChartArea: false }},
+                    ticks: {{ color: ds[1].borderColor || '#22c55e' }},
+                    position: 'right',
+                    title: {{ display: true, text: ds[1].label || '', color: ds[1].borderColor || '#22c55e', font: {{ size: 10 }} }},
+                }};
+            }}
+
             new Chart(canvas.getContext('2d'), {{
                 type: chartDef.type || 'line',
-                data: {{ labels: labels, datasets: ds }},
+                data: {{ labels: labels, datasets: mappedDs }},
                 options: {{
                     responsive: true,
                     maintainAspectRatio: true,
                     aspectRatio: 2.5,
-                    scales: {{
-                        x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10 }} }},
-                        y: yAxis,
-                    }},
+                    scales: scalesC,
                     plugins: {{
                         legend: {{ labels: {{ color: '#a0a0a0' }} }},
                         title: chartDef.title ? {{ display: true, text: chartDef.title, color: '#e0e0e0', font: {{ size: 14 }} }} : {{ display: false }},
@@ -4775,8 +4826,11 @@ function renderTimeline() {{
 
     // Set canvas height dynamically based on thesis count
     // Extra height per row to accommodate wrapped labels (multi-line names need more space)
-    const rowHeight = 52;
+    const rowHeight = 60;
     const chartHeight = Math.max(200, data.length * rowHeight + 100);
+    // Must set both the DOM attribute and the CSS style: Chart.js reads canvas.height
+    // for its internal pixel buffer; style.height alone only changes CSS layout size.
+    canvas.height = chartHeight;
     canvas.style.height = chartHeight + 'px';
 
     const today = new Date();

@@ -1,0 +1,116 @@
+{
+  "_comment": "Output contract for the weekly macro run. Each entry declares the files a skill must produce. postrun_check.py reads this file and verifies every declared output exists on disk. Patterns support {week} (e.g. 2026-W13) and {date} (e.g. 2026-03-31) substitution.",
+
+  "skills": {
+    "skill_1_central_bank_watch": {
+      "description": "Central Bank Watch",
+      "outputs": [
+        "outputs/collection/central-bank-watch/{week}-central-bank-watch.md"
+      ]
+    },
+    "skill_2_liquidity_credit": {
+      "description": "Liquidity & Credit Monitor",
+      "outputs": [
+        "outputs/collection/liquidity-credit/{week}-liquidity-credit.md"
+      ]
+    },
+    "skill_3_macro_data": {
+      "description": "Macro Data Tracker",
+      "outputs": [
+        "outputs/collection/macro-data/{week}-macro-data.md"
+      ]
+    },
+    "skill_4_geopolitical": {
+      "description": "Geopolitical & Policy Scanner",
+      "outputs": [
+        "outputs/collection/geopolitical/{week}-geopolitical.md"
+      ]
+    },
+    "skill_5_positioning": {
+      "description": "Market Positioning & Sentiment",
+      "outputs": [
+        "outputs/collection/positioning/{week}-positioning.md"
+      ]
+    },
+    "skill_6_synthesis": {
+      "description": "Weekly Macro Synthesis",
+      "outputs": [
+        "outputs/synthesis/{week}-synthesis.md"
+      ]
+    },
+    "skill_6b_regime_evaluation": {
+      "description": "Regime Evaluation",
+      "outputs": [
+        "outputs/synthesis/{week}-regime-evaluation.md",
+        "outputs/synthesis/regime-evaluation-history.json"
+      ]
+    },
+    "skill_7_thesis_monitor": {
+      "description": "Thesis Generator & Monitor",
+      "outputs": [
+        "outputs/collection/{week}-thesis-monitor.md"
+      ],
+      "thesis_checks": {
+        "description": "Every .md file in outputs/theses/active/ must have a companion -data.json sidecar and an Updated field matching today's date. Checked separately by postrun_check.py.",
+        "active_dir": "outputs/theses/active/",
+        "require_sidecar": true,
+        "require_updated_today": true
+      }
+    },
+    "skill_8_improvement": {
+      "description": "Self-Improvement Loop",
+      "outputs": [
+        "outputs/improvement/{week}-improvement.md",
+        "outputs/improvement/amendment-tracker.md",
+        "outputs/improvement/accuracy-tracker.md"
+      ]
+    },
+    "skill_9_briefing": {
+      "description": "Monday Morning Memo",
+      "outputs": [
+        "outputs/briefings/{week}-briefing.md",
+        "outputs/briefings/{week}-briefing-data.json"
+      ]
+    },
+    "skill_10_analyst_monitor": {
+      "description": "External Analyst Monitor",
+      "outputs": [
+        "outputs/collection/{week}-analyst-monitor.md",
+        "outputs/collection/analyst-themes.md"
+      ]
+    },
+    "dashboard": {
+      "description": "HTML Dashboard",
+      "outputs": [
+        "outputs/briefings/{week}-dashboard.html",
+        "outputs/regime-history.json"
+      ]
+    }
+  },
+
+  "conditional_skills": {
+    "skill_11_structural_research": {
+      "description": "Structural Research — only runs if triggered by Skill 7",
+      "note": "postrun_check.py skips this if no CANDIDATE- files were present in outputs/structural/candidates/ at run start. If triggered, at least one outputs/research/STRUCTURAL-*.md must exist dated today."
+    },
+    "skill_13_structural_scanner": {
+      "description": "Structural Scanner — bi-weekly",
+      "condition_file": "outputs/structural/last-scan.json",
+      "condition_field": "last_run_date",
+      "condition_max_age_days": 12,
+      "outputs_if_ran": [
+        "outputs/structural/last-scan.json"
+      ]
+    },
+    "skill_14_decade_horizon": {
+      "description": "Decade Horizon — quarterly",
+      "condition_file": "outputs/strategic/last-horizon.json",
+      "condition_field": "last_run_date",
+      "condition_max_age_days": 80,
+      "outputs_if_ran": [
+        "outputs/strategic/latest-horizon-map.md",
+        "outputs/strategic/last-horizon.json"
+      ]
+    }
+  }
+}

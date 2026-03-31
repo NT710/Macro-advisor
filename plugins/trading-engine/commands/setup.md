@@ -98,7 +98,7 @@ for path in \
   "../../macro-advisor/outputs" \
   "../Macro Advisor/outputs" \
   "../../Macro Advisor/outputs" \
-  "../Marco economics/Macro Advisor/outputs"; do
+  "../macro-advisor/outputs"; do
   if [ -d "$path" ] && [ -d "$path/synthesis" ]; then
     echo "FOUND: $(realpath $path)"
     break
@@ -204,7 +204,7 @@ Then ask about the Wednesday defense check:
 
 Options: Wednesday 18:00 CET (recommended), Skip Wednesday checks, Custom time
 
-Create scheduled tasks based on their answers. **Use thin launcher prompts** — the schedule prompt should invoke `/trading-engine:run-trading` (and `/trading-engine:run-trading` with `--defense-only` for Wednesday), not duplicate the execution steps. Include only the workspace path and the command to run. All execution details live in the command files.
+Create scheduled tasks based on their answers. **Use thin launcher prompts** — the schedule prompt should invoke `/trading-engine:run-trading` for both Sunday and Wednesday runs. The command automatically detects the day and applies defense-only mode on Wednesday (no new positions, kill switches only). Include only the workspace path and the command to run. All execution details live in the command files.
 
 ## Step 9: Write Configuration
 

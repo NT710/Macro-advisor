@@ -1,7 +1,7 @@
 # Trading Engine — Methodology & System Reference
 
 **Version:** 1.0
-**Last Updated:** 2026-03-20
+**Last Updated:** 2026-03-31
 **Platform:** Alpaca Paper Trading via alpaca-py
 **Dependency:** Macro Advisor (read-only)
 
@@ -194,16 +194,14 @@ Trading/
 │   │   └── T8-external-portfolio-overlay.md
 ├── scripts/
 │   ├── assets/
-│   │   ├── chart.min.js             (bundled Chart.js for offline dashboards)
-│   │   └── inter-latin.woff2        (bundled Inter font for offline dashboards)
-│   ├── design_tokens.py             (shared design system — CSS variables, colors, fonts)
-│   ├── generate_dashboard.py        (HTML dashboard with P&L + trades tabs)
+│   │   └── chart.min.js             (bundled Chart.js for offline dashboards)
+│   ├── generate_dashboard.py        (HTML dashboard with Overview, Positions, Trades & Reasoning, Performance, External, Improvements, and Rules tabs)
 │   ├── performance_calculator.py    (P&L, attribution, Sharpe)
 │   ├── trade_executor.py            (alpaca-py API wrapper)
 │   ├── external_portfolio.py        (yfinance wrapper for external positions)
 │   ├── trading-dashboard-template.html (Jinja2 HTML template for dashboard)
 │   ├── test_dashboard.py            (unit tests for dashboard generator)
-│   └── requirements.txt
+│   └── requirements.txt             (alpaca-py, yfinance, jinja2, pytest)
 ├── config/
 │   ├── risk-limits.json             (hardcoded — not adjustable by T7)
 │   ├── regime-templates.json        (baseline allocations per regime)

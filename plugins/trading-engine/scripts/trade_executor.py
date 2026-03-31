@@ -29,6 +29,8 @@ try:
         GetOrdersRequest,
     )
     from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, QueryOrderStatus
+    from alpaca.data.historical import StockHistoricalDataClient
+    from alpaca.data.requests import StockLatestQuoteRequest
 except ImportError:
     print("ERROR: alpaca-py not installed. Run: pip install alpaca-py --break-system-packages")
     sys.exit(1)
@@ -46,6 +48,14 @@ def get_client(config: dict) -> TradingClient:
         api_key=config["alpaca_api_key"],
         secret_key=config["alpaca_secret_key"],
         paper=True,
+    )
+
+
+def get_data_client(config: dict) -> StockHistoricalDataClient:
+    """Initialize Alpaca market data client for live quotes."""
+    return StockHistoricalDataClient(
+        api_key=config["alpaca_api_key"],
+        secret_key=config["alpaca_secret_key"],
     )
 
 
@@ -220,6 +230,98 @@ def submit_orders_batch(client: TradingClient, orders: list) -> list:
     return results
 
 
+def get_live_quote(data_client: StockHistoricalDataClient, symbol: str) -> dict:
+    """
+    Fetch the latest bid/ask quote for a symbol.
+    Returns ask_price as the reference price for buy limit validation
+    (ask is the price you pay; using ask + buffer avoids setting limit below market).
+    Falls back to bid_price if ask is unavailable.
+    """
+    try:
+        request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quotes = data_client.get_stock_latest_quote(request)
+        quote = quotes[symbol]
+        ask = float(quote.ask_price) if quote.ask_price else None
+        bid = float(quote.bid_price) if quote.bid_price else None
+        # Use ask for buys (the price you'd pay); fall back to bid if ask unavailable
+        reference_price = ask if ask and ask > 0 else bid
+        return {
+            "success": True,
+            "symbol": symbol,
+            "ask_price": ask,
+            "bid_price": bid,
+            "reference_price": reference_price,
+            "timestamp": str(quote.timestamp) if quote.timestamp else None,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "symbol": symbol,
+            "reference_price": None,
+            "error": str(e),
+        }
+
+
+def check_structural_limit_price(
+    data_client: StockHistoricalDataClient,
+    symbol: str,
+    stored_limit: float,
+    deviation_threshold_pct: float = 5.0,
+) -> dict:
+    """
+    Pre-flight check for structural thesis NEW position limit prices (AT-2026W14-001).
+
+    Fetches live ask price and compares it to the stored limit from the trade plan.
+    If deviation exceeds threshold, recalculates the limit using current price + 0.3% buffer.
+
+    Returns a dict with:
+      - reset_required: bool
+      - stored_limit: original limit from trade plan
+      - current_price: live ask price
+      - deviation_pct: signed deviation (positive = current price above stored limit)
+      - new_limit: recalculated limit if reset required, else None
+      - log_note: string to include in execution log
+    """
+    quote = get_live_quote(data_client, symbol)
+
+    if not quote["success"] or quote["reference_price"] is None:
+        # Cannot fetch live price — log the failure, proceed with stored limit
+        return {
+            "reset_required": False,
+            "stored_limit": stored_limit,
+            "current_price": None,
+            "deviation_pct": None,
+            "new_limit": None,
+            "quote_error": quote.get("error"),
+            "log_note": f"LIMIT CHECK SKIPPED ({symbol}): live quote unavailable ({quote.get('error', 'unknown error')}). Proceeding with stored limit ${stored_limit:.2f}.",
+        }
+
+    current_price = quote["reference_price"]
+    deviation_pct = ((current_price - stored_limit) / stored_limit) * 100
+
+    if abs(deviation_pct) > deviation_threshold_pct:
+        new_limit = round(current_price * 1.003, 2)
+        return {
+            "reset_required": True,
+            "stored_limit": stored_limit,
+            "current_price": current_price,
+            "deviation_pct": round(deviation_pct, 2),
+            "new_limit": new_limit,
+            "quote_error": None,
+            "log_note": f"Limit reset: prior ${stored_limit:.2f} → current ${new_limit:.2f} ({deviation_pct:+.1f}% deviation). Recalculated as live ask ${current_price:.2f} + 0.3% buffer.",
+        }
+    else:
+        return {
+            "reset_required": False,
+            "stored_limit": stored_limit,
+            "current_price": current_price,
+            "deviation_pct": round(deviation_pct, 2),
+            "new_limit": None,
+            "quote_error": None,
+            "log_note": f"Limit OK: stored ${stored_limit:.2f} vs live ${current_price:.2f} ({deviation_pct:+.1f}% deviation, within ±{deviation_threshold_pct}% threshold).",
+        }
+
+
 def close_position(client: TradingClient, symbol: str) -> dict:
     """Close a specific position entirely."""
     try:
@@ -322,12 +424,12 @@ def main():
     parser.add_argument("--action", required=True,
                         choices=["snapshot", "performance_snapshot", "submit_order",
                                  "submit_batch", "close_position", "close_all",
-                                 "cancel_orders", "orders"],
+                                 "cancel_orders", "orders", "quote"],
                         help="Action to perform")
     parser.add_argument("--config", required=True, help="Path to user-config.json")
     parser.add_argument("--output", help="Output directory for snapshots")
     parser.add_argument("--order-file", help="JSON file with order spec(s)")
-    parser.add_argument("--symbol", help="Symbol for close_position")
+    parser.add_argument("--symbol", help="Symbol for close_position or quote")
 
     args = parser.parse_args()
 
@@ -403,6 +505,14 @@ def main():
 
     elif args.action == "orders":
         result = get_recent_orders(client)
+        print(json.dumps(result, indent=2))
+
+    elif args.action == "quote":
+        if not args.symbol:
+            print("ERROR: --symbol required for quote")
+            sys.exit(1)
+        data_client = get_data_client(config)
+        result = get_live_quote(data_client, args.symbol)
         print(json.dumps(result, indent=2))
 
 

@@ -8,7 +8,7 @@ description: >
   or trading self-improvement. Also triggers on "trading dashboard", "show P&L",
   "show trades", "implement trading improvements", "trading engine status",
   "update external positions", "add external holdings", or "track my real portfolio".
-version: 0.2.0-beta
+version: 0.2.4-beta
 ---
 
 # Trading Engine

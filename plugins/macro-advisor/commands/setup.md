@@ -145,7 +145,7 @@ Store this as `workspace_path` in the config (Step 8). All commands will read th
 ## Step 7: Create Output Directories
 
 ```bash
-mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest outputs/structural/candidates config
+mkdir -p outputs/data outputs/collection outputs/synthesis outputs/research outputs/theses/active outputs/theses/closed outputs/theses/presentations outputs/briefings outputs/improvement outputs/backtest outputs/structural outputs/structural/candidates outputs/strategic outputs/strategic/blind-spots config
 ```
 
 ## Step 8: Schedule

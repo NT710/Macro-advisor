@@ -18,6 +18,19 @@ Execute the full trading engine skill chain manually.
    ```
    If this fails, stop and report the error.
 
+## Run Mode Detection
+
+Before executing the skill chain, determine the run mode:
+
+```bash
+python -c "import datetime; d=datetime.datetime.now(); print('wednesday_check' if d.weekday()==2 else 'sunday_full')"
+```
+
+- **`sunday_full`** — Full execution chain: T0 through T8. All trades, new positions, performance tracking, self-improvement, and (if configured) external portfolio overlay.
+- **`wednesday_check`** — Defense-only. Runs T0→T1→T2→T3→T4→T5 only. T3 processes kill switch exits and drawdown circuit breakers but does NOT enter new positions or adjust for regime changes. T6, T7, T8 are skipped.
+
+Pass the run mode as context to each skill. Skills that behave differently on Wednesday (T3, T8) check this value explicitly.
+
 ## Execution Chain
 
 Execute skills in order. Each skill reads the output of the previous skill. Do not skip skills. Do not parallelize — the chain is sequential by design.

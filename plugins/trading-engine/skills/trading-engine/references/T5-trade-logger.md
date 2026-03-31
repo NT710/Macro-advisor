@@ -34,6 +34,7 @@ For each trade executed, append to `outputs/trades/trade-log.json` (cumulative f
   "reason": "full reasoning from T3",
   "devil_advocate": "bear case text from T3",
   "scaling_state": "1_of_2|2_of_2|full",
+  "retry_count": 0,
   "portfolio_pct_after": 15.2,
   "regime_at_entry": "Goldilocks",
   "realized_pl": null,
@@ -41,6 +42,8 @@ For each trade executed, append to `outputs/trades/trade-log.json` (cumulative f
   "close_reason": null
 }
 ```
+
+**`retry_count` field:** Set to `0` on first submission. For any order logged as a retry of a prior unfilled order for the same symbol and side, set `retry_count` to the total number of prior unfilled attempts (so the second submission = `1`, the third = `2`, and so on). T3 reads this field to apply the retry gate rule — do not reconstruct retry counts from raw log parsing.
 
 When a position is closed (sell trade), find the matching open trade(s) and update:
 - `realized_pl`: compute from entry price to exit price
@@ -123,12 +126,13 @@ The `bear_case_realized` field is critical for the improvement loop. It tracks w
 ---
 meta:
   skill: trade-logger
-  skill_version: "1.0"
+  skill_version: "1.1"
   run_date: "[ISO date]"
   trades_logged: [number]
   trades_closed: [number]
   devil_advocates_logged: [number]
   bear_cases_realized: [number]
+  retry_orders_logged: [number]
   quality:
     self_score: [0.0-1.0]
     confidence: [high/medium/low]
