@@ -942,6 +942,20 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
     # Load latest snapshot
     latest_snapshot = load_json(os.path.join(portfolio_dir, "latest-snapshot.json"))
 
+    # Load latest performance snapshot (has unrealized P&L per position from Alpaca)
+    latest_perf_snapshot = load_json(os.path.join(portfolio_dir, "latest-performance.json"))
+    # Build a lookup: symbol -> unrealized_pl, unrealized_plpc, change_today
+    _perf_pnl_map = {}
+    if isinstance(latest_perf_snapshot, dict):
+        for pos in latest_perf_snapshot.get("positions", []):
+            sym = pos.get("symbol", "")
+            if sym:
+                _perf_pnl_map[sym] = {
+                    "unrealized_pl": _num(pos.get("unrealized_pl")),
+                    "unrealized_plpc": _num(pos.get("unrealized_plpc")),
+                    "change_today": _num(pos.get("change_today")),
+                }
+
     # Load improvement data
     amendments = []
     improvement_report = {
@@ -1059,6 +1073,12 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
             if avg_entry and avg_entry > 0 and current_price:
                 pos_return_pct = ((current_price - avg_entry) / avg_entry) * 100
 
+            # Enrich with unrealized P&L from performance snapshot
+            pnl_data = _perf_pnl_map.get(symbol, {})
+            unrealized_pl = pnl_data.get("unrealized_pl", 0) or 0
+            unrealized_plpc = pnl_data.get("unrealized_plpc", 0) or 0
+            change_today = pnl_data.get("change_today", 0) or 0
+
             positions.append({
                 "symbol": symbol,
                 "name": name,
@@ -1069,6 +1089,9 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
                 "allocation_pct": f"{alloc_pct:.1f}%" if alloc_pct else "0%",
                 "allocation_pct_raw": alloc_pct,
                 "return_pct": pos_return_pct,
+                "unrealized_pl": unrealized_pl,
+                "unrealized_plpc": unrealized_plpc * 100 if abs(unrealized_plpc) < 10 else unrealized_plpc,
+                "change_today": change_today,
                 "layer": layer,
                 "thesis": thesis,
                 "scaling_state": pos.get("scaling_state", "")
@@ -1082,6 +1105,21 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
                 largest_position = symbol
                 largest_position_name = name
                 largest_position_pct = alloc_pct
+
+    # Build positions P&L list sorted by unrealized_pl descending
+    positions_pnl = sorted(
+        [p for p in positions if p.get("unrealized_pl") is not None],
+        key=lambda p: p.get("unrealized_pl", 0),
+        reverse=True
+    )
+
+    # Compute portfolio-level P&L totals for the footer
+    pnl_total_dollar = sum(p.get("unrealized_pl", 0) or 0 for p in positions_pnl)
+    pnl_total_today = sum(p.get("change_today", 0) or 0 for p in positions_pnl)
+    # Weighted-average % return: weight each position's % by its allocation_pct_raw
+    _wt_num = sum((p.get("unrealized_plpc", 0) or 0) * (p.get("allocation_pct_raw", 0) or 0) for p in positions_pnl)
+    _wt_den = sum(p.get("allocation_pct_raw", 0) or 0 for p in positions_pnl)
+    pnl_total_pct = (_wt_num / _wt_den) if _wt_den else 0
 
     # Build chart data from snapshots
     chart_labels = []
@@ -1307,6 +1345,10 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         profit_factor=f"{win_rate_data['profit_factor']:.2f}" if win_rate_data.get("profit_factor") is not None else "—",
         # Positions
         positions=positions,
+        positions_pnl=positions_pnl,
+        pnl_total_dollar=pnl_total_dollar,
+        pnl_total_pct=pnl_total_pct,
+        pnl_total_today=pnl_total_today,
         position_count=len(positions),
         cash_pct=f"{cash_pct:.1f}%",
         thesis_overlay_pct=f"{thesis_overlay_pct:.1f}%",

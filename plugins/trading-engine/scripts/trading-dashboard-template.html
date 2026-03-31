@@ -1073,6 +1073,62 @@ canvas {
        ================================================================ #}
     <div id="tab-performance" class="tab-content" role="tabpanel" aria-labelledby="tab-btn-performance">
 
+        {# P&L by Ticker #}
+        {% if positions_pnl %}
+        <div class="section">
+            <h3>Unrealized P&amp;L by Asset</h3>
+            <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Name</th>
+                        <th>Layer</th>
+                        <th>Allocation</th>
+                        <th>Unrealized P&amp;L ($)</th>
+                        <th>Unrealized P&amp;L (%)</th>
+                        <th>Today's Change ($)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pos in positions_pnl %}
+                    <tr>
+                        <td><strong>{{ pos.symbol }}</strong></td>
+                        <td style="max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ pos.name }}</td>
+                        <td><span class="badge {% if pos.layer == 'regime' %}badge-cyan{% elif 'structural' in pos.layer %}badge-amber{% else %}badge-green{% endif %}">{{ pos.layer }}</span></td>
+                        <td>{{ pos.allocation_pct }}</td>
+                        <td class="{{ 'positive' if pos.unrealized_pl > 0 else ('negative' if pos.unrealized_pl < 0 else '') }}">
+                            {{ "${:+,.2f}".format(pos.unrealized_pl) if pos.unrealized_pl else "—" }}
+                        </td>
+                        <td class="{{ 'positive' if pos.unrealized_plpc > 0 else ('negative' if pos.unrealized_plpc < 0 else '') }}">
+                            {{ "{:+.2f}%".format(pos.unrealized_plpc) if pos.unrealized_plpc else "—" }}
+                        </td>
+                        <td class="{{ 'positive' if pos.change_today > 0 else ('negative' if pos.change_today < 0 else '') }}">
+                            {{ "${:+,.2f}".format(pos.change_today) if pos.change_today else "—" }}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight:bold; border-top: 2px solid var(--border);">
+                        <td colspan="4">Total</td>
+                        <td class="{{ 'positive' if pnl_total_dollar > 0 else ('negative' if pnl_total_dollar < 0 else '') }}">
+                            {{ "${:+,.2f}".format(pnl_total_dollar) }}
+                        </td>
+                        <td class="{{ 'positive' if pnl_total_pct > 0 else ('negative' if pnl_total_pct < 0 else '') }}">
+                            {{ "{:+.2f}%".format(pnl_total_pct) }}
+                        </td>
+                        <td class="{{ 'positive' if pnl_total_today > 0 else ('negative' if pnl_total_today < 0 else '') }}">
+                            {{ "${:+,.2f}".format(pnl_total_today) }}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+            </div>
+        </div>
+        <hr class="divider">
+        {% endif %}
+
         {# Layer Attribution #}
         {% if perf_attribution %}
         <div class="section">
