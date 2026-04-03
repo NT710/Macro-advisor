@@ -4,20 +4,20 @@ A Claude Cowork plugin marketplace for autonomous macro research and paper tradi
 
 ## The Model
 
-Both plugins are built on a **three-force framework**: **Growth** (expanding or contracting?), **Inflation** (rising or falling?), and **Liquidity** (loosening or tightening?). Where these three forces sit determines the macro regime — Goldilocks, Overheating, Disinflationary Slowdown, or Stagflation. Each regime has a different playbook for what to own and what to avoid. The system reads the underlying data, identifies which regime you're in, and forecasts where the forces are heading at 6 and 12-month horizons.
+Both plugins are built on a **three-force framework**: **Growth** (expanding or contracting?), **Inflation** (rising or falling?), and **Liquidity** (loosening or tightening?). Where these three forces sit determines the macro regime. The four regime families — Goldilocks, Overheating, Disinflationary Slowdown, and Stagflation — are each split by liquidity condition (Ample or Tight) into **eight regimes**. Each regime has a different playbook for what to own and what to avoid. The system reads the underlying data, identifies which regime you're in, runs empirical pattern matching against historical analogs, and forecasts where the forces are heading at 6 and 12-month horizons.
 
 ## Plugins
 
-### Macro Advisor `v0.7.9`
+### Macro Advisor `v0.8.0`
 
-Autonomous macro research system. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies the current macro regime using the Alpine Macro liquidity-first framework, produces 6 and 12-month regime forecasts with probability distributions and conditional triggers, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
+Autonomous macro research system. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies the current macro regime using the Alpine Macro eight-regime model (Growth × Inflation × Liquidity), produces 6 and 12-month regime forecasts with probability distributions and conditional triggers, runs empirical pattern matching to find historical analog periods and compute per-asset risk/reward ratios, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
-The 16-skill analysis chain runs in sequence: data collection across all sources, central bank and liquidity monitoring, macro and geopolitical analysis, market positioning and sentiment, external analyst cross-referencing (8 analysts), decade horizon mapping (quarterly), structural scanning for multi-year imbalances (bi-weekly, 7 signal detectors including technology displacement), weekly synthesis with regime classification and forecasts, independent regime evaluation (generator-evaluator pattern for anti-anchoring), thesis generation and monitoring from three sources (data patterns, analyst insights, structural scans), self-improvement scoring, and delivery.
+The 17-skill analysis chain runs in sequence: data collection across all sources, central bank and liquidity monitoring, macro and geopolitical analysis, market positioning and sentiment, external analyst cross-referencing (8 analysts), decade horizon mapping (quarterly), structural scanning for multi-year imbalances (bi-weekly, 7 signal detectors including technology displacement), weekly synthesis with 8-regime classification and 3-axis forecasts, independent regime evaluation (generator-evaluator pattern for anti-anchoring), empirical sentiment via analog matching (historical pattern recognition with anti-bias safeguards), thesis generation and monitoring from three sources (data patterns, analyst insights, structural scans), self-improvement scoring, and delivery.
 
 **Commands:**
 
 - `/macro-advisor:setup` — First-run setup. Explains the three-force model, then walks you through FRED API key, currency preference, ETF mapping, and scheduling.
-- `/macro-advisor:run-weekly` — Run the full 16-skill weekly analysis cycle manually. Collects data, analyzes all macro pillars, identifies regime, generates forecasts, generates/monitors theses, scores accuracy, and produces the HTML dashboard.
+- `/macro-advisor:run-weekly` — Run the full 17-skill weekly analysis cycle manually. Collects data, analyzes all macro pillars, identifies regime, generates forecasts, generates/monitors theses, scores accuracy, and produces the HTML dashboard.
 - `/macro-advisor:structural-scan` — Run the structural scanner manually (7 signal detectors including technology displacement, capex underinvestment, demographic shifts).
 - `/macro-advisor:investigate-theme` — Investigate a macro theme you find interesting. Runs structural research and thesis evaluation against the latest data. Use this anytime between weekly runs when you spot something worth exploring.
 - `/macro-advisor:activate-thesis` — List draft theses with numbered selection and activate the ones you want monitored. Activated theses get weekly kill switch and assumption checks.
@@ -26,9 +26,9 @@ The 16-skill analysis chain runs in sequence: data collection across all sources
 
 [Full documentation →](plugins/macro-advisor/README.md)
 
-### Trading Engine `v0.2.4-beta`
+### Trading Engine `v0.2.5-beta`
 
-Autonomous paper trading system. Reads the Macro Advisor's regime assessments, theses, and regime forecasts (including the underlying Growth, Inflation, and Liquidity driver readings and trajectories), reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes forecast-aware trade reasoning (durability assessment based on driver sensitivity, not just regime label), structural thesis turnover reservation (prevents structural theses from being indefinitely deferred by the regime scaling queue), and a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
+Autonomous paper trading system. Reads the Macro Advisor's 8-regime assessments, theses, empirical sentiment signals, and regime forecasts (including the underlying Growth, Inflation, and Liquidity driver readings and trajectories), reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes forecast-aware trade reasoning (durability assessment based on driver sensitivity, not just regime label), structural thesis turnover reservation (prevents structural theses from being indefinitely deferred by the regime scaling queue), empirical sentiment as informational context (hard rule: never sole justification for a position), and a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
 
 > **Beta:** Active development. Expect changes to skill logic, dashboard format, and improvement loop behavior between versions.
 
@@ -51,18 +51,19 @@ FRED / Yahoo Finance / Analysts            Reads macro advisor outputs
 Three-force analysis                       Portfolio snapshot (Alpaca)
 (Growth, Inflation, Liquidity)                     ↓
         ↓                                  Signal parsing (regime + forecasts
-Regime identification                       + driver readings + theses)
+8-regime identification                     + driver readings + theses
+        ↓                                   + empirical sentiment)
+6/12-month regime forecasts                        ↓
+with 3-axis driver trajectories            Position reconciliation
         ↓                                          ↓
-6/12-month regime forecasts                Position reconciliation
-with driver trajectories                           ↓
-        ↓                                  Trade reasoning + devil's advocate
-Thesis generation + kill switches          (forecast-aware, driver-sensitive)
+Empirical pattern matching                 Trade reasoning + devil's advocate
+(analog periods + risk/reward)             (forecast-aware, driver-sensitive)
         ↓                                          ↓
-Self-improvement scoring                   Order execution (Alpaca)
+Thesis generation + kill switches          Order execution (Alpaca)
         ↓                                          ↓
-HTML dashboard                             P&L attribution + self-improvement
-                                                   ↓
-                                           External portfolio overlay (optional)
+Self-improvement scoring                   P&L attribution + self-improvement
+        ↓                                          ↓
+HTML dashboard                             External portfolio overlay (optional)
                                                    ↓
                                            HTML dashboard (P&L, Trades, Improvements, External Portfolio)
 ```
@@ -94,6 +95,7 @@ Open Claude Cowork and point it at the cloned folder. Run the setup commands abo
 Both plugins share a philosophy of epistemic humility and anti-confirmation bias:
 
 - **Three-force foundation** — all regime calls and trade decisions trace back to Growth, Inflation, and Liquidity readings
+- **Empirical sentiment is context, not signal** — analog matching finds similar historical periods but out-of-sample testing showed it does not beat naive baselines. Treated as informational context, never sole justification for a position
 - **Stateless reasoning** — each run starts fresh from data, not from prior conclusions
 - **Kill switches are immediate** — no exceptions, no delays, no "one more day"
 - **P&L blindness** — the trading reasoner never sees unrealized gains/losses when deciding positions
@@ -119,7 +121,7 @@ plugins/
     .claude-plugin/
     commands/               # /macro-advisor:setup, :run-weekly, :investigate-theme, :structural-scan, :activate-thesis, :update-etfs, :implement-improvements
     hooks/                  # Session start hook (reads user config)
-    skills/                 # 16-skill research chain + references
+    skills/                 # 17-skill research chain + references
     scripts/                # Data collection, dashboard generation, ETF lookup, backtest, tests
       assets/               # Bundled Chart.js + Inter font for offline dashboards
     config/                 # User config (created during setup, gitignored)
