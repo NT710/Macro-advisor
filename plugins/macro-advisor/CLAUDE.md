@@ -30,7 +30,9 @@ The system's methodology, architecture, and design decisions are documented in `
 
 ## Scheduled Task
 
-The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if triggered)→blind-spot-refresh→8→12→9. Delivers an HTML dashboard.
+The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if triggered)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing). Delivers an HTML dashboard.
+
+**Sidecar architecture:** Thesis JSON sidecars and briefing-data.json are NOT written by LLM skills. They are compiled deterministically by Python scripts (`compile_sidecars.py` and `compile_briefing.py`) that parse the markdown output. This eliminates context-pressure degradation. Skills write markdown only; Python extracts structured data.
 
 ## Principles
 

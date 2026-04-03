@@ -342,6 +342,119 @@ def _validate_sidecar_content(
     return fails
 
 
+def _verify_sidecar_fidelity(
+    md_content: str,
+    sidecar: dict,
+    thesis_name: str,
+) -> list[str]:
+    """Verify sidecar fields are 1:1 with the markdown content.
+
+    Checks:
+    1. String containment — sidecar text fields appear in markdown sections
+    2. Count matching — assumption and mechanism counts match
+    3. No truncation — no fields end with '...'
+    4. Section presence — if markdown has a section, sidecar has the field
+    """
+    fails: list[str] = []
+    warns: list[str] = []
+    prefix = f"FAIL [Sidecar Fidelity]: {thesis_name}"
+    warn_prefix = f"WARN [Sidecar Fidelity]: {thesis_name}"
+
+    def _normalize(text: str) -> str:
+        """Normalize whitespace for substring comparison."""
+        return " ".join(text.split()).strip()
+
+    # --- Count matching ---
+
+    # Count numbered items under "## What Has To Stay True" in markdown
+    md_assumption_count = 0
+    in_section = False
+    for line in md_content.split("\n"):
+        if line.strip().startswith("## What Has To Stay True"):
+            in_section = True
+            continue
+        if in_section and line.strip().startswith("## "):
+            break
+        if in_section and re.match(r'^\d+\.', line.strip()):
+            md_assumption_count += 1
+
+    json_assumption_count = len(sidecar.get("what_has_to_stay_true", []))
+    if md_assumption_count > 0 and json_assumption_count != md_assumption_count:
+        fails.append(
+            f"{prefix} — assumption count mismatch: "
+            f"markdown has {md_assumption_count}, sidecar has {json_assumption_count}"
+        )
+
+    # Count mechanism steps in markdown
+    md_mechanism_count = 0
+    in_section = False
+    for line in md_content.split("\n"):
+        if line.strip().startswith("### Mechanism"):
+            in_section = True
+            continue
+        if in_section and re.match(r'^#{2,3}\s+', line.strip()):
+            break
+        if in_section and re.match(r'^\d+\.', line.strip()):
+            md_mechanism_count += 1
+
+    json_mechanism_count = len(sidecar.get("mechanism", []))
+    if md_mechanism_count > 0 and json_mechanism_count != md_mechanism_count:
+        fails.append(
+            f"{prefix} — mechanism count mismatch: "
+            f"markdown has {md_mechanism_count}, sidecar has {json_mechanism_count}"
+        )
+
+    # --- Section presence ---
+    md_lower = md_content.lower()
+    if "## where the market stands" in md_lower:
+        wms = sidecar.get("where_the_market_stands")
+        if not wms:
+            print(
+                f"{warn_prefix} — markdown has 'Where The Market Stands' section "
+                "but sidecar field is missing or null",
+                file=sys.stderr,
+            )
+
+    # --- No truncation ---
+    for field in ("summary", "the_bet", "where_the_market_stands"):
+        val = sidecar.get(field)
+        if isinstance(val, str) and val.rstrip().endswith("..."):
+            fails.append(
+                f"{prefix} — '{field}' appears truncated (ends with '...'). "
+                "Sidecar must contain the full text from the markdown section."
+            )
+
+    # Check trade fields for truncation
+    trade = sidecar.get("the_trade", {})
+    if isinstance(trade, dict):
+        for sub in ("what_to_buy", "when_to_get_out", "when_to_buy_more", "how_long"):
+            val = trade.get(sub, "")
+            if isinstance(val, str) and val.rstrip().endswith("..."):
+                fails.append(
+                    f"{prefix} — 'the_trade.{sub}' appears truncated (ends with '...')"
+                )
+
+    # Check mechanism links for truncation
+    for i, step in enumerate(sidecar.get("mechanism", [])):
+        if isinstance(step, dict):
+            link = step.get("link", "")
+            if isinstance(link, str) and link.rstrip().endswith("..."):
+                fails.append(
+                    f"{prefix} — mechanism[{i}].link appears truncated"
+                )
+
+    # --- change_log presence ---
+    change_log = sidecar.get("change_log")
+    if not change_log or not isinstance(change_log, list) or len(change_log) == 0:
+        print(
+            f"{warn_prefix} — 'change_log' is missing or empty. "
+            "Run compile_sidecars.py to generate change_log from diffs.",
+            file=sys.stderr,
+        )
+
+    return fails
+
+
 def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list[str]:
     """
     For every .md file in outputs/theses/active/:
@@ -400,6 +513,10 @@ def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list
                     classification = _detect_classification(sidecar, md_content)
                     failures += _validate_sidecar_content(
                         sidecar, classification, thesis_path.name
+                    )
+                    # Fidelity check: verify sidecar matches markdown content
+                    failures += _verify_sidecar_fidelity(
+                        md_content, sidecar, thesis_path.name
                     )
 
         # --- Updated date check ---

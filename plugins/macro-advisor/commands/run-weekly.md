@@ -90,7 +90,11 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/dat
 ```
 **If the pre-flight check fails (non-zero exit code), STOP.** Do not proceed to any skill. The check validates that: (1) the snapshot was generated within the last 18 hours — not yesterday, not last week; (2) key market data (oil, S&P, gold, VIX) is present; (3) config is valid. A failed pre-flight means every downstream output will be built on stale or missing data. Fix the issue (usually: re-run the data collector) and re-run the check until it passes.
 
-## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if candidates flagged)→blind-spot-refresh→8→12→9
+## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing)
+
+**Sidecar compilation (after Skill 7):** Run `python ${CLAUDE_PLUGIN_ROOT}/scripts/compile_sidecars.py` to deterministically extract JSON sidecars from thesis markdown. Then run `postrun_check.py --skill skill_7_thesis_monitor` to verify fidelity. If the check fails, fix the thesis markdown (not the JSON) and re-run the compiler.
+
+**Briefing compilation (after Skill 9):** Run `python ${CLAUDE_PLUGIN_ROOT}/scripts/compile_briefing.py` to build `briefing-data.json` from synthesis markdown + compiled thesis sidecars. Then run `postrun_check.py --skill skill_9_monday_briefing` to verify.
 
 Each skill MUST:
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` (re-read for each skill to keep guardrails in context)
@@ -437,7 +441,7 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 
 1. Read RULES.md before anything else and re-read before each skill.
 2. Run Skill 0 first. Everything depends on it.
-3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if candidates flagged)→blind-spot-refresh→8→12→9.
+3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing).
 4. Every number must be sourced. Never fabricate.
 5. All investment views use specific ETF tickers. User's preferred currency where available.
 6. Write briefing and theses in accessible language.

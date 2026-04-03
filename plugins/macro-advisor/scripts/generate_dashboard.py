@@ -248,6 +248,27 @@ def _emit_h2(text):
     return f'## {clean}'
 
 
+def _extract_section(md_text, heading):
+    """Extract the content under a ## heading from markdown text.
+
+    Returns the text between the heading and the next ## heading (or end of file).
+    Returns empty string if heading not found.
+    """
+    pattern = rf'^## {re.escape(heading)}\s*$'
+    lines = md_text.split('\n')
+    in_section = False
+    result = []
+    for line in lines:
+        if re.match(pattern, line.strip(), re.IGNORECASE):
+            in_section = True
+            continue
+        if in_section:
+            if line.strip().startswith('## ') and not line.strip().startswith('### '):
+                break
+            result.append(line)
+    return '\n'.join(result).strip()
+
+
 def _sidecar_is_stub(sidecar):
     """Return True if sidecar has placeholder content instead of real structured data.
 
@@ -381,30 +402,44 @@ def format_thesis_from_json(sidecar):
     # The Trade (contains what_to_buy, when_to_buy_more, when_to_get_out, how_long)
     trade = sidecar.get("the_trade", {})
 
-    # What to buy (formerly ETF Expression)
+    # What to buy — support both structured dict and verbatim string formats
     etf = trade.get("what_to_buy", sidecar.get("etf_expression"))
-    if etf and isinstance(etf, dict):
-        lines.append('## What to buy')
+    if etf:
+        lines.append('## The Trade')
         lines.append('')
-        lines.append('| Order | ETF | Size | Rationale |')
-        lines.append('|-------|-----|------|-----------|')
-        for order_key, order_label in [("first_order", "First-order"), ("second_order", "Second-order"),
-                                        ("third_order", "Third-order"), ("reduce_avoid", "Reduce/Avoid")]:
-            for item in etf.get(order_key, []):
-                ticker = item.get("ticker", item.get("etf", ""))
-                size = item.get("size", "—") if order_key != "reduce_avoid" else "—"
-                rationale = item.get("rationale", "")
-                lines.append(f'| {order_label} | {ticker} | {size} | {rationale} |')
-        lines.append('')
-
-    # Conviction
-    if sidecar.get("conviction"):
-        lines.append('## Conviction')
-        lines.append('')
-        lines.append(sidecar["conviction"])
+        if isinstance(etf, dict):
+            # Structured format: {first_order: [...], second_order: [...], ...}
+            lines.append('| Order | ETF | Size | Rationale |')
+            lines.append('|-------|-----|------|-----------|')
+            for order_key, order_label in [("first_order", "First-order"), ("second_order", "Second-order"),
+                                            ("third_order", "Third-order"), ("reduce_avoid", "Reduce/Avoid")]:
+                for item in etf.get(order_key, []):
+                    ticker = item.get("ticker", item.get("etf", ""))
+                    size = item.get("size", "—") if order_key != "reduce_avoid" else "—"
+                    rationale = item.get("rationale", "")
+                    lines.append(f'| {order_label} | {ticker} | {size} | {rationale} |')
+        elif isinstance(etf, str) and etf.strip():
+            # Verbatim string format (from compile_sidecars.py)
+            lines.append(etf)
         lines.append('')
 
-    # When to get out (formerly Kill Switch)
+    # When to buy (structural theses — entry timing)
+    when_to_buy = trade.get("when_to_buy", "")
+    if when_to_buy and isinstance(when_to_buy, str) and when_to_buy.strip():
+        lines.append('## When to buy')
+        lines.append('')
+        lines.append(when_to_buy)
+        lines.append('')
+
+    # When to buy more (formerly Trigger to Add)
+    trigger = trade.get("when_to_buy_more", sidecar.get("trigger_to_add"))
+    if trigger and isinstance(trigger, str) and trigger.strip():
+        lines.append('## When to buy more')
+        lines.append('')
+        lines.append(trigger)
+        lines.append('')
+
+    # When to get out (Kill Switch)
     kill_switch = trade.get("when_to_get_out", sidecar.get("kill_switch"))
     if kill_switch:
         lines.append(f'<div class="kill-switch-card">')
@@ -412,12 +447,19 @@ def format_thesis_from_json(sidecar):
         lines.append(f'</div>')
         lines.append('')
 
-    # When to buy more (formerly Trigger to Add)
-    trigger = trade.get("when_to_buy_more", sidecar.get("trigger_to_add"))
-    if trigger:
-        lines.append('## When to buy more')
+    # How long (Time horizon)
+    how_long = trade.get("how_long", "")
+    if how_long and isinstance(how_long, str) and how_long.strip():
+        lines.append('## How long')
         lines.append('')
-        lines.append(trigger)
+        lines.append(how_long)
+        lines.append('')
+
+    # Conviction
+    if sidecar.get("conviction"):
+        lines.append('## Conviction')
+        lines.append('')
+        lines.append(sidecar["conviction"])
         lines.append('')
 
     # What Could Break It (formerly Contrarian Stress Test)
@@ -434,6 +476,9 @@ def format_thesis_from_json(sidecar):
             lines.append('')
             lines.append(f'**Conviction after stress test:** {stress["post_test_conviction"]}')
         lines.append('')
+
+    # External Views are appended from the markdown directly by the caller
+    # (not stored in the sidecar — too large for structured extraction).
 
     return '\n'.join(lines)
 
@@ -2082,7 +2127,9 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
 
         # Priority 1: thesis sidecar (most authoritative — from the thesis file itself)
         if thesis_sidecar:
-            conviction = thesis_sidecar.get("conviction", "")
+            raw_conv = thesis_sidecar.get("conviction", "")
+            # Strip parenthetical qualifiers: "High (tactical)" → "High"
+            conviction = re.sub(r'\s*\(.*?\)', '', raw_conv).strip()
             # Sidecar doesn't carry recommendation (that's a briefing concept)
 
         json_thesis_entry = None
@@ -2351,6 +2398,10 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         # Skip stub sidecars — they have placeholder text instead of real data.
         if thesis_sidecar and not _sidecar_is_stub(thesis_sidecar):
             thesis_body_html = md_to_html(format_thesis_from_json(thesis_sidecar))
+            # Append External Views from markdown (not stored in sidecar — too large)
+            ext_views_md = _extract_section(render_content, "External Views")
+            if ext_views_md:
+                thesis_body_html += md_to_html('## External Views\n\n' + ext_views_md)
         else:
             thesis_body_html = md_to_html(format_thesis_html(render_content))
 
@@ -4688,7 +4739,41 @@ Object.entries(thesisChartSpecs).forEach(([key, spec]) => {{
     const canvas = document.querySelector(`canvas[data-thesis-key="${{key}}"]`);
     if (!canvas || canvas._chartRendered) return;
 
-    if (spec.data && spec.data.datasets) {{
+    // FORMAT-FLAT: spec.data is an array of {{x, y}} (from compile_sidecars / Skill 12)
+    if (spec.data && Array.isArray(spec.data) && spec.data.length > 0 && spec.data[0].x !== undefined) {{
+        const color = '#3b82f6';
+        const labels = spec.data.map(d => d.x || '');
+        const values = spec.data.map(d => d.y);
+        new Chart(canvas.getContext('2d'), {{
+            type: spec.type || 'line',
+            data: {{
+                labels: labels,
+                datasets: [{{
+                    label: spec.title || 'Series',
+                    data: values,
+                    borderColor: color,
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.3,
+                }}],
+            }},
+            options: {{
+                responsive: true,
+                maintainAspectRatio: true,
+                aspectRatio: 2.5,
+                scales: {{
+                    x: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0', maxTicksLimit: 10, maxRotation: 45 }} }},
+                    y: {{ grid: {{ color: 'rgba(255,255,255,0.05)' }}, ticks: {{ color: '#a0a0a0' }} }},
+                }},
+                plugins: {{
+                    legend: {{ display: false }},
+                    title: {{ display: true, text: spec.title || '', color: '#d4d4d4', font: {{ size: 12 }} }},
+                }},
+            }},
+        }});
+        canvas._chartRendered = true;
+    }} else if (spec.data && spec.data.datasets) {{
         const chartConfig = {{
             type: spec.type || 'line',
             data: spec.data,
