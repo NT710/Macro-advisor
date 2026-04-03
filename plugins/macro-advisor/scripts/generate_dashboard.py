@@ -2308,8 +2308,8 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             f' data-conviction="{conviction or ""}" data-horizon="{horizon_short}"'
             f' data-generated="{generated or ""}" data-updated="{updated or ""}">'
             f'<td class="thesis-name-cell">{clean_name}</td>'
-            f'<td><span class="badge {badge_status_cls}" title="{status}">{status_badge}</span></td>'
-            f'<td><span class="badge {badge_type_cls}" title="{thesis_type}">{type_badge}</span></td>'
+            f'<td style="text-align:center"><span class="badge {badge_status_cls}" title="{status}">{status_badge}</span></td>'
+            f'<td style="text-align:center"><span class="badge {badge_type_cls}" title="{thesis_type}">{type_badge}</span></td>'
             f'<td>{conv_bar}</td>'
             f'<td class="thesis-horizon">{horizon_short}</td>'
             f'</tr>\n'
@@ -3851,7 +3851,7 @@ tr:hover td {{
 .thesis-index table {{
     margin: 0;
     width: 100%;
-    table-layout: fixed;
+    table-layout: auto;
 }}
 .thesis-index th {{
     position: sticky;
@@ -4357,11 +4357,11 @@ tr:hover td {{
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Thesis</th>
-                                        <th>St</th>
-                                        <th>Ty</th>
-                                        <th>Conv</th>
-                                        <th>Horizon</th>
+                                        <th style="width:auto">Thesis</th>
+                                        <th style="width:28px;text-align:center">St</th>
+                                        <th style="width:28px;text-align:center">Ty</th>
+                                        <th style="width:64px">Conv</th>
+                                        <th style="width:56px">Horizon</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -4394,7 +4394,7 @@ tr:hover td {{
 
         <!-- Archive sub-tab -->
         <div class="thesis-subtab-content" id="thesis-sub-archive">
-            {'<div class="thesis-index"><table><thead><tr><th>Thesis</th><th>Type</th><th>Conv</th><th>Outcome</th><th>Created</th><th>Closed</th><th>Duration</th></tr></thead><tbody>' + archive_table_rows + '</tbody></table></div>' if archive_table_rows else '<p style="color: var(--text-muted); padding: 40px 0; text-align: center;">No closed theses yet. Theses move here when invalidated or closed at target.</p>'}
+            {'<div class="thesis-index"><table style="table-layout:auto"><thead><tr><th style="width:auto">Thesis</th><th style="width:64px">Type</th><th style="width:56px">Conv</th><th style="width:auto">Outcome</th><th style="width:72px">Created</th><th style="width:72px">Closed</th><th style="width:56px">Duration</th></tr></thead><tbody>' + archive_table_rows + '</tbody></table></div>' if archive_table_rows else '<p style="color: var(--text-muted); padding: 40px 0; text-align: center;">No closed theses yet. Theses move here when invalidated or closed at target.</p>'}
         </div>
     </div>
 
