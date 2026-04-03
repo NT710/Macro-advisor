@@ -5,12 +5,12 @@
   },
   "metadata": {
     "description": "Autonomous macro research and paper trading plugins for Claude Cowork",
-    "version": "0.7.9"
+    "version": "0.8.0"
   },
   "plugins": [
     {
       "name": "macro-advisor",
-      "version": "0.7.9",
+      "version": "0.8.0",
       "description": "Autonomous macro research system. Collects economic data, monitors central banks, tracks liquidity conditions, scans geopolitical risks, synthesizes macro regimes, generates investment theses with ETF implementation, and delivers weekly HTML dashboards.",
       "source": "./plugins/macro-advisor",
       "category": "productivity",
@@ -18,7 +18,7 @@
     },
     {
       "name": "trading-engine",
-      "version": "0.2.4-beta",
+      "version": "0.2.5-beta",
       "description": "Autonomous paper trading system for Alpaca. Reads macro regime assessments and investment theses from the Macro Advisor, translates them into portfolio positions with anti-confirmation-bias architecture, mandatory devil's advocate reasoning, and a self-improvement loop. Delivers an HTML dashboard with P&L, trades, and improvement tracking.",
       "source": "./plugins/trading-engine",
       "category": "productivity",
