@@ -26,14 +26,42 @@ The system makes three types of claims each week: regime calls (which macroecono
 
 5. **Contrarian framing is structural.** The question is always: what does the market believe, and what would have to be true for the market to be wrong?
 
-### Four-Quadrant Regime Model
+### Eight-Regime Model (Growth × Inflation × Liquidity)
+
+The regime model uses three axes: Growth direction, Inflation direction, and Liquidity condition. Growth and Inflation define the four-quadrant **regime family**. Liquidity (ample vs. tight) subdivides each family into two variants, producing eight regimes total.
+
+#### Regime Family (4-Quadrant Base)
 
 |                    | Inflation Falling | Inflation Rising |
 |--------------------|-------------------|------------------|
 | **Growth Rising**  | Goldilocks        | Overheating      |
 | **Growth Falling** | Disinflationary Slowdown | Stagflation |
 
-The regime label is the starting point. Asset implications are derived from each specific instance's data — credit conditions, positioning, policy stance, valuations — not read from a template. Two different Overheating regimes can look different.
+#### Eight Regimes (with Liquidity Dimension)
+
+| Growth | Inflation | Liquidity | Full Regime Name | Family |
+|--------|-----------|-----------|-----------------|--------|
+| Rising | Falling | Ample | Goldilocks — Ample Liquidity | Goldilocks |
+| Rising | Falling | Tight | Goldilocks — Tight Liquidity | Goldilocks |
+| Rising | Rising | Ample | Overheating — Ample Liquidity | Overheating |
+| Rising | Rising | Tight | Overheating — Tight Liquidity | Overheating |
+| Falling | Falling | Ample | Disinfl. Slowdown — Ample Liquidity | Disinfl. Slowdown |
+| Falling | Falling | Tight | Disinfl. Slowdown — Tight Liquidity | Disinfl. Slowdown |
+| Falling | Rising | Ample | Stagflation — Ample Liquidity | Stagflation |
+| Falling | Rising | Tight | Stagflation — Tight Liquidity | Stagflation |
+
+#### Naming Convention
+
+Full regime names use the format: `"[Family] — [Ample/Tight] Liquidity"`. The `regime_family` (4-quadrant label) is preserved for backward compatibility: thesis kill switches, regime streak counting, and template lookup all use `regime_family`. The full 8-regime label is used for analysis, forecasting, and dashboard display.
+
+#### Regime Stability Rules
+
+- **Growth × Inflation (regime family):** Uses a 6-month direction window with a 2-month confirmation filter. A regime family change only registers after 2 months of the new classification. This prevents whipsaws and ensures regimes are structural conditions (quarters+), not weekly noise.
+- **Liquidity condition:** Uses a rolling 4-week directional assessment, updated weekly. Each week, the majority vote of M2, NFCI, and Fed balance sheet (vs. their 36-month rolling medians) produces a weekly reading. The liquidity condition only flips when the majority of the trailing 4 weekly readings point in the new direction. This prevents weekly noise while remaining far more responsive than the 2-month confirmation filter used for regime family. Liquidity does NOT use the 2-month confirmation filter — but it is not a purely instantaneous signal either.
+
+#### Design Principle
+
+The regime label is the starting point. Asset implications are derived from each specific instance's data — credit conditions, positioning, policy stance, valuations — not read from a template. Two different Overheating regimes can look different. The liquidity dimension formalizes what was previously a qualitative overlay: the same Goldilocks with ample liquidity has fundamentally different risk/reward characteristics than Goldilocks with tight liquidity.
 
 ---
 
@@ -60,7 +88,7 @@ Skill 12: Thesis Presentation (renders theses into visual reports + briefing car
 Skill 9:  Monday Morning Briefing (reads synthesis + theses + presentation cards + improvement → HTML dashboard)
 ```
 
-Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9. Single scheduled task, Sundays at 16:00 CET.
+Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if candidates flagged)→blind-spot-refresh→8→12→9. Single scheduled task, Sundays at 16:00 CET.
 
 ### Data Foundation
 

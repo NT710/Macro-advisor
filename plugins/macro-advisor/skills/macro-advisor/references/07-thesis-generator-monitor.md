@@ -94,6 +94,8 @@ Read `outputs/structural/candidates/` for any advancing candidates from Skill 13
 
 **Combined investigation cap:** In any single weekly run, no more than 5 total investigation candidates should be sent to Skill 11 (across all three sources: data-pattern + analyst-sourced + scanner). If the combined count exceeds 5, prioritize by: (1) size of quantified gap or strength of mechanism, (2) novelty vs. existing thesis coverage, (3) distance from consensus. Defer the rest to next cycle.
 
+**Candidates within the cap are MANDATORY for Skill 11.** Once you have prioritized candidates and selected the top N (up to 5), those N candidates MUST be sent to Skill 11. You cannot defer candidates that are within the budget. The cap limits how many go to Skill 11 per week — it does not give discretion to send fewer than the cap when candidates exist. If 3 candidates are flagged and the cap is 5, all 3 go to Skill 11. Period. No deferral based on "scope of this run", time constraints, or any other discretionary reason.
+
 ### Tactical Thesis Template
 
 For tactical theses (the default), produce:
@@ -434,7 +436,57 @@ For each thesis in `outputs/theses/active/` (the full directory listing, not a s
 
 8. **Write monitoring results back to the thesis.** Do this for each thesis immediately after finishing its monitoring — not as a batch at the end. Three separate steps, all mandatory:
 
-   **Step 8a — Update or create the JSON sidecar** (do this first — it is the primary structured data source for the dashboard). The sidecar path is `outputs/theses/active/[ACTIVE-or-DRAFT]-[slug]-data.json`. If it does not exist, create it now using the schema in the "Structured Data Sidecar" section below — do not defer this. For each assumption in `what_has_to_stay_true`, set or update: `status` ("INTACT", "UNDER PRESSURE", or "BROKEN"), `status_evidence` (one-sentence evidence), and `testable_by`. Update the top-level `updated` field to today's date. The dashboard reads the sidecar as its primary source — without it, the dashboard falls back to fragile markdown parsing and the Testable By and Status columns will be empty.
+   **Step 8a — Update or create the JSON sidecar** (do this first — it is the primary structured data source for the dashboard). The sidecar path is `outputs/theses/active/[ACTIVE-or-DRAFT]-[slug]-data.json`. If it does not exist, create it now. Do not defer this.
+
+   **The sidecar must be a fully structured JSON object, not a flat summary.** The postrun check validates both existence AND content. A stub or flat object with summary strings will fail. The required fields are listed below — write every one of them. See the "Structured Data Sidecar" section further below for the full schema with examples.
+
+   **Required fields for ALL theses (tactical + structural):**
+   - `name` (string) — thesis name
+   - `status` (string) — "ACTIVE" or "DRAFT"
+   - `classification` (string) — "structural" or "tactical"
+   - `generated` (string) — ISO date when first created
+   - `updated` (string) — today's date (ISO format)
+   - `provenance` (string) — "data-pattern", "analyst-sourced", or "structural-scanner"
+   - `conviction` (string) — "High", "Medium", or "Low"
+   - `summary` (string) — full summary paragraph from the thesis
+   - `the_bet` (string) — the one-sentence bet
+   - `mechanism` (array of objects) — each with `step`, `link`, `quantified`, `source`
+   - `what_has_to_stay_true` (array of objects) — each with:
+     - `text` (string) — the assumption text
+     - `testable_by` (string) — measurement criteria (empty string if not specified for tactical)
+     - `status` (string) — one of: INTACT, DEVELOPING, UNDER PRESSURE, WEAKENING, STRENGTHENING, WATCH, BROKEN, INVALIDATED, FAILED
+     - `current_status_detail` (string) — one-sentence evidence
+   - `where_the_market_stands` (string) — market consensus paragraph
+   - `the_trade` (object) with:
+     - `what_to_buy` (object) with `first_order`, `second_order`, `third_order`, `reduce_avoid` arrays
+     - `when_to_buy_more` (string)
+     - `when_to_get_out` (string) — the kill switch
+     - `how_long` (string) — time horizon
+
+   **Additional fields required ONLY for structural theses:**
+   - `what_cant_change` (array of objects) — each with `constraint`, `quantified`, `source`
+   - `what_could_break_it` (object) — with `strongest_counter`, `key_risks` array, `post_test_conviction`
+   - `the_trade.when_to_buy` (string) — entry timing
+
+   **For tactical theses:** set `what_cant_change`, `what_could_break_it`, and `the_trade.when_to_buy` to `null`.
+
+   **CRITICAL:** `what_has_to_stay_true` must be an array of individual assumption objects — never flatten assumptions into a single summary string. This is the most common sidecar failure mode.
+
+   For each assumption in `what_has_to_stay_true`, set or update: `status`, `current_status_detail` (one-sentence evidence), and `testable_by`. Update the top-level `updated` field to today's date. The dashboard reads the sidecar as its primary source — without it, the dashboard falls back to fragile markdown parsing and the Testable By and Status columns will be empty.
+
+   **Update the `change_log` array.** Append a new entry at the beginning of the array with `{"date": "YYYY-MM-DD", "changes": "[one-line summary]"}`. The summary should describe what changed this monitoring cycle (e.g., "Updated assumption #2 status to UNDER PRESSURE based on March CPI data" or "No changes — all assumptions intact"). For new theses, the first entry should be "Initial creation from [provenance source]". The dashboard renders this log as the thesis update history.
+
+   **Step 8a self-check (mandatory — do this immediately after writing the sidecar, before moving to Step 8b).** Read the JSON file you just wrote back from disk and verify the following. If any check fails, rewrite the sidecar before proceeding.
+
+   1. The file parses as valid JSON.
+   2. `what_has_to_stay_true` is an array (not a string). Each element is an object with at least `text` and `status`.
+   3. `mechanism` is an array (not a string).
+   4. `the_trade` is an object (not a string) containing `when_to_get_out` and `how_long`.
+   5. For structural theses: `what_cant_change` is an array and `what_could_break_it` is an object (neither is null).
+   6. All of these top-level fields are present: `name`, `status`, `classification`, `updated`, `conviction`, `summary`, `the_bet`.
+   7. No field contains placeholder text like "See thesis document" — every field must contain real data from the thesis.
+
+   This self-check exists because under context pressure, sidecars tend to degrade into flat summary objects with fields like `"assumption_status": "All intact — ..."` instead of the required structured arrays, or into stubs with "See thesis document" placeholder text. The postrun check will reject both patterns, but catching the error here — while you still have this thesis in context — is far cheaper than a full re-run.
 
    **Step 8b — Update the markdown "What Has To Stay True" section.** For each numbered assumption, append the status to the end of the line:
 
@@ -584,6 +636,10 @@ The markdown file continues to be the human-readable research note. The JSON is 
     "how_long": "2-5 yr"
   },
 
+  "change_log": [
+    {"date": "2026-03-25", "changes": "Updated assumption #1 status to INTACT based on Q1 data center construction starts (+38% YoY)"},
+    {"date": "2026-03-22", "changes": "Initial creation from data pattern — grid infrastructure deficit identified in Skill 6 synthesis"}
+  ]
 }
 ```
 
@@ -593,6 +649,7 @@ The markdown file continues to be the human-readable research note. The JSON is 
 - Tactical theses omit `what_cant_change` and `what_could_break_it` (set to `null`). Tactical theses also omit `the_trade.when_to_buy` (set to `null`).
 - For tactical theses, `what_has_to_stay_true` uses the simpler format (no `testable_by` if not specified in the markdown — set to `""`).
 - When Function B (monitor) updates a thesis, update both the markdown and the JSON sidecar. The JSON `updated` field and assumption `status` values must stay in sync with the markdown.
+- When updating a thesis, append a `change_log` entry with today's date and a one-line summary of what changed (e.g. "Updated assumption #2 status to UNDER PRESSURE based on March CPI data"). Keep entries concise — one line per monitoring cycle. On initial creation, add an entry with "Initial creation from [provenance source]". The dashboard renders this log as the thesis update history.
 - The dashboard generator reads the JSON when present, falling back to markdown parsing for files without a sidecar.
 
 ## Meta Block
@@ -614,6 +671,7 @@ meta:
   scanner_candidates_sent_to_skill11: [number]
   scanner_candidates_deduplicated: [number]
   total_investigations_triggered: [number]
+  investigations_deferred_by_cap: [number]  # candidates that exceeded the 5-cap and were deferred to next cycle. If 0, ALL flagged candidates must produce Skill 11 briefs.
   theses_invalidated: [number]
   theses_strengthened: [number]
   theses_weakened: [number]

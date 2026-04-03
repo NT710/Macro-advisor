@@ -18,7 +18,7 @@ An autonomous macro research system that collects economic data, identifies macr
 
 Alpine Macro framework: liquidity drives markets, central banks are the key actors, positioning reveals vulnerability, regime identification over point forecasting, contrarian framing is structural.
 
-Read `references/methodology.md` for the full methodology, four-quadrant regime model, and system architecture.
+Read `references/methodology.md` for the full methodology, eight-regime model (Growth × Inflation × Liquidity), and system architecture.
 
 ## Universal Rules
 
@@ -29,7 +29,7 @@ Before executing ANY skill, read `references/RULES.md`. These are non-negotiable
 The system runs as a single sequential chain. Each skill reads the output of prior skills.
 
 ```
-Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly) → streak → 6 → 6b → 7 → 11(if triggered) → 8 → 12 → 9
+Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly) → streak → 6 → 6b → 6c → 7 → 11(if candidates flagged) → blind-spot-refresh → 8 → 12 → 9
 ```
 
 | Step | Skill | Reference File | Purpose |
@@ -43,11 +43,13 @@ Order: 0 → 1 → 2 → 3 → 4 → 5 → 10 → 14(quarterly) → 13(bi-weekly
 | 10 | Analyst Monitor | `references/10-analyst-monitor.md` | External analyst feeds via ~~browser |
 | 14 | Decade Horizon | `references/14-decade-horizon.md` | Quarterly: 3-5 mega-forces, causal chain mapping, thesis book blind spot analysis |
 | 13 | Structural Scanner | `references/13-structural-scanner.md` | Bi-weekly: 7 signal detectors including technology displacement |
-| 6 | Weekly Synthesis | `references/06-weekly-macro-synthesis.md` | Regime assessment + sector view + forecast (cyclical only — does NOT read Skill 13) |
-| 6b | Regime Evaluator | `references/06b-regime-evaluator.md` | Independent blind regime check + reasoning audit → PASS/REVIEW/CHALLENGE |
+| 6 | Weekly Synthesis | `references/06-weekly-macro-synthesis.md` | 8-regime assessment (Growth × Inflation × Liquidity) + sector view + 3-axis forecast (cyclical only — does NOT read Skill 13) |
+| 6b | Regime Evaluator | `references/06b-regime-evaluator.md` | Independent blind 3-axis regime check + reasoning audit → PASS/REVIEW/CHALLENGE |
+| 6c | Empirical Sentiment | `references/06c-empirical-sentiment.md` | Analog matching: finds similar historical macro periods, computes per-asset risk/reward ratios |
 | 7 | Thesis Generator | `references/07-thesis-generator-monitor.md` | Generate and monitor theses (three sources: data patterns, analyst-sourced, structural scanner) |
 | 11 | Structural Research | `references/11-structural-research.md` | First-principles research (5 trigger paths: data patterns, analyst, scanner, decade-horizon blind spots, manual) |
-| 8 | Self-Improvement | `references/08-self-improvement-loop.md` | Observe → inspect → amend → evaluate (includes scanner + horizon health monitoring) |
+| — | Blind Spot Refresh | `scripts/refresh_blind_spots.py` | Weekly: re-evaluates Skill 14 blind spot coverage against current thesis book |
+| 8 | Self-Improvement | `references/08-self-improvement-loop.md` | Observe → inspect �� amend → evaluate (includes scanner + horizon health monitoring) |
 | 12 | Thesis Presentation | `references/12-thesis-presentation.md` | Chart JSON specs + briefing cards (dashboard renders raw thesis files directly) |
 | 9 | Monday Briefing | `references/09-monday-briefing.md` | HTML dashboard delivery |
 
@@ -66,8 +68,10 @@ All Python scripts are in the `scripts/` directory at the plugin root:
 - `data_collector.py` — FRED + Yahoo + CFTC + ECB + Eurostat + EIA + BIS data pull (requires FRED API key; all others are keyless)
 - `etf_lookup.py` — Dynamic ETF discovery and verification
 - `generate_dashboard.py` — HTML dashboard renderer
-- `regime_backtest.py` — Historical regime model validation
+- `regime_backtest.py` — Historical regime model validation (8-regime + backfill)
 - `evaluation_streak.py` — Deterministic divergence streak computation for Skill 6b
+- `analog_matcher.py` — Empirical pattern recognition: finds historical analog periods, computes risk/reward ratios per asset (Skill 6c)
+- `refresh_blind_spots.py` — Weekly blind spot coverage refresh: gathers context from horizon data + active theses, applies LLM-evaluated coverage updates
 
 ## Output Structure
 
@@ -80,6 +84,7 @@ outputs/
 ├── synthesis/         (weekly regime assessments + regime evaluations + evaluation history)
 ├── strategic/         (quarterly decade horizon maps + last-horizon.json)
 ├── strategic/blind-spots/ (BLINDSPOT- files for Skill 13/7/11 consumption)
+├── strategic/blind-spot-refreshes/ (weekly refresh logs)
 ├── structural/        (bi-weekly scanner output + last-scan.json)
 ├── structural/candidates/ (CANDIDATE- files for Skill 7/11 consumption)
 ├── research/          (structural research briefs)

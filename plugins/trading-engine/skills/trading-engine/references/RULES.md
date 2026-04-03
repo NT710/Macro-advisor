@@ -50,6 +50,8 @@ Read this file before executing any skill. These rules override all other instru
 
 5. **Sizing follows reasoning, not expression order.** The trade reasoner evaluates every ETF expression in a thesis — first, second, or third-order — on its own merits. There is no mechanical formula mapping expression order to position size. The reasoner must articulate conviction reasoning for each expression it includes. A third-order expression can be sized larger than a first-order one if the thesis logic and macro context support it. Expressions are skipped when the reasoning doesn't support them, not because of their order.
 
+6. **Empirical sentiment is never sole justification.** The analog matcher's risk/reward ratios (from `empirical-sentiment.json`) are informational context, not directional signals. Out-of-sample testing showed the model does not beat naive baselines. T3 must never cite empirical sentiment as the primary reason for a position or sizing decision. It must be corroborated by a named, concrete signal (regime template allocation, active thesis direction, or specific data point from the macro synthesis). "Qualitative reasoning" alone does not count as corroboration.
+
 ## External Portfolio Rules
 
 1. **T8 is informational only.** External portfolio data never flows back into T1-T7. The paper portfolio does not know about, reference, or adjust for the user's real holdings.

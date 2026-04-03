@@ -36,11 +36,13 @@ Read only the collection skill outputs (Skills 1-5) and the data snapshot. Witho
 
 2. **Inflation direction:** Extract inflation indicators from Skill 3 and the snapshot. Core PCE, PPI, breakeven inflation, wage growth, commodity prices. Is inflation rising or falling based on this week's data alone?
 
-3. **Classify:** Place the data in the four-quadrant model. This is a point-in-time reading — what does this week's data say, with no history?
+3. **Liquidity condition:** Extract liquidity indicators from Skill 2 and the snapshot. M2 YoY vs. 36-month median, NFCI vs. 36-month median, Fed balance sheet YoY vs. 36-month median. Classify as Ample (majority above trend) or Tight (majority below trend). Note: this is a single-week blind reading. Skill 6 uses a rolling 4-week assessment for its official liquidity condition — a single-week divergence is expected and not concerning. Only flag liquidity divergence if the blind reading has disagreed for 3+ consecutive weeks.
 
-4. **Score:** Produce growth_score (-1.0 to +1.0) and inflation_score (-1.0 to +1.0) using the same weighting methodology as Skill 6 (documented in `references/06-weekly-macro-synthesis.md`).
+4. **Classify:** Place the data in the regime model. First determine the regime family (four-quadrant: Growth × Inflation), then apply the liquidity condition for the full 8-regime label. Growth × inflation classification is a point-in-time reading. Liquidity classification is compared against Skill 6's 4-week rolling assessment.
 
-5. **Compare:** Does the blind classification match Skill 6's regime call?
+5. **Score:** Produce growth_score (-1.0 to +1.0), inflation_score (-1.0 to +1.0), and liquidity_score (-1.0 to +1.0) using the same weighting methodology as Skill 6 (documented in `references/06-weekly-macro-synthesis.md`).
+
+6. **Compare:** Does the blind classification match Skill 6's regime call? Compare on `regime_family` (four-quadrant) for the primary divergence check. Flag liquidity condition divergence separately — it's informative but does not drive the streak count.
 
 If yes → the data and the official call agree this week.
 If no → record the divergence.
@@ -130,12 +132,16 @@ Save as `outputs/synthesis/YYYY-Www-regime-evaluation.md`:
 ## Regime Evaluation — Week of [Date]
 
 ### Blind Classification
-**Regime from data alone:** [quadrant]
+**Regime from data alone:** [full 8-regime label]
+**Regime family (blind):** [quadrant]
 **Growth score (blind):** [value]
 **Inflation score (blind):** [value]
-**Skill 6 called:** [quadrant] (growth: [value], inflation: [value])
-**Agreement:** [Yes / No]
-**Consecutive weeks of disagreement:** [N — from streak script]
+**Liquidity score (blind):** [value]
+**Liquidity condition (blind):** [Ample / Tight]
+**Skill 6 called:** [full 8-regime label] (family: [quadrant], growth: [value], inflation: [value], liquidity: [value])
+**Family agreement:** [Yes / No]
+**Liquidity agreement:** [Yes / No]
+**Consecutive weeks of family disagreement:** [N — from streak script]
 
 [If disagreement: 2-3 sentences explaining which data points drive the divergence. Be specific — "Skill 3's employment data shows unemployment rising for the third consecutive month, which the blind classification reads as growth-negative, while Skill 6 weights the still-strong ISM reading more heavily."]
 
@@ -175,13 +181,20 @@ After producing the output, update `outputs/synthesis/regime-evaluation-history.
 [
   {
     "week": "2026-W13",
-    "blind_regime": "Disinflationary Slowdown",
+    "blind_regime": "Disinfl. Slowdown — Tight Liquidity",
+    "blind_regime_family": "Disinflationary Slowdown",
     "blind_growth_score": -0.35,
     "blind_inflation_score": -0.18,
-    "skill6_regime": "Overheating",
+    "blind_liquidity_score": -0.25,
+    "blind_liquidity_condition": "tight",
+    "skill6_regime": "Overheating — Ample Liquidity",
+    "skill6_regime_family": "Overheating",
     "skill6_growth_score": 0.22,
     "skill6_inflation_score": 0.42,
+    "skill6_liquidity_score": 0.30,
+    "skill6_liquidity_condition": "ample",
     "diverged": true,
+    "liquidity_diverged": true,
     "consecutive_divergence_weeks": 6,
     "reasoning_issues": 2,
     "verdict": "CHALLENGE"
@@ -222,11 +235,16 @@ meta:
   skill: regime-evaluator
   skill_version: "1.0"
   run_date: "[ISO date]"
-  blind_regime: "[quadrant]"
+  blind_regime: "[full 8-regime label]"
+  blind_regime_family: "[quadrant]"
   blind_growth_score: [number]
   blind_inflation_score: [number]
-  skill6_regime: "[quadrant]"
+  blind_liquidity_score: [number]
+  blind_liquidity_condition: "[ample/tight]"
+  skill6_regime: "[full 8-regime label]"
+  skill6_regime_family: "[quadrant]"
   diverged: [true/false]
+  liquidity_diverged: [true/false]
   consecutive_divergence_weeks: [number]
   claims_audited: [number]
   claims_unsupported: [number]

@@ -32,23 +32,30 @@ This file provides the dashboard with all structured data it needs. The dashboar
   "meta": {
     "week": "2026-W13",
     "run_date": "2026-03-23",
-    "regime": "Stagflation",
+    "regime": "Stagflation — Tight Liquidity",
+    "regime_family": "Stagflation",
+    "liquidity_condition": "tight",
     "regime_weeks": 4,
     "regime_confidence": "High",
     "growth_score": -0.35,
-    "inflation_score": 0.52
+    "inflation_score": 0.52,
+    "liquidity_score": -0.30
   },
   "regime": {
-    "quadrant": "Stagflation",
+    "regime": "Stagflation — Tight Liquidity",
+    "regime_family": "Stagflation",
+    "liquidity_condition": "tight",
     "weeks_in_regime": 4,
     "direction": "Stable/Deepening",
     "confidence": "High",
     "change_from_prior_week": "None — 4th consecutive week",
     "growth_score": -0.35,
     "inflation_score": 0.52,
+    "liquidity_score": -0.30,
     "key_drivers": {
       "growth": "LEI -1.3% 6M, CFNAI -0.01, unemployment 4.4% rising",
-      "inflation": "WTI +48% month, core CPI 2.47%, 5Y breakeven 2.63%"
+      "inflation": "WTI +48% month, core CPI 2.47%, 5Y breakeven 2.63%",
+      "liquidity": "M2 contracting, NFCI tightening, Fed QT ongoing"
     }
   },
   "theses": {
@@ -108,20 +115,25 @@ This file provides the dashboard with all structured data it needs. The dashboar
 `meta` object (required):
 - `week`: ISO week string (e.g. "2026-W13"). Must match the filename prefix.
 - `run_date`: ISO date of the run (e.g. "2026-03-23").
-- `regime`: current regime quadrant name.
-- `regime_weeks`: integer weeks in current regime (carry forward from synthesis — on first run this is an estimate from data trends, not a run counter).
+- `regime`: full 8-regime label (e.g. "Stagflation — Tight Liquidity").
+- `regime_family`: 4-quadrant family name (e.g. "Stagflation").
+- `liquidity_condition`: "ample" or "tight".
+- `regime_weeks`: integer weeks in current regime family (carry forward from synthesis — on first run this is an estimate from data trends, not a run counter). Counts on `regime_family`, not full 8-regime label.
 - `regime_confidence`: "High", "Medium", or "Low".
 - `growth_score`: float roughly in [-1, 1] range. Negative = contraction.
 - `inflation_score`: float roughly in [-1, 1] range. Positive = above target.
+- `liquidity_score`: float roughly in [-1, 1] range. Positive = ample, negative = tight.
 
 `regime` object (required):
-- `quadrant`: one of "Goldilocks", "Overheating", "Stagflation", "Disinflationary Slowdown".
-- `weeks_in_regime`: integer (from synthesis chain — estimated from data trends on first run, chained thereafter).
+- `regime`: full 8-regime label (e.g. "Stagflation — Tight Liquidity").
+- `regime_family`: one of "Goldilocks", "Overheating", "Stagflation", "Disinflationary Slowdown".
+- `liquidity_condition`: "ample" or "tight".
+- `weeks_in_regime`: integer (from synthesis chain — estimated from data trends on first run, chained thereafter). Counts on `regime_family`.
 - `direction`: free text (e.g. "Stable/Deepening", "Transitioning toward Goldilocks").
 - `confidence`: "High", "Medium", or "Low".
 - `change_from_prior_week`: one-sentence summary.
-- `growth_score`, `inflation_score`: same as meta (dashboard uses these for precise chart positioning).
-- `key_drivers`: object with `growth` and `inflation` string summaries.
+- `growth_score`, `inflation_score`, `liquidity_score`: same as meta (dashboard uses these for precise chart positioning).
+- `key_drivers`: object with `growth`, `inflation`, and `liquidity` string summaries.
 
 `theses` object (required):
 - Keys are thesis slugs: lowercase, hyphens for spaces, no colons or special characters. Must match the thesis filename minus the `ACTIVE-`/`DRAFT-` prefix and `.md` extension.

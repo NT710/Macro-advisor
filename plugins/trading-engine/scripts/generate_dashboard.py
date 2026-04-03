@@ -39,6 +39,7 @@ from pathlib import Path
 import html as html_lib
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from performance_calculator import fetch_benchmark_data
 
 
 def load_json(path):
@@ -914,16 +915,23 @@ def parse_external_overlay(external_dir):
 
 
 def parse_regime_templates(regime_path):
-    """Load and transform regime templates from JSON."""
+    """Load and transform regime templates from JSON.
+
+    Skips meta keys (_description, _liquidity_modifiers) and processes only
+    the four regime family templates (Goldilocks, Overheating, etc.).
+    """
     regimes = {}
     data = load_json(regime_path)
 
     if isinstance(data, dict):
         for regime_name, regime_data in data.items():
+            # Skip meta keys and the liquidity modifiers section
+            if regime_name.startswith("_"):
+                continue
             if isinstance(regime_data, dict):
                 weights = {}
                 for asset_key, asset_info in regime_data.items():
-                    if asset_key.endswith("_description") or asset_key.endswith("_total") or asset_key in ("etf", "rationale"):
+                    if asset_key.startswith("_") or asset_key in ("etf", "rationale"):
                         continue
                     if isinstance(asset_info, dict):
                         weight = asset_info.get("weight", asset_info.get("pct"))
@@ -1380,6 +1388,45 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         color="#34d399",
     )
 
+    # Fetch benchmark data (SPY + TLT) for comparison
+    benchmark_data = {}
+    if chart_labels and len(chart_labels) >= 2:
+        benchmark_data = fetch_benchmark_data(
+            start_date=chart_labels[0],
+            end_date=chart_labels[-1],
+            snapshot_dates=chart_labels,
+        )
+        if benchmark_data.get("error"):
+            print(f"WARNING: Benchmark data unavailable: {benchmark_data['error']}")
+
+    # Normalize portfolio to % return from first snapshot
+    chart_pct_values = []
+    if chart_values and chart_values[0] > 0:
+        base = chart_values[0]
+        chart_pct_values = [round((v - base) / base * 100, 2) for v in chart_values]
+
+    # Build SPY % return series aligned to chart_labels
+    spy_pct_values = []
+    has_benchmark = False
+    if benchmark_data and not benchmark_data.get("error"):
+        spy_by_date = benchmark_data.get("spy_returns_by_date", {})
+        for date_str in chart_labels:
+            spy_pct_values.append(spy_by_date.get(date_str))
+        has_benchmark = any(v is not None for v in spy_pct_values)
+
+    # Populate benchmark comparison table
+    perf_benchmark = {}
+    if benchmark_data and not benchmark_data.get("error"):
+        spy_ret = benchmark_data.get("spy_return_pct", 0)
+        balanced_ret = benchmark_data.get("balanced_return_pct", 0)
+        perf_benchmark = {
+            "engine_return": total_return_raw,
+            "spy_return": spy_ret,
+            "alpha_spy": round(total_return_raw - spy_ret, 4),
+            "balanced_return": balanced_ret,
+            "alpha_balanced": round(total_return_raw - balanced_ret, 4),
+        }
+
     # Win rate sparkline from rolling 20-trade window
     winrate_history = []
     if closed_trades and len(closed_trades) >= 2:
@@ -1572,6 +1619,9 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         chart_labels=bool(chart_labels),
         chart_labels_json=json.dumps(chart_labels),
         chart_values_json=json.dumps(chart_values),
+        chart_pct_values_json=json.dumps(chart_pct_values),
+        spy_pct_values_json=json.dumps(spy_pct_values),
+        has_benchmark=has_benchmark,
         # Attribution
         attr_layer=attr_layer,
         # Win rate summary
@@ -1602,7 +1652,7 @@ def generate_dashboard(portfolio_dir, trades_dir, performance_dir, output_dir, i
         perf_winrate_by_mechanism={},
         perf_da_accuracy={},
         perf_risk_metrics={},
-        perf_benchmark={},
+        perf_benchmark=perf_benchmark,
         # External portfolio
         ext_has_data=ext_has_data,
         ext_positions=ext_positions,

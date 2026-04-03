@@ -30,12 +30,12 @@ The system's methodology, architecture, and design decisions are documented in `
 
 ## Scheduled Task
 
-The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→6→7→11(if triggered)→8→12→9. Delivers an HTML dashboard.
+The weekly analysis runs on the user's configured schedule (set during `/macro-advisor:setup`). Execution order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if triggered)→blind-spot-refresh→8→12→9. Delivers an HTML dashboard.
 
 ## Principles
 
 1. Never invent numbers. Every data point must be sourced.
-2. The Alpine Macro framework (liquidity-first, four-quadrant regime model) is our belief system. We commit to it. Contradictions in the data are observations, not framework failures.
+2. The Alpine Macro framework (liquidity-first, eight-regime model: Growth × Inflation × Liquidity) is our belief system. We commit to it. Contradictions in the data are observations, not framework failures.
 3. No confirmation bias. Derive conclusions from current data. No pre-loaded causal chains. Analyst feeds read with fresh eyes.
 4. ETF-focused, listed in user's preferred currency where available (set in `config/user-config.json`). Theses use first/second/third-order ETF chains verified via etf_lookup.py.
 5. Plain language in all user-facing outputs. Write for a smart friend who invests in ETFs.

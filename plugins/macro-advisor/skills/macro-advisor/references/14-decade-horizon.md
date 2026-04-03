@@ -314,6 +314,18 @@ If blind spots never convert to theses, the horizon map may be too abstract. If 
 
 ---
 
+## Weekly Blind Spot Coverage Refresh
+
+Between quarterly Skill 14 runs, the active thesis book changes as theses activate, close, or get invalidated. To keep the Mega Forces tab accurate, the weekly run includes a **blind spot coverage refresh** step (after Skill 7, before Skill 8).
+
+This refresh re-evaluates **only Phase 3** (coverage comparison) against the current thesis book. It does NOT re-run Phase 1 (mega-force identification), Phase 2 (causal chain mapping), or Phase 4 (contrarian stress test). Those remain quarterly.
+
+The refresh uses `scripts/refresh_blind_spots.py` to gather context (horizon data + active theses), then the LLM re-classifies each second and third-order impact as Covered / Partially Covered / Blind Spot. The result updates `latest-horizon-data.json` in place (blind_spots array + meta counts) and writes a log to `outputs/strategic/blind-spot-refreshes/`.
+
+**If Skill 14 has never run** (no `latest-horizon-data.json`), the refresh is skipped — there are no causal chains to check coverage against.
+
+---
+
 ## What This Skill Does NOT Do
 
 - **Generate theses.** It identifies blind spots and provides strategic context. Theses come from Skill 7 via the existing pipeline.

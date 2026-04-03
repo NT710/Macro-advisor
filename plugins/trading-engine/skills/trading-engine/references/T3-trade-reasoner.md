@@ -39,6 +39,22 @@ Example: If the current regime is Stagflation and the 6-month forecast gives 50%
 
 **In the reasoning log:** When the forecast materially influences a sizing or scaling decision, note it explicitly. Example: "GSG scaled at 40% of target instead of 50% — 6-month forecast gives Stagflation only 35% persistence, GSG has minimal value in Disinflationary Slowdown base case." This makes the judgment auditable and lets the improvement loop (T7) track whether forecast-informed sizing decisions outperform or underperform purely current-regime sizing.
 
+## Empirical Sentiment Context
+
+T3 may receive an `empirical_sentiment` block in the signals (from T1, which reads `empirical-sentiment.json` produced by the macro advisor's Skill 6c). This provides per-asset risk/reward ratios computed from historical analog periods — months where the macro state vector (growth, inflation, liquidity) was most similar to the current environment.
+
+**How to use empirical sentiment:**
+
+1. **Corroboration.** When the regime template says "overweight equities" and the empirical sentiment shows SPY with a 2.5x risk/reward ratio at the 12-week window, that's corroborating evidence. Increases conviction in the sizing decision.
+
+2. **Divergence.** When the regime template says one thing but the empirical data says another, flag it in the reasoning and investigate. The empirical data may be picking up a pattern that textbook frameworks miss (e.g., utilities outperforming in growth regimes due to AI/grid capex).
+
+3. **Surprise alerts.** The `surprises` array flags counter-intuitive signals. Evaluate whether each surprise is likely noise or a genuine structural pattern. Default assumption: surprises with n < 30 are probably noise. Do not invent post-hoc narratives to justify them — "unexplained, likely noise" is a valid and preferred assessment when no clear mechanism exists.
+
+**Hard rule:** Empirical sentiment must never be the sole justification for any position or sizing decision. It must be corroborated by at least one other concrete signal: regime template allocation direction, an active thesis with matching direction, or a specific data point from the macro synthesis (not a generic narrative). "Qualitative reasoning" alone does not count as corroboration — the corroborating signal must be identifiable and named in the reasoning log. If the empirical signal contradicts all other signals, note the divergence but do not act on it — flag it for the improvement loop.
+
+**In the reasoning log:** When empirical sentiment influences a decision, note it: "XLU sized at top of range — empirical sentiment shows 3.2x risk/reward at 12w, corroborating defensive thesis."
+
 ## Decision Framework
 
 ### Priority 1: Kill Switch Exits

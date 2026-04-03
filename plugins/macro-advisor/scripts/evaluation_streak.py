@@ -5,6 +5,10 @@ This script is the authoritative source for "consecutive weeks the blind
 classification diverged from Skill 6." The LLM must NOT compute this
 count itself — it reads this script's output.
 
+Divergence is measured on regime_family (4-quadrant), NOT the full 8-regime
+label. A liquidity condition divergence is reported separately but does
+not drive the streak count.
+
 Mirrors the pattern of regime_week_count.py.
 
 Usage:
@@ -77,15 +81,28 @@ def compute_streak(history_path: str) -> dict:
 
     latest = by_week[sorted_weeks[-1]]
 
+    # Count trailing liquidity divergence streak separately
+    liq_streak = 0
+    for week_key in reversed(sorted_weeks):
+        entry = by_week[week_key]
+        if entry.get("liquidity_diverged", False):
+            liq_streak += 1
+        else:
+            break
+
     return {
         "consecutive_divergence_weeks": streak,
+        "consecutive_liquidity_divergence_weeks": liq_streak,
         "last_blind_regime": latest.get("blind_regime", "Unknown"),
+        "last_blind_regime_family": latest.get("blind_regime_family", latest.get("blind_regime", "Unknown")),
         "last_skill6_regime": latest.get("skill6_regime", "Unknown"),
+        "last_skill6_regime_family": latest.get("skill6_regime_family", latest.get("skill6_regime", "Unknown")),
         "last_verdict": latest.get("verdict", "Unknown"),
         "weeks_in_history": len(sorted_weeks),
-        "note": f"Prior {streak} consecutive week(s) of divergence. "
-                f"Last blind call: {latest.get('blind_regime', '?')}, "
-                f"last Skill 6 call: {latest.get('skill6_regime', '?')}."
+        "note": f"Prior {streak} consecutive week(s) of family divergence. "
+                f"Prior {liq_streak} consecutive week(s) of liquidity divergence. "
+                f"Last blind call: {latest.get('blind_regime_family', latest.get('blind_regime', '?'))}, "
+                f"last Skill 6 call: {latest.get('skill6_regime_family', latest.get('skill6_regime', '?'))}."
     }
 
 

@@ -8,7 +8,7 @@ description: >
   or trading self-improvement. Also triggers on "trading dashboard", "show P&L",
   "show trades", "implement trading improvements", "trading engine status",
   "update external positions", "add external holdings", or "track my real portfolio".
-version: 0.2.4-beta
+version: 0.2.5-beta
 ---
 
 # Trading Engine
@@ -23,7 +23,7 @@ An autonomous paper trading system that translates macro research into portfolio
 4. **Sizing follows reasoning:** Expression order doesn't determine size — conviction and thesis logic do.
 5. **Hardcoded risk limits:** Not adjustable by the improvement loop.
 
-Read `references/methodology.md` for the full methodology and system architecture.
+Read `references/methodology.md` for the full methodology and system architecture. The system uses an 8-regime model (Growth × Inflation × Liquidity) with family-level templates and liquidity modifier overlays.
 
 ## Universal Rules
 
@@ -39,7 +39,7 @@ The system runs as a single sequential chain. Each skill reads the output of pri
 | Step | Skill | Reference File | Purpose |
 |------|-------|---------------|---------|
 | T0 | Portfolio Snapshot | `references/T0-portfolio-snapshot.md` | Alpaca account state → JSON (no P&L) |
-| T1 | Signal Parser | `references/T1-signal-parser.md` | Macro advisor outputs → normalized signals |
+| T1 | Signal Parser | `references/T1-signal-parser.md` | Macro advisor outputs → normalized signals (incl. empirical sentiment) |
 | T2 | Position Reconciler | `references/T2-position-reconciler.md` | Current vs target → gap analysis |
 | T3 | Trade Reasoner | `references/T3-trade-reasoner.md` | Gap analysis → trade plan with reasoning |
 | T4 | Order Executor | `references/T4-order-executor.md` | Trade plan → Alpaca API orders |

@@ -7,11 +7,13 @@ companion JSON sidecar, and every thesis Updated field must match today's date.
 
 Usage:
     python postrun_check.py --week 2026-W13 --output-dir outputs/
+    python postrun_check.py --week 2026-W13 --output-dir outputs/ --skill skill_6b_regime_evaluation
 
 Exit codes:
     0 = all checks passed
     1 = one or more FAIL items found (missing required files or thesis violations)
 """
+from __future__ import annotations
 
 import argparse
 import json
@@ -105,24 +107,260 @@ def check_conditional_skills(contract: dict, output_dir: Path, week: str, today:
 # Thesis-specific checks
 # ---------------------------------------------------------------------------
 
+def _detect_classification(sidecar: dict, md_content: str) -> str:
+    """Determine thesis classification from sidecar or markdown.
+
+    Returns "structural" or "tactical".  Falls back to "tactical" (the less
+    restrictive field set) when classification cannot be determined.
+    """
+    # 1. Prefer the sidecar's own field
+    cls = sidecar.get("classification", "").strip().lower()
+    if cls.startswith("structural"):
+        return "structural"
+    if cls == "tactical":
+        return "tactical"
+
+    # 2. Fall back to markdown **Classification:** field
+    match = re.search(r'\*\*Classification:\*\*\s*(.+)', md_content)
+    if match:
+        val = match.group(1).strip().lower()
+        if val.startswith("structural"):
+            return "structural"
+        return "tactical"
+
+    # 3. Default — tactical has fewer required fields, safer default
+    return "tactical"
+
+
+# Valid status values per Skill 7 schema
+_VALID_ASSUMPTION_STATUSES = {
+    "INTACT", "DEVELOPING", "UNDER PRESSURE", "WEAKENING",
+    "STRENGTHENING", "WATCH", "BROKEN", "INVALIDATED", "FAILED",
+}
+
+
+def _validate_sidecar_content(
+    sidecar: dict,
+    classification: str,
+    thesis_name: str,
+) -> list[str]:
+    """Validate sidecar JSON content against the Skill 7 schema.
+
+    Returns a list of FAIL strings (empty if valid).
+    """
+    fails: list[str] = []
+    prefix = f"FAIL [Thesis Sidecar Content]: {thesis_name}"
+
+    # --- Fields required for ALL theses (tactical + structural) ---
+    required_all = {
+        "name": str,
+        "status": str,
+        "classification": str,
+        "updated": str,
+        "conviction": str,
+        "summary": str,
+        "the_bet": str,
+    }
+    for field, expected_type in required_all.items():
+        val = sidecar.get(field)
+        if val is None:
+            fails.append(f"{prefix} — missing required field '{field}'")
+        elif not isinstance(val, expected_type):
+            fails.append(
+                f"{prefix} — '{field}' must be {expected_type.__name__}, "
+                f"got {type(val).__name__}"
+            )
+
+    # --- mechanism: must be a list ---
+    mechanism = sidecar.get("mechanism")
+    if mechanism is None:
+        fails.append(f"{prefix} — missing required field 'mechanism'")
+    elif not isinstance(mechanism, list):
+        fails.append(
+            f"{prefix} — 'mechanism' must be an array, "
+            f"got {type(mechanism).__name__}"
+        )
+
+    # --- what_has_to_stay_true: must be a list of objects with text + status ---
+    whst = sidecar.get("what_has_to_stay_true")
+    if whst is None:
+        fails.append(f"{prefix} — missing required field 'what_has_to_stay_true'")
+    elif not isinstance(whst, list):
+        fails.append(
+            f"{prefix} — 'what_has_to_stay_true' must be an array, "
+            f"got {type(whst).__name__} "
+            "(this is the most common sidecar failure — "
+            "do not flatten assumptions into a summary string)"
+        )
+    elif len(whst) == 0:
+        fails.append(f"{prefix} — 'what_has_to_stay_true' array is empty")
+    else:
+        for i, item in enumerate(whst):
+            if not isinstance(item, dict):
+                fails.append(
+                    f"{prefix} — what_has_to_stay_true[{i}] must be an object, "
+                    f"got {type(item).__name__}"
+                )
+                continue
+            if "text" not in item:
+                fails.append(
+                    f"{prefix} — what_has_to_stay_true[{i}] missing 'text'"
+                )
+            if "status" not in item:
+                fails.append(
+                    f"{prefix} — what_has_to_stay_true[{i}] missing 'status'"
+                )
+            elif item["status"] not in _VALID_ASSUMPTION_STATUSES:
+                fails.append(
+                    f"{prefix} — what_has_to_stay_true[{i}].status "
+                    f"'{item['status']}' is not a valid status value"
+                )
+
+    # --- the_trade: must be an object with key sub-fields ---
+    the_trade = sidecar.get("the_trade")
+    if the_trade is None:
+        fails.append(f"{prefix} — missing required field 'the_trade'")
+    elif not isinstance(the_trade, dict):
+        fails.append(
+            f"{prefix} — 'the_trade' must be an object, "
+            f"got {type(the_trade).__name__}"
+        )
+    else:
+        for sub in ("when_to_get_out", "how_long"):
+            if sub not in the_trade:
+                fails.append(f"{prefix} — the_trade.{sub} is missing")
+
+    # --- Fields required ONLY for structural theses ---
+    if classification == "structural":
+        # what_cant_change: must be a list (not null)
+        wcc = sidecar.get("what_cant_change")
+        if wcc is None:
+            fails.append(
+                f"{prefix} — structural thesis missing 'what_cant_change' "
+                "(set to null only for tactical theses)"
+            )
+        elif not isinstance(wcc, list):
+            fails.append(
+                f"{prefix} — 'what_cant_change' must be an array for "
+                f"structural theses, got {type(wcc).__name__}"
+            )
+
+        # what_could_break_it: must be an object (not null)
+        wcbi = sidecar.get("what_could_break_it")
+        if wcbi is None:
+            fails.append(
+                f"{prefix} — structural thesis missing 'what_could_break_it' "
+                "(set to null only for tactical theses)"
+            )
+        elif not isinstance(wcbi, dict):
+            fails.append(
+                f"{prefix} — 'what_could_break_it' must be an object for "
+                f"structural theses, got {type(wcbi).__name__}"
+            )
+
+        # the_trade.when_to_buy: required for structural
+        if isinstance(the_trade, dict) and the_trade.get("when_to_buy") is None:
+            fails.append(
+                f"{prefix} — structural thesis missing the_trade.when_to_buy"
+            )
+
+    # --- Stub content detection ---
+    # Sidecars that pass structural validation but contain placeholder text
+    # instead of real data. These cause the dashboard to render empty sections
+    # because it prefers sidecar JSON over markdown parsing.
+    stub_prefix = f"FAIL [Thesis Sidecar Stub]: {thesis_name}"
+    _STUB_PHRASES = ("see thesis document", "see thesis doc", "see document")
+
+    def _is_stub_text(text: str) -> bool:
+        return any(p in text.lower() for p in _STUB_PHRASES)
+
+    # what_has_to_stay_true: single-item stub
+    if isinstance(whst, list) and len(whst) == 1 and isinstance(whst[0], dict):
+        if _is_stub_text(whst[0].get("text", "")):
+            fails.append(
+                f"{stub_prefix} — 'what_has_to_stay_true' contains placeholder "
+                "text instead of individual assumptions. Skill 7 must populate "
+                "each assumption as a separate object with text, testable_by, "
+                "and status fields."
+            )
+
+    # mechanism: single-item stub
+    if isinstance(mechanism, list) and len(mechanism) == 1 and isinstance(mechanism[0], dict):
+        if _is_stub_text(mechanism[0].get("link", "")):
+            fails.append(
+                f"{stub_prefix} — 'mechanism' contains placeholder text instead "
+                "of the causal chain steps. Skill 7 must populate each step."
+            )
+
+    # what_cant_change: single-item stub (structural only)
+    if classification == "structural" and isinstance(wcc, list) and len(wcc) == 1 and isinstance(wcc[0], dict):
+        if _is_stub_text(wcc[0].get("constraint", "")):
+            fails.append(
+                f"{stub_prefix} — 'what_cant_change' contains placeholder text "
+                "instead of binding constraints. Skill 7 must populate each "
+                "constraint with quantified data and source."
+            )
+
+    # what_could_break_it: stub object (structural only)
+    if classification == "structural" and isinstance(wcbi, dict):
+        if _is_stub_text(wcbi.get("primary_risk", "")):
+            fails.append(
+                f"{stub_prefix} — 'what_could_break_it' contains placeholder "
+                "text. Skill 7 must populate strongest_counter, key_risks, "
+                "and post_test_conviction."
+            )
+        elif not wcbi.get("strongest_counter") and not wcbi.get("key_risks"):
+            fails.append(
+                f"{stub_prefix} — 'what_could_break_it' is missing both "
+                "'strongest_counter' and 'key_risks'. Structural theses "
+                "require a full contrarian stress test."
+            )
+
+    # conviction: must not be empty
+    conv = sidecar.get("conviction", "")
+    if isinstance(conv, str) and not conv.strip():
+        fails.append(
+            f"{stub_prefix} — 'conviction' is empty. Every thesis must have "
+            "a conviction level (High, Medium, Low, or qualified variant)."
+        )
+
+    # testable_by: warn if no assumption has it (not a hard fail yet)
+    if isinstance(whst, list) and len(whst) > 1:
+        has_testable = any(
+            isinstance(a, dict) and a.get("testable_by")
+            for a in whst
+        )
+        if not has_testable:
+            # Emit as a warning (printed to stderr, not added to failures)
+            print(
+                f"WARN [Thesis Sidecar]: {thesis_name} — no assumption has "
+                "'testable_by' populated. Dashboard will show an incomplete "
+                "assumptions table.",
+                file=sys.stderr,
+            )
+
+    return fails
+
+
 def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list[str]:
     """
     For every .md file in outputs/theses/active/:
     1. A companion -data.json sidecar must exist.
-    2. The **Updated:** field in the markdown must equal today's date.
+    2. The sidecar must contain valid structured content per the Skill 7 schema.
+    3. The **Updated:** field in the markdown must equal today's date.
     """
     failures = []
     thesis_cfg = contract.get("skills", {}).get("skill_7_thesis_monitor", {}).get("thesis_checks", {})
     if not thesis_cfg:
         return failures
 
-    active_dir_pattern = thesis_cfg.get("active_dir", "outputs/theses/active/")
+    active_dir_pattern = thesis_cfg.get("active_dir", "theses/active/")
     require_sidecar = thesis_cfg.get("require_sidecar", True)
     require_updated_today = thesis_cfg.get("require_updated_today", True)
 
     active_dir = output_dir / active_dir_pattern
     if not active_dir.exists():
-        failures.append("FAIL [Thesis Contracts]: outputs/theses/active/ directory not found")
+        failures.append(f"FAIL [Thesis Contracts]: {active_dir} directory not found")
         return failures
 
     thesis_files = sorted(active_dir.glob("*.md"))
@@ -133,7 +371,14 @@ def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list
     for thesis_path in thesis_files:
         stem = thesis_path.stem  # e.g. ACTIVE-structural-grid-bottleneck
 
-        # --- Sidecar check ---
+        # Read markdown content (needed for Updated check and classification fallback)
+        try:
+            md_content = thesis_path.read_text(encoding="utf-8")
+        except OSError as e:
+            failures.append(f"FAIL [Thesis]: cannot read {thesis_path.name}: {e}")
+            continue
+
+        # --- Sidecar existence + content check ---
         if require_sidecar:
             sidecar_path = active_dir / f"{stem}-data.json"
             if not sidecar_path.exists():
@@ -141,16 +386,25 @@ def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list
                     f"FAIL [Thesis Sidecar]: {thesis_path.name} has no companion "
                     f"{stem}-data.json — Skill 7 must create the JSON sidecar"
                 )
+            else:
+                # Parse and validate sidecar content
+                try:
+                    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError) as e:
+                    failures.append(
+                        f"FAIL [Thesis Sidecar]: {sidecar_path.name} is not valid JSON: {e}"
+                    )
+                    sidecar = None
+
+                if sidecar is not None:
+                    classification = _detect_classification(sidecar, md_content)
+                    failures += _validate_sidecar_content(
+                        sidecar, classification, thesis_path.name
+                    )
 
         # --- Updated date check ---
         if require_updated_today:
-            try:
-                content = thesis_path.read_text(encoding="utf-8")
-            except OSError as e:
-                failures.append(f"FAIL [Thesis Updated]: cannot read {thesis_path.name}: {e}")
-                continue
-
-            updated_match = re.search(r'\*\*Updated:\*\*\s*(\S+)', content)
+            updated_match = re.search(r'\*\*Updated:\*\*\s*(\S+)', md_content)
             if not updated_match:
                 failures.append(
                     f"FAIL [Thesis Updated]: {thesis_path.name} has no **Updated:** field"
@@ -171,6 +425,59 @@ def check_thesis_contracts(contract: dict, output_dir: Path, today: str) -> list
 # Main
 # ---------------------------------------------------------------------------
 
+def check_single_skill(contract: dict, output_dir: Path, week: str, today: str, skill_id: str) -> list[str]:
+    """Check outputs for a single skill only (used with --skill flag).
+
+    Supports both core skills (skills.*) and conditional skills (conditional_skills.*).
+    For skill_7_thesis_monitor, also runs thesis sidecar + Updated date checks.
+    """
+    failures = []
+
+    # Check in core skills
+    skill = contract.get("skills", {}).get(skill_id)
+    if skill:
+        label = skill.get("description", skill_id)
+        for pattern in skill.get("outputs", []):
+            resolved = resolve_pattern(pattern, week, today)
+            result = check_file_exists(output_dir / resolved, label)
+            if result:
+                failures.append(result)
+
+        # Skill 7 also requires thesis sidecar checks
+        if skill_id == "skill_7_thesis_monitor":
+            failures += check_thesis_contracts(contract, output_dir, today)
+
+        return failures
+
+    # Check in conditional skills
+    cond_skill = contract.get("conditional_skills", {}).get(skill_id)
+    if cond_skill:
+        label = cond_skill.get("description", skill_id)
+        for pattern in cond_skill.get("outputs_if_ran", cond_skill.get("outputs_if_triggered", [])):
+            resolved = resolve_pattern(pattern, week, today)
+            # For wildcard patterns (e.g. research/STRUCTURAL-*-{date}.md), skip existence check
+            if "*" in resolved:
+                continue
+            result = check_file_exists(output_dir / resolved, label)
+            if result:
+                failures.append(result)
+        return failures
+
+    # Check in optional skills
+    opt_skill = contract.get("optional_skills", {}).get(skill_id)
+    if opt_skill:
+        label = opt_skill.get("description", skill_id)
+        for pattern in opt_skill.get("outputs", []):
+            resolved = resolve_pattern(pattern, week, today)
+            result = check_file_exists(output_dir / resolved, label)
+            if result:
+                failures.append(result)
+        return failures
+
+    failures.append(f"FAIL: Unknown skill '{skill_id}' — not found in output contract")
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser(description="Post-run output contract check")
     parser.add_argument("--week", required=True, help="ISO week string, e.g. 2026-W13")
@@ -179,6 +486,12 @@ def main():
         "--contract",
         default=None,
         help="Path to output-contract.json (default: {plugin_root}/config/output-contract.json)"
+    )
+    parser.add_argument(
+        "--skill",
+        default=None,
+        help="Check only this skill's outputs (e.g. skill_6b_regime_evaluation). "
+             "When omitted, all skills are checked."
     )
     args = parser.parse_args()
 
@@ -204,21 +517,28 @@ def main():
 
     all_failures = []
 
-    # 1. Core skill outputs
-    all_failures += check_skill_outputs(contract, output_dir, args.week, today)
+    if args.skill:
+        # Single-skill mode: check only the specified skill
+        all_failures += check_single_skill(contract, output_dir, args.week, today, args.skill)
+        label = args.skill
+    else:
+        # Full mode: check everything
+        # 1. Core skill outputs
+        all_failures += check_skill_outputs(contract, output_dir, args.week, today)
 
-    # 2. Conditional skill outputs (scanner, decade horizon)
-    all_failures += check_conditional_skills(contract, output_dir, args.week, today)
+        # 2. Conditional skill outputs (scanner, decade horizon)
+        all_failures += check_conditional_skills(contract, output_dir, args.week, today)
 
-    # 3. Thesis sidecar + Updated date checks
-    all_failures += check_thesis_contracts(contract, output_dir, today)
+        # 3. Thesis sidecar + Updated date checks
+        all_failures += check_thesis_contracts(contract, output_dir, today)
+        label = args.week
 
     # Report
     if not all_failures:
-        print(f"POST-RUN CHECK: All output contracts satisfied for {args.week}.")
+        print(f"POST-RUN CHECK: All output contracts satisfied for {label}.")
         sys.exit(0)
     else:
-        print(f"\nPOST-RUN CHECK FAILED — {len(all_failures)} issue(s) found for {args.week}:\n")
+        print(f"\nPOST-RUN CHECK FAILED — {len(all_failures)} issue(s) found for {label}:\n")
         for f in all_failures:
             print(f"  {f}")
         print(

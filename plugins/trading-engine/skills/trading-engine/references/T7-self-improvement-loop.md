@@ -63,6 +63,8 @@ Read ALL of the following:
 - **Devil's advocate rigor:** Are the bear cases specific and actionable, or are they generic boilerplate? Read the actual text. "Markets could go down" is useless. "If tariff escalation reaches EU auto sector by May, this value tilt loses its catalyst" is useful.
 - **Expression sizing quality:** Are sizing decisions well-reasoned? Look for signs of lazy defaults (e.g., always skipping third-order, always sizing first-order at midpoint). The reasoner should be making differentiated decisions based on conviction and context.
 - **Skip quality:** Were skipped trades later shown to be good skips (the position would have lost money) or bad skips (missed opportunity)?
+- **Empirical sentiment hard rule compliance:** Read T3's reasoning logs. Check whether any position cites empirical sentiment (analog matcher risk/reward ratio) as the primary driver. The hard rule requires corroboration by a **named, concrete signal** (regime template direction, active thesis, or specific data point from the macro synthesis). "Qualitative reasoning" alone does not count. If T3 writes something like "empirical sentiment shows 3x risk/reward, corroborating defensive stance" — verify that the "defensive stance" is traceable to a specific regime template allocation or active thesis. Flag violations for human review.
+- **Empirical signal influence tracking:** When T3's reasoning references empirical sentiment, note whether the resulting trade was profitable. Over 8+ weeks, compare win rates of empirical-influenced decisions vs non-empirical decisions. If empirical-influenced trades underperform, propose downweighting the signal in T1 parsing (e.g., lower the confidence level passed to T3). Note: the out-of-sample backtest showed the analog matcher does not beat naive baselines — this tracking confirms whether that finding holds in live use.
 
 ### 2c. Signal Parsing Quality
 - **Staleness:** How often does T1 report stale signals?
@@ -132,6 +134,7 @@ Same amendment standards as the macro advisor: specific, targeted, justified, re
 - The kill switch = immediate exit rule
 - The anti-confirmation-bias rules (T3 doesn't see P&L, T1 is stateless, no optimizing by asset class)
 - The devil's advocate requirement
+- The empirical sentiment hard rule (cannot be sole justification; must be corroborated by a named concrete signal)
 
 These are structural safeguards. If the improvement loop could remove them, it would eventually optimize them away in pursuit of short-term performance — which is exactly how systems blow up.
 

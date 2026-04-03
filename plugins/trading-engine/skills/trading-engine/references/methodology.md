@@ -102,7 +102,7 @@ Source paths (relative to Trading/):
 ## Allocation Framework
 
 ### Layer 1: Strategic (Regime-Driven)
-Baseline allocations per regime are defined in `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json`. Four templates exist: Goldilocks, Overheating, Disinflationary Slowdown, Stagflation. Each template specifies target weights for ~12-14 asset class buckets. The synthesis cross-asset table can modify these weights (Bull = 1.2x template, Neutral = 1.0x, Bear = 0.5x or 0).
+Baseline allocations per regime are defined in `${CLAUDE_PLUGIN_ROOT}/config/regime-templates.json`. Four family-level templates exist (Goldilocks, Overheating, Disinflationary Slowdown, Stagflation), each specifying target weights for ~12-14 asset class buckets. A `_liquidity_modifiers` section adjusts these weights based on whether liquidity is ample or tight. The macro advisor outputs both a full 8-regime label (e.g., "Goldilocks — Ample Liquidity") and a `regime_family` (e.g., "Goldilocks"). T1 passes both. T2 uses the family template as the base, then applies the liquidity modifier overlay. The synthesis cross-asset table can further modify these weights (Bull = 1.2x template, Neutral = 1.0x, Bear = 0.5x or 0).
 
 ### Layer 2: Tactical/Structural (Thesis-Driven)
 Active theses add overlays on top of the strategic layer. The trade reasoner (T3) decides sizing for every ETF expression — first, second, or third-order — based on the thesis logic, conviction, and macro context. There is no mechanical formula mapping expression order to position size. A compelling third-order expression can be sized larger than a weak first-order one.

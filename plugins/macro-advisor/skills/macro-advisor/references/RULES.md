@@ -56,7 +56,9 @@ Read this file before executing any skill. These rules override all other instru
 
 4. **If something anomalous doesn't fit the standard categories, investigate it.** The best insights come from noticing what no framework predicted.
 
-5. **Structural theses require first-principles research.** When a thesis rests on physical constraints, supply-side bottlenecks, or multi-year cycles, it must be grounded in quantified structural research (Skill 11) before generation. The research must start from the physics/economics of the underlying system, not from market narrative or historical correlation. Tactical theses from weekly data patterns do not require this step.
+5. **Empirical pattern matching is context, not signal.** The analog matcher (Skill 6c) finds historically similar periods and computes risk/reward ratios. Out-of-sample testing showed it does not beat naive baselines. Treat its output as informational context ("which periods look similar") not directional conviction ("whether to be long or short"). Surprising findings from the analog matcher should default to "likely noise" unless a clear structural mechanism can be identified — do not fabricate post-hoc narratives to explain every anomaly.
+
+6. **Structural theses require first-principles research.** When a thesis rests on physical constraints, supply-side bottlenecks, or multi-year cycles, it must be grounded in quantified structural research (Skill 11) before generation. The research must start from the physics/economics of the underlying system, not from market narrative or historical correlation. Tactical theses from weekly data patterns do not require this step.
 
 ## Macro Analyst Monitoring
 

@@ -76,5 +76,46 @@
     "high_yield": {"etf": "HYG", "weight": 0, "rationale": "Credit risk highest in stagflation — avoid"},
     "real_estate": {"etf": "VNQ", "weight": 0, "rationale": "Rising rates + slowing growth = worst for REITs"},
     "_total": 95
+  },
+
+  "_liquidity_modifiers": {
+    "_description": "Weight adjustments applied on top of the regime family template based on liquidity condition. Ample liquidity favors risk assets and duration; tight liquidity favors defensive positioning and cash. Applied as additive percentage point changes. The modified portfolio is then renormalized to sum to ~95%.",
+    "_usage": "T2 reads the regime_family template as the base, then adds the appropriate modifier set. For example, Goldilocks base (QQQ=20%) + ample modifier (risk_assets=+3) → QQQ adjusted to ~23% before renormalization.",
+
+    "ample": {
+      "_description": "Ample liquidity: M2 above trend, NFCI below trend (looser), Fed balance sheet expanding. Favors risk-on tilt.",
+      "risk_assets_tilt": 3,
+      "duration_tilt": 2,
+      "cash_tilt": -3,
+      "credit_tilt": 2,
+      "commodity_tilt": 0,
+      "gold_tilt": -1,
+      "_rules": {
+        "risk_assets": "Add risk_assets_tilt to each equity bucket (SPY, QQQ, IWM, VTV, EFA, EEM). Proportional to existing weight — zero-weight buckets stay at zero.",
+        "duration": "Add duration_tilt to long-duration (TLT) or IG credit (LQD). Reduces short-duration (SHV) by same amount.",
+        "cash": "Reduce cash (SGOV) by abs(cash_tilt). If SGOV would go below 2%, cap at 2%.",
+        "credit": "Add credit_tilt to HYG and/or LQD.",
+        "gold": "Adjust GLD by gold_tilt. Ample liquidity reduces the need for safe haven.",
+        "renormalize": "After applying all tilts, rescale so total = 95%. No bucket goes below 0%."
+      }
+    },
+
+    "tight": {
+      "_description": "Tight liquidity: M2 below trend, NFCI above trend (tighter), Fed balance sheet contracting. Favors defensive tilt.",
+      "risk_assets_tilt": -3,
+      "duration_tilt": -2,
+      "cash_tilt": 3,
+      "credit_tilt": -2,
+      "commodity_tilt": 0,
+      "gold_tilt": 1,
+      "_rules": {
+        "risk_assets": "Reduce each equity bucket by abs(risk_assets_tilt). Proportional to existing weight — zero-weight buckets stay at zero.",
+        "duration": "Reduce long-duration (TLT) by abs(duration_tilt). Add to short-duration (SHV).",
+        "cash": "Increase SGOV by cash_tilt.",
+        "credit": "Reduce HYG and/or LQD by abs(credit_tilt).",
+        "gold": "Adjust GLD by gold_tilt. Tight liquidity increases need for safe haven.",
+        "renormalize": "After applying all tilts, rescale so total = 95%. No bucket goes below 0%."
+      }
+    }
   }
 }

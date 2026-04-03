@@ -14,7 +14,8 @@ Read the macro advisor output path from `config/user-config.json` → `macro_adv
 2. **Active theses** — all files in `{macro_advisor_outputs}/theses/active/`
 3. **Latest data snapshot** — `{macro_advisor_outputs}/data/latest-snapshot.json`
 4. **briefing-data.json (fallback)** — `{macro_advisor_outputs}/briefings/briefing-data.json` (if available). Used as a fallback source for cross-asset signals and thesis-level detail when synthesis-data.json sidecar does not cover this. See Step 2 below.
-4. **ETF reference** — look for `etf-reference.md` by checking these paths in order:
+5. **Empirical sentiment (optional)** — `{macro_advisor_outputs}/synthesis/empirical-sentiment.json` (if available). Per-asset risk/reward ratios from analog matching. See Step 6 below.
+6. **ETF reference** — look for `etf-reference.md` by checking these paths in order:
    - `{macro_advisor_outputs}/../skills/macro-advisor/references/etf-reference.md` (standard plugin layout — outputs/ is a sibling of skills/)
    - `{macro_advisor_outputs}/../../skills/macro-advisor/references/etf-reference.md` (if outputs path goes one level deeper)
    - If neither exists, log a warning: "ETF reference not found — ticker mapping will use macro advisor synthesis text only. Currency-specific ETF mapping may be incomplete."
@@ -55,15 +56,22 @@ From the weekly synthesis (or briefing, or synthesis-data.json sidecar), extract
 ```json
 {
   "regime": {
-    "quadrant": "Goldilocks|Overheating|Disinflationary Slowdown|Stagflation",
+    "regime": "Stagflation — Tight Liquidity",
+    "regime_family": "Stagflation",
+    "liquidity_condition": "tight",
     "confidence": "High|Medium|Low",
     "direction": "Stable|Moving toward [quadrant]",
     "weeks_in_regime": 0,
     "regime_changed_this_week": false,
-    "prior_regime": null
+    "prior_regime": null,
+    "growth_score": -0.28,
+    "inflation_score": 0.42,
+    "liquidity_score": -0.35
   }
 }
 ```
+
+Note: `regime_family` is used for template lookup (the 4 family-level templates in `regime-templates.json`). `liquidity_condition` drives the liquidity modifier overlay. Both `regime` (full 8-label) and `regime_family` are passed so T2 can apply the two-tier allocation (family template + liquidity modifier) and T3 has the full context for reasoning.
 
 ### Step 1b: Regime Forecast
 
@@ -215,6 +223,34 @@ Cross-reference each active thesis's kill switch conditions against the latest d
 
 This is the most important step. A missed kill switch trigger means the trading engine holds a position it should have exited.
 
+### Step 6: Empirical Sentiment (Optional)
+
+Check for `{macro_advisor_outputs}/synthesis/empirical-sentiment.json`. If available, extract the per-asset risk/reward ratios as an additional signal source:
+
+```json
+{
+  "empirical_sentiment": {
+    "available": true,
+    "analog_count": 20,
+    "mean_similarity": 0.92,
+    "signals": {
+      "SPY": {
+        "4w": {"ratio": 0.8, "signal": "neutral", "confidence": "medium"},
+        "12w": {"ratio": 1.5, "signal": "slightly_bullish", "confidence": "medium"},
+        "26w": {"ratio": 2.1, "signal": "bullish", "confidence": "high"}
+      }
+    },
+    "surprises": ["Utilities (XLU) shows bullish at 12w despite falling growth"]
+  }
+}
+```
+
+Parsing rules:
+- If the file does not exist, set `"empirical_sentiment": {"available": false}` and continue. This signal is optional.
+- Pass through the per-asset signals with their confidence levels. T3 will decide how to weight them.
+- Pass through the `surprises` array — these are counter-intuitive findings that T3 should consider.
+- **Hard rule:** Empirical sentiment must never be the sole justification for a position. It must be corroborated by at least one other signal (regime template, thesis, or qualitative reasoning).
+
 ## Output Format
 
 Produce a single JSON file: `outputs/portfolio/latest-signals.json`
@@ -232,6 +268,7 @@ Produce a single JSON file: `outputs/portfolio/latest-signals.json`
   "asset_signals": [ ... ],
   "sector_signals": [ ... ],
   "thesis_signals": [ ... ],
+  "empirical_sentiment": { ... },
   "kill_switch_alerts": [
     {
       "thesis": "name",

@@ -1,6 +1,6 @@
 # Trading Engine (Beta)
 
-An autonomous paper trading system for Claude Cowork. Reads macro research from the Macro Advisor plugin — including regime assessments, investment theses, and regime forecasts with underlying Growth, Inflation, and Liquidity driver readings — translates it into portfolio positions on Alpaca paper trading, and tracks performance with attribution analysis.
+An autonomous paper trading system for Claude Cowork. Reads macro research from the Macro Advisor plugin — including 8-regime assessments, investment theses, empirical sentiment signals, and regime forecasts with underlying Growth, Inflation, and Liquidity driver readings — translates it into portfolio positions on Alpaca paper trading, and tracks performance with attribution analysis.
 
 > **Beta:** This plugin is in active development. Expect changes to skill logic, dashboard format, and improvement loop behavior between versions.
 
@@ -9,7 +9,7 @@ An autonomous paper trading system for Claude Cowork. Reads macro research from 
 After each macro advisor weekly run, the trading engine:
 
 1. Snapshots the current Alpaca paper trading portfolio
-2. Parses macro advisor outputs — regime assessment, active theses, kill switches, and regime forecasts (6/12-month probability distributions, conditional triggers, current driver readings, driver trajectories)
+2. Parses macro advisor outputs — 8-regime assessment, active theses, kill switches, empirical sentiment (analog-based risk/reward ratios), and regime forecasts (6/12-month probability distributions, conditional triggers, current driver readings, driver trajectories)
 3. Reconciles current positions against target allocation
 4. Reasons through which trades to execute (with mandatory devil's advocate for every new position), using regime forecasts as reasoning context for durability assessment and driver-sensitive sizing
 5. Reserves turnover budget for structural thesis first entries that have been deferred 2+ runs, preventing the regime scaling queue from indefinitely blocking structural positions
@@ -22,6 +22,7 @@ After each macro advisor weekly run, the trading engine:
 ## Key Design Decisions
 
 - **Three-force integration:** Trade reasoning considers the underlying Growth, Inflation, and Liquidity drivers — not just the regime label. Position durability is assessed by sensitivity to specific forces.
+- **Empirical sentiment as context only:** Analog matching provides per-asset risk/reward ratios from similar historical periods but is never the sole justification for a position. Out-of-sample testing showed it does not beat naive baselines. Must be corroborated by a named concrete signal.
 - **P&L blindness:** The trade reasoner never sees unrealized gains/losses. Decisions are based on macro signals only.
 - **Kill switch = immediate exit:** No exceptions, no delays, no "one more day."
 - **Devil's advocate mandatory:** Every new position requires an articulated bear case before entry.
@@ -59,9 +60,9 @@ The engine runs a 9-step pipeline (T0–T8):
 
 ```
 T0  Portfolio Snapshot      — Alpaca account state (no P&L visible to reasoner)
-T1  Signal Parser           — Extracts regime, theses, kill switches, and regime
-                              forecasts (including driver readings and trajectories)
-                              from macro advisor outputs
+T1  Signal Parser           — Extracts 8-regime assessment, theses, kill switches,
+                              empirical sentiment, and regime forecasts (including
+                              driver readings and trajectories) from macro advisor outputs
 T2  Position Reconciler     — Current vs target gap analysis (current regime only)
 T3  Trade Reasoner          — Portfolio manager brain: priority-ordered decisions
                               with devil's advocate, forecast-aware durability

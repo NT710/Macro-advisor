@@ -177,6 +177,95 @@ def compute_win_rate(trade_logs: list) -> dict:
     }
 
 
+def fetch_benchmark_data(start_date: str, end_date: str, snapshot_dates: list) -> dict:
+    """Fetch SPY and TLT returns aligned to portfolio snapshot dates.
+
+    Returns cumulative % return series for SPY, plus total returns for SPY,
+    TLT, and a 60/40 blend. Gracefully returns error dict on any failure.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        return {"error": "yfinance not installed"}
+
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+
+        # Pad start date 7 days earlier to guarantee a baseline close
+        start_dt = _dt.strptime(start_date, "%Y-%m-%d") - _td(days=7)
+        padded_start = start_dt.strftime("%Y-%m-%d")
+        # Pad end date 1 day forward for yfinance end-exclusive range
+        end_dt = _dt.strptime(end_date, "%Y-%m-%d") + _td(days=1)
+        padded_end = end_dt.strftime("%Y-%m-%d")
+
+        spy_hist = yf.Ticker("SPY").history(start=padded_start, end=padded_end)
+        tlt_hist = yf.Ticker("TLT").history(start=padded_start, end=padded_end)
+
+        if spy_hist.empty:
+            return {"error": "No SPY data returned from yfinance"}
+
+        # Convert to dict: date_str -> close price
+        def _to_price_dict(hist):
+            d = {}
+            for idx, row in hist.iterrows():
+                d[idx.strftime("%Y-%m-%d")] = float(row["Close"])
+            return d
+
+        spy_prices = _to_price_dict(spy_hist)
+        tlt_prices = _to_price_dict(tlt_hist) if not tlt_hist.empty else {}
+
+        # Sorted trading dates for lookup
+        spy_dates_sorted = sorted(spy_prices.keys())
+        tlt_dates_sorted = sorted(tlt_prices.keys()) if tlt_prices else []
+
+        def _nearest_price(target_date, prices, sorted_dates):
+            """Find close price for nearest trading day <= target_date."""
+            best = None
+            for d in sorted_dates:
+                if d <= target_date:
+                    best = d
+                else:
+                    break
+            return prices[best] if best else None
+
+        # Get baseline prices (nearest trading day <= first snapshot date)
+        spy_base = _nearest_price(start_date, spy_prices, spy_dates_sorted)
+        tlt_base = _nearest_price(start_date, tlt_prices, tlt_dates_sorted) if tlt_prices else None
+
+        if spy_base is None or spy_base == 0:
+            return {"error": f"No SPY baseline price for {start_date}"}
+
+        # Build cumulative % return aligned to snapshot dates
+        spy_returns_by_date = {}
+        for date_str in snapshot_dates:
+            price = _nearest_price(date_str, spy_prices, spy_dates_sorted)
+            if price is not None:
+                spy_returns_by_date[date_str] = round((price - spy_base) / spy_base * 100, 2)
+
+        # Total returns
+        spy_end = _nearest_price(end_date, spy_prices, spy_dates_sorted)
+        spy_return_pct = round((spy_end - spy_base) / spy_base * 100, 4) if spy_end else 0
+
+        tlt_return_pct = 0.0
+        if tlt_base and tlt_base > 0:
+            tlt_end = _nearest_price(end_date, tlt_prices, tlt_dates_sorted)
+            if tlt_end:
+                tlt_return_pct = round((tlt_end - tlt_base) / tlt_base * 100, 4)
+
+        balanced_return_pct = round(0.6 * spy_return_pct + 0.4 * tlt_return_pct, 4)
+
+        return {
+            "spy_return_pct": spy_return_pct,
+            "spy_returns_by_date": spy_returns_by_date,
+            "tlt_return_pct": tlt_return_pct,
+            "balanced_return_pct": balanced_return_pct,
+            "error": None,
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def generate_weekly_report(snapshots: list, trade_logs: list) -> dict:
     """Compile full weekly performance report."""
     returns = compute_returns(snapshots)

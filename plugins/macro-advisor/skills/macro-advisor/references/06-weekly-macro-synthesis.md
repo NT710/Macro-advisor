@@ -4,32 +4,55 @@
 
 Read all collection skill outputs from the current week. Synthesize into a single regime assessment with cross-asset implications. This is the "Alpine Macro research note" equivalent — one document that tells you where we are, which direction we're moving, and what it means for positioning.
 
-## Core Framework: Four-Quadrant Regime Model
+## Core Framework: Eight-Regime Model (Growth × Inflation × Liquidity)
+
+The regime model uses three axes to classify the macro environment:
 
 |                    | **Inflation Falling** | **Inflation Rising** |
 |--------------------|-----------------------|----------------------|
 | **Growth Rising**  | Goldilocks            | Overheating          |
 | **Growth Falling** | Disinflationary Slowdown | Stagflation       |
 
-### Asset Class Implications by Regime
+Each quadrant (the **regime family**) is further split by liquidity condition (Ample / Tight), yielding 8 regimes:
+
+| Growth | Inflation | Liquidity | Full Name | Family |
+|--------|-----------|-----------|-----------|--------|
+| Rising | Falling | Ample | Goldilocks — Ample Liquidity | Goldilocks |
+| Rising | Falling | Tight | Goldilocks — Tight Liquidity | Goldilocks |
+| Rising | Rising | Ample | Overheating — Ample Liquidity | Overheating |
+| Rising | Rising | Tight | Overheating — Tight Liquidity | Overheating |
+| Falling | Falling | Ample | Disinfl. Slowdown — Ample Liquidity | Disinfl. Slowdown |
+| Falling | Falling | Tight | Disinfl. Slowdown — Tight Liquidity | Disinfl. Slowdown |
+| Falling | Rising | Ample | Stagflation — Ample Liquidity | Stagflation |
+| Falling | Rising | Tight | Stagflation — Tight Liquidity | Stagflation |
+
+### Why Liquidity Matters as a Third Axis
+
+Liquidity direction changes which assets outperform within the same growth/inflation quadrant. A Goldilocks regime with ample liquidity is meaningfully different from Goldilocks with tight liquidity — the former favors broad risk-on with duration, the latter requires more selective positioning. Skill 2 already tracks the key liquidity indicators (M2, NFCI, Fed balance sheet); this framework promotes liquidity from an overlay to a first-class classification dimension.
+
+### Asset Class Implications by Regime Family
 
 **Goldilocks** (growth up, inflation down)
 **Overheating** (growth up, inflation up)
 **Disinflationary Slowdown** (growth down, inflation down)
 **Stagflation** (growth down, inflation up)
 
+Within each family, ample liquidity tilts toward risk assets and duration; tight liquidity tilts toward defensives and cash. The trading engine's `regime-templates.json` encodes this as family-level templates plus liquidity modifier overlays.
+
 We believe this regime model captures how macro conditions translate to asset performance. It is our framework.
 
-First: classify the regime based on growth and inflation direction from the data.
+First: classify the regime based on growth and inflation direction from the data. Then: assess the liquidity condition from Skill 2 to determine the full 8-regime label.
 
 ### Regime Stability Principle
 
 A regime is a structural macroeconomic condition that persists for quarters, not weeks. When classifying, assess growth and inflation direction over a 6-month horizon, not just the last few data prints. A single month's uptick in CPI within a broader disinflationary trend does not constitute a regime change — it's noise within the existing regime.
 
-**Before calling a regime change, require confirmation — the 2-month filter on the 6-month direction window:**
+**Before calling a regime family change, require confirmation — the 2-month filter on the 6-month direction window:**
 1. The growth × inflation direction must have visibly turned over the 6-month trend window. A single anomalous month or a short-term data spike does not constitute a turn — the 6-month direction of the underlying indicators must point to the new regime.
 2. That new direction must persist for at least 2 months (~8 weekly prints) before the regime change registers. During this confirmation period, flag the emerging shift as "regime under review — data pointing toward [new quadrant] but confirmation period not yet met." Continue to classify and position under the current regime until confirmation completes.
 3. If the data is ambiguous — one indicator says growth is rising, another says falling — hold the current regime and flag the conflict. The burden of proof is on the change, not on continuity.
+
+**Liquidity condition does NOT use the 2-month confirmation filter, but it is NOT a weekly tactical signal either.** Liquidity condition (Ample/Tight) uses a rolling 4-week directional assessment: updated weekly, but assessed over the trailing month of Skill 2 data. A single week's liquidity reading flipping from loose to tight does not change the condition — the majority of the trailing 4 weeks must point in the new direction before the condition flips. This prevents weekly noise while still being far more responsive than the 2-month confirmation filter used for regime family changes. A change from "Goldilocks — Ample Liquidity" to "Goldilocks — Tight Liquidity" is NOT a regime change — the regime family is unchanged. Only growth × inflation transitions trigger the 2-month confirmation filter.
 
 **Equally important — challenge continuity too.** The confirmation requirement must not create a bias toward holding the current regime indefinitely. If the same regime has been active for 16+ consecutive weeks (~4 months), actively stress-test it: what evidence would it take to call a different regime? If you can't articulate what would change your mind, you may be anchored rather than analytical. The burden of proof applies symmetrically — it's on the change when data is noisy, and it's on continuity when the regime has persisted well beyond the confirmation window and the underlying data is shifting.
 
@@ -65,12 +88,13 @@ Also read the **prior week's** synthesis output (if it exists) for trend context
    - Skill 3: Growth regime classification and surprise direction
    - Skill 4: Any regime-change risk from policy actions
    - Skill 5: Positioning extremes and contrarian setups
-4. Determine the current regime quadrant based on growth + inflation direction
-5. Assess direction of travel — are we moving between quadrants?
-6. Derive cross-asset implications from the regime
-7. Identify what changed this week vs. last week
-8. Separate signal from noise
-9. Compile into output format
+4. Determine the current regime family (quadrant) based on growth + inflation direction
+5. Determine the liquidity condition (Ample/Tight) from Skill 2 using the rolling 4-week directional assessment (see Regime Stability Principles below — the condition only flips when the majority of the trailing 4 weeks point in the new direction) to form the full 8-regime label
+6. Assess direction of travel — are we moving between quadrants? Is liquidity shifting?
+7. Derive cross-asset implications from the regime (family + liquidity condition)
+8. Identify what changed this week vs. last week
+9. Separate signal from noise
+10. Compile into output format
 
 ## Synthesis Logic
 
@@ -89,23 +113,26 @@ When inputs conflict (e.g., liquidity expanding but growth decelerating), flag t
 ## Weekly Macro Synthesis — Week of [Date]
 
 ### Regime Assessment
-**Current Quadrant:** [Goldilocks / Overheating / Disinflationary Slowdown / Stagflation]
-**Weeks in current regime:** [N — USE THE REGIME STREAK SCRIPT OUTPUT. Before this skill runs, the orchestration executes `regime_week_count.py` which reads `regime-history.json` (one entry per ISO week, deduplicated) and counts the trailing streak of same-regime weeks. Rules:
-- If this week's regime matches the script's reported regime → N = script_streak + 1.
-- If this week's regime is DIFFERENT → N = 1.
+**Current Regime:** [Full 8-regime label, e.g., "Stagflation — Tight Liquidity"]
+**Regime Family:** [4-quadrant family: Goldilocks / Overheating / Disinflationary Slowdown / Stagflation]
+**Liquidity Condition:** [Ample / Tight]
+**Weeks in current regime family:** [N — USE THE REGIME STREAK SCRIPT OUTPUT. Before this skill runs, the orchestration executes `regime_week_count.py` which reads `regime-history.json` (one entry per ISO week, deduplicated) and counts the trailing streak of same-regime-family weeks. Rules:
+- If this week's regime family matches the script's reported regime → N = script_streak + 1.
+- If this week's regime family is DIFFERENT → N = 1.
 - If the script returned streak=0 (first run, no history) → estimate from 6-month data trends, do NOT default to 1.
-Do NOT compute this from prior synthesis files. Do NOT carry forward a number from a prior run. The script is the single source of truth — it cannot be inflated by same-week reruns because regime-history.json stores one entry per ISO week.]
+Do NOT compute this from prior synthesis files. Do NOT carry forward a number from a prior run. The script is the single source of truth — it cannot be inflated by same-week reruns because regime-history.json stores one entry per ISO week. Note: the streak counts on `regime_family`, not the full 8-regime label — a liquidity condition change within the same family does NOT reset the streak.]
 **Direction:** [Stable / Moving toward ___]
 **Confidence:** [High / Medium / Low]
-**Change from last week:** [No change / Shifted from ___ to ___]
+**Change from last week:** [No change / Family shifted from ___ to ___ / Liquidity shifted from ___ to ___ / Both changed]
 
 **Regime coordinates (for dashboard visualization):**
 - Growth score: [continuous value from -1.0 to +1.0, derived from the growth data. Map from the underlying indicators: ISM manufacturing (weight 0.3), unemployment direction (0.2), NFP trend (0.2), retail sales trend (0.15), GDP tracking (0.15). Normalize: +1.0 = all indicators strongly improving, -1.0 = all indicators strongly deteriorating, 0 = mixed/flat. This is NOT a binary quadrant assignment — it's a continuous measure of where within the quadrant the economy sits.]
 - Inflation score: [continuous value from -1.0 to +1.0, derived from the inflation data. Map from: core PCE direction (weight 0.3), PPI direction (0.2), breakeven inflation trend (0.2), wage growth trend (0.15), commodity price direction (0.15). Normalize: +1.0 = inflation clearly accelerating, -1.0 = inflation clearly decelerating, 0 = stable/ambiguous.]
+- Liquidity score: [continuous value from -1.0 to +1.0, derived from Skill 2 liquidity data. Determined by majority vote of three indicators: M2 YoY vs. 36-month median (above = positive), NFCI vs. 36-month median (below = positive, since lower NFCI = looser conditions), Fed balance sheet YoY vs. 36-month median (above = positive). +1.0 = all three strongly above trend (ample), -1.0 = all three strongly below trend (tight), 0 = mixed. Binary classification: positive = Ample, negative = Tight.]
 
-**Coordinate-label consistency check (mandatory):** After assigning both scores, verify that the sign of each score matches the regime label. The mapping is: Goldilocks = growth positive, inflation negative. Overheating = growth positive, inflation positive. Stagflation = growth negative, inflation positive. Disinflationary Slowdown = growth negative, inflation negative. If your scores land in a different quadrant than your label, you must do one of two things: (1) revise the scores to reflect the data more accurately, explaining what you got wrong on the first pass, or (2) revise the regime label, explaining why the data actually points to the other quadrant. You may NOT leave them contradicting silently. A score near zero (between -0.15 and +0.15) on either axis is exempt from this check — it means the signal is genuinely ambiguous on that dimension, which is useful information. Report the exemption explicitly: "Growth score near zero — signal ambiguous, consistent with either [X] or [Y] regime."
+**Coordinate-label consistency check (mandatory):** After assigning all three scores, verify that the sign of each score matches the regime label. The mapping is: Goldilocks = growth positive, inflation negative. Overheating = growth positive, inflation positive. Stagflation = growth negative, inflation positive. Disinflationary Slowdown = growth negative, inflation negative. Ample Liquidity = liquidity score positive. Tight Liquidity = liquidity score negative. If your scores land in a different quadrant than your label, you must do one of two things: (1) revise the scores to reflect the data more accurately, explaining what you got wrong on the first pass, or (2) revise the regime label, explaining why the data actually points to the other quadrant. You may NOT leave them contradicting silently. A score near zero (between -0.15 and +0.15) on any axis is exempt from this check — it means the signal is genuinely ambiguous on that dimension, which is useful information. Report the exemption explicitly: "Growth score near zero — signal ambiguous, consistent with either [X] or [Y] regime."
 
-[2-3 sentence narrative explanation of the regime classification. Why this quadrant? What's the dominant signal?]
+[2-3 sentence narrative explanation of the regime classification. Why this quadrant? What's the liquidity picture? What's the dominant signal?]
 
 ### Liquidity Picture
 [2-3 sentences synthesized from Skill 2. Regime classification, key data points, direction of change.]
@@ -141,28 +168,31 @@ Also flag any thematic sub-sectors made relevant by active theses or current eve
 
 ### Regime Forecast — 6 and 12 Months
 
-Based on the current data, policy trajectory, and thesis logic, project where the regime is likely to be in 6 months and 12 months. This is not a linear extrapolation — it's a reasoned assessment derived from the analysis above.
+Based on the current data, policy trajectory, and thesis logic, project where the regime is likely to be in 6 months and 12 months. This is not a linear extrapolation — it's a reasoned assessment derived from the analysis above. The forecast now covers three trajectories: growth, inflation, and liquidity.
 
 For each horizon:
-- **Most likely regime:** [quadrant] — [why, based on what the data and policy trajectory point to]
+- **Most likely regime:** [full 8-regime label] — [why, based on what the data and policy trajectory point to]
+- **Liquidity trajectory:** [e.g., "Fed expected to pause QT by Q3 → liquidity shifts from tight to ample" or "M2 contraction continuing → liquidity stays tight"]
 - **Key assumption:** [what has to hold true for this forecast to play out]
-- **What would change it:** [the specific development that would shift the trajectory to a different quadrant]
+- **What would change it:** [the specific development that would shift the trajectory to a different quadrant or liquidity condition]
 - **Confidence:** [High/Medium/Low — and why]
 
-The 6-month forecast should be grounded in visible policy paths and data trends (Fed rate trajectory, credit cycle direction, oil supply dynamics). The 12-month forecast is inherently less certain — acknowledge that. If the 12-month view is genuinely unclear, say so rather than forcing a prediction.
+The 6-month forecast should be grounded in visible policy paths and data trends (Fed rate trajectory, credit cycle direction, oil supply dynamics, QT/QE timeline). The 12-month forecast is inherently less certain — acknowledge that. If the 12-month view is genuinely unclear, say so rather than forcing a prediction.
+
+**Liquidity forecasting inputs:** Skill 1 (central bank policy path — QT pace, rate trajectory, balance sheet projections) and Skill 2 (current liquidity direction — M2 trend, NFCI trajectory, credit conditions). The liquidity forecast should answer: is liquidity likely to be ample or tight at each horizon, and what's the primary driver of any expected shift?
 
 These forecasts feed into the regime map visualization in the dashboard. They appear as projected dots on the chart, clearly labelled as projections with stated assumptions — not predictions.
 
 After the prose forecasts, include a **Regime Forecast Summary Table** that condenses the trajectory into a single table. This table feeds the dashboard's Regime tab forecast panel via the `forecast_table` JSON array. Every row below must appear.
 
-| Time Horizon | Regime | Growth Score | Inflation Score | Key Driver | Confidence |
-|---|---|---|---|---|---|
-| W[current] (current) | [current regime] | [score] | [score] | [one-sentence driver] | [High/Medium/Low] |
-| W[+2]-W[+4] (2-4 weeks) | [expected regime] | [score range] | [score range] | [what to watch] | [confidence] |
-| 6-month | [forecast regime] | [score range] | [score range] | [key assumption] | [confidence] |
-| 12-month | [forecast regime] | [score range] | [score range] | [key assumption] | [confidence] |
+| Time Horizon | Regime | Growth Score | Inflation Score | Liquidity Score | Key Driver | Confidence |
+|---|---|---|---|---|---|---|
+| W[current] (current) | [full 8-regime label] | [score] | [score] | [score] | [one-sentence driver] | [High/Medium/Low] |
+| W[+2]-W[+4] (2-4 weeks) | [expected regime] | [score range] | [score range] | [score range] | [what to watch] | [confidence] |
+| 6-month | [forecast regime] | [score range] | [score range] | [score range] | [key assumption] | [confidence] |
+| 12-month | [forecast regime] | [score range] | [score range] | [score range] | [key assumption] | [confidence] |
 
-The first row is the current state. Rows 2-4 project forward. The JSON `forecast_table` array must mirror this table exactly — one object per row with keys `time_horizon`, `regime`, `growth_score`, `inflation_score`, `key_driver`, `confidence`.
+The first row is the current state. Rows 2-4 project forward. The JSON `forecast_table` array must mirror this table exactly — one object per row with keys `time_horizon`, `regime`, `growth_score`, `inflation_score`, `liquidity_score`, `key_driver`, `confidence`.
 
 ### External Analyst Check
 Read the analyst monitor output from Skill 10 (`outputs/collection/YYYY-Www-analyst-monitor.md`). Summarize the key cross-reference points here:
@@ -205,13 +235,16 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
   "date": "2026-03-24",
 
   "regime": {
-    "quadrant": "Stagflation",
+    "regime": "Stagflation — Tight Liquidity",
+    "regime_family": "Stagflation",
+    "liquidity_condition": "tight",
     "weeks_held": 4,
     "direction": "Stable",
     "confidence": "High",
     "change_from_last_week": "No change",
     "growth_score": -0.28,
     "inflation_score": 0.42,
+    "liquidity_score": -0.35,
     "regime_change_probability": "10%"
   },
 
@@ -230,12 +263,16 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
   "forecasts": [
     {
       "horizon": "6-month",
-      "regime": "Disinflationary Slowdown",
+      "regime": "Disinfl. Slowdown — Ample Liquidity",
+      "regime_family": "Disinflationary Slowdown",
+      "liquidity_condition": "ample",
       "probability": 0.60,
-      "alternative_regime": "Stagflation",
+      "alternative_regime": "Stagflation — Tight Liquidity",
       "alternative_probability": 0.35,
       "growth_score_range": [0.10, -0.30],
       "inflation_score_range": [-0.10, 0.30],
+      "liquidity_score_range": [0.10, 0.40],
+      "liquidity_trajectory": "Fed expected to pause QT by Q3 → liquidity shifts from tight to ample",
       "key_assumption": "[what has to hold true]",
       "what_would_change_it": "[specific development that shifts trajectory]",
       "confidence": "Moderate-High",
@@ -243,12 +280,16 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
     },
     {
       "horizon": "12-month",
-      "regime": "Goldilocks",
+      "regime": "Goldilocks — Ample Liquidity",
+      "regime_family": "Goldilocks",
+      "liquidity_condition": "ample",
       "probability": 0.45,
-      "alternative_regime": "Disinflationary Slowdown",
+      "alternative_regime": "Disinfl. Slowdown — Ample Liquidity",
       "alternative_probability": 0.40,
       "growth_score_range": [0.15, 0.40],
       "inflation_score_range": [-0.20, 0.10],
+      "liquidity_score_range": [0.20, 0.50],
+      "liquidity_trajectory": "M2 recovery + rate cuts → liquidity stays ample through 2027",
       "key_assumption": "[what has to hold true]",
       "what_would_change_it": "[specific development]",
       "confidence": "Moderate",
@@ -259,18 +300,20 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
   "forecast_table": [
     {
       "time_horizon": "W13 (current)",
-      "regime": "STAGFLATION",
+      "regime": "STAGFLATION — TIGHT LIQUIDITY",
       "growth_score": "-0.28",
       "inflation_score": "+0.42",
-      "key_driver": "Oil elevated; sticky core inflation; policy trapped",
+      "liquidity_score": "-0.35",
+      "key_driver": "Oil elevated; sticky core inflation; policy trapped; M2 contracting",
       "confidence": "HIGH"
     },
     {
       "time_horizon": "W14-16 (2 weeks)",
-      "regime": "STAGFLATION (most likely)",
+      "regime": "STAGFLATION — TIGHT LIQUIDITY (most likely)",
       "growth_score": "-0.20 to -0.40",
       "inflation_score": "+0.35 to +0.50",
-      "key_driver": "Watch oil stabilization; 2-month confirmation filter",
+      "liquidity_score": "-0.30 to -0.40",
+      "key_driver": "Watch oil stabilization; 2-month confirmation filter; QT pace",
       "confidence": "HIGH"
     }
   ],
@@ -287,12 +330,19 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
       "key_data": ["Core CPI 2.47%", "Core PCE +0.364% MoM", "breakevens stable"]
     },
     "liquidity": {
+      "score": 0.35,
+      "condition": "ample",
       "score_description": "structurally loose",
       "nfci": -0.4857,
       "nfci_percentile": 96,
       "nfci_streak_weeks": 25,
       "direction": "stable-loose",
-      "key_data": ["Fed balance sheet $6.66T expanding", "M2 contraction bias -0.81% 4w", "HY OAS 319bp tightening"]
+      "key_data": ["Fed balance sheet $6.66T expanding", "M2 contraction bias -0.81% 4w", "HY OAS 319bp tightening"],
+      "components": {
+        "m2_vs_median": "above",
+        "nfci_vs_median": "below (loose)",
+        "fed_bs_vs_median": "above"
+      }
     }
   },
 
@@ -353,6 +403,8 @@ meta:
     regime_weeks_held: [number — from regime_week_count.py script output. Do NOT compute this yourself.]
     growth_score: [number, -1.0 to 1.0]
     inflation_score: [number, -1.0 to 1.0]
+    liquidity_score: [number, -1.0 to 1.0]
+    liquidity_condition: [ample/tight]
   notes: "[any issues — e.g., 'positioning data unavailable, synthesis based on 4 of 5 inputs']"
 ---
 ```

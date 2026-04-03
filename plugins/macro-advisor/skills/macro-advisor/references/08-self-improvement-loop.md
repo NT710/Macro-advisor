@@ -29,6 +29,8 @@ Read ALL of the following:
 8. Structural Scanner meta (bi-weekly — read from `outputs/structural/YYYY-Www-structural-scan.md` if it ran this cycle)
 9. Structural Scanner last-run tracker (`outputs/structural/last-scan.json` — always read, even on weeks the scanner didn't run)
 10. Regime Evaluator output (`outputs/synthesis/YYYY-Www-regime-evaluation.md`) and evaluation history (`outputs/synthesis/regime-evaluation-history.json`)
+11. Empirical Sentiment output (`outputs/synthesis/empirical-sentiment.json`) — analog count, mean similarity, surprises, per-asset signal confidence
+12. Trading engine improvement output (if available, from prior week) — for cross-checking empirical sentiment hard rule compliance in section 2g-v. This runs on a separate schedule so may be one week behind.
 
 Also read the prior improvement loop output (if it exists) for trend context and to check whether previous amendments were effective.
 
@@ -52,6 +54,7 @@ From each skill's meta block, extract and compile:
 | Thesis Monitor | [score] | [conf] | — | — | — | — |
 | Structural Scanner | [score or "skipped"] | [conf] | [signals: n/6] | [n] | [date] | [date] |
 | Regime Evaluator | [score] | [conf] | blind_diverged: [Y/N] | verdict: [P/R/C] | streak: [N] | — |
+| Empirical Sentiment | [score] | [conf] | analogs: [N], mean_sim: [X] | surprises: [N] | — | — |
 ```
 
 Also compile the complete list of gaps across all skills:
@@ -167,6 +170,29 @@ Value: [current value]
 Healthy range: [expected range]
 Context: [during stability / during transition]
 Implication: [what to do about it]
+```
+
+### 2g-v. Empirical Sentiment Health (from Skill 6c output)
+
+Read `outputs/synthesis/empirical-sentiment.json` if it exists. The analog matcher's out-of-sample backtest showed it does **not** beat naive baselines (57.9% hit rate vs 63.3% naive baseline after debiasing). This means the signal should be treated as informational context, not a directional predictor. Monitor for degradation and misuse.
+
+1. **Prediction asymmetry:** Check `bullish_prediction_pct` across equity tickers. If the model predicts "bullish" >80% of the time for equities, the signal is just restating the equity risk premium — not adding information. Flag as a bias concern.
+
+2. **Naive baseline comparison:** When the backtest is re-run periodically, check `excess_accuracy_vs_naive`. If this is negative (model worse than always predicting the majority direction), the signal is net-negative and should be downweighted or suspended. Current baseline: -5.4pp excess (model is worse than naive).
+
+3. **Confidence inflation:** Check whether signals labeled "high confidence" (n ≥ 20) perform differently from "medium confidence" (n ≥ 10). If there is no difference, the confidence label is misleading and should be flagged for recalibration.
+
+4. **Hard rule compliance (cross-check with T7):** When reading the trading engine's improvement output, check whether any T3 reasoning logs cite empirical sentiment as the primary driver of a position. The hard rule says it must be corroborated by a named concrete signal. If compliance is unclear, flag for human review.
+
+5. **Surprise signal noise rate:** Track what percentage of flagged "surprises" from the analog matcher were later evaluated as noise vs. genuine structural patterns. If >80% of surprises are noise after 8+ weeks of tracking, propose tightening the surprise detection criteria or removing the surprise feature entirely.
+
+For each issue found:
+```
+EMPIRICAL SENTIMENT HEALTH: [description]
+Metric: [which metric]
+Value: [current value]
+Concern: [what's wrong]
+Recommendation: [downweight / suspend / recalibrate / keep monitoring]
 ```
 
 ### 2h. Analytical Accuracy (Prior Week Scorecard)

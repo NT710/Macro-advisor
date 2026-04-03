@@ -51,7 +51,11 @@ Before doing anything else, read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/ref
           "amendments_at_stamp": ["A-2026W12-001", "A-2026W13-002", ...]
         }
         ```
-     5. Continue the run normally. Do not block. The reconciliation is advisory — the system keeps running with existing amendments. Skill 8 (Self-Improvement Loop) will naturally re-evaluate amendment effectiveness against the updated skill outputs.
+     5. **Show changelog.** Read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md`. If it exists, find the section heading matching the new version (e.g., `## v0.8.0`). Display everything from that heading until the next `## v` heading (or end of file) under:
+        > **What's new in v{new}:**
+        > [changelog section content]
+        If `CHANGELOG.md` does not exist, skip silently.
+     6. Continue the run normally. Do not block. The reconciliation is advisory — the system keeps running with existing amendments. Skill 8 (Self-Improvement Loop) will naturally re-evaluate amendment effectiveness against the updated skill outputs.
 4. Read `workspace_path` from config. If the current working directory does not match `workspace_path`, `cd` to `workspace_path` so all relative output paths resolve correctly.
 5. Determine the current date and ISO week number. All output files use the format: `YYYY-Www-[skill-name].md`.
 6. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/SKILL.md` for system overview and execution chain.
@@ -86,7 +90,7 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/dat
 ```
 **If the pre-flight check fails (non-zero exit code), STOP.** Do not proceed to any skill. The check validates that: (1) the snapshot was generated within the last 18 hours — not yesterday, not last week; (2) key market data (oil, S&P, gold, VIX) is present; (3) config is valid. A failed pre-flight means every downstream output will be built on stale or missing data. Fix the issue (usually: re-run the data collector) and re-run the check until it passes.
 
-## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9
+## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if candidates flagged)→blind-spot-refresh→8→12→9
 
 Each skill MUST:
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/RULES.md` (re-read for each skill to keep guardrails in context)
@@ -168,6 +172,15 @@ Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-syn
 **Note:** Do NOT read Skill 13 (Structural Scanner) output here. The synthesis is a cyclical regime assessment. Structural imbalances enter through a separate pipeline: Skill 13 → Skill 11 → Skill 7.
 Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 
+**Checkpoint — Skill 6 outputs:**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
+  --week YYYY-Www --output-dir outputs/ \
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
+  --skill skill_6_synthesis
+```
+If the check fails, re-run Skill 6. Do not proceed to Skill 6b until the synthesis file exists.
+
 ### PRE-SKILL 6b: Evaluation Divergence Streak
 Before running the regime evaluator, compute the divergence streak from the evaluation history file. This is a deterministic calculation — the LLM must NOT compute this count itself.
 
@@ -186,6 +199,29 @@ Does NOT read: prior week's synthesis, regime-history.json, regime streak output
 Save to: `outputs/synthesis/YYYY-Www-regime-evaluation.md`
 Update: `outputs/synthesis/regime-evaluation-history.json`
 
+**Checkpoint — Skill 6b outputs:**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
+  --week YYYY-Www --output-dir outputs/ \
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
+  --skill skill_6b_regime_evaluation
+```
+If the check fails, re-run Skill 6b. Do not proceed until both the regime evaluation markdown and history JSON exist.
+
+### SKILL 6c: Empirical Sentiment (Analog Matching)
+Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06c-empirical-sentiment.md`
+Runs after Skill 6. Consumes the current state vector from `outputs/synthesis/YYYY-Www-synthesis-data.json`.
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/analog_matcher.py \
+  --fred-key "FRED_KEY_FROM_CONFIG" \
+  --output-dir outputs/synthesis/ \
+  --state-file outputs/synthesis/YYYY-Www-synthesis-data.json
+```
+
+If the synthesis-data.json sidecar is not available (older format), skip Skill 6c: "Empirical sentiment: skipped — synthesis-data.json not available."
+Save to: `outputs/synthesis/empirical-sentiment.json`
+
 ### SKILL 7: Thesis Generator & Monitor
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/07-thesis-generator-monitor.md`
 Read: synthesis + active theses in `outputs/theses/active/` + analyst themes index (`outputs/collection/analyst-themes.md`) + current week analyst monitor output (`outputs/collection/YYYY-Www-analyst-monitor.md`) + data snapshot. If a theme in the index is relevant to an active thesis, follow the Detail link to read the full weekly analyst file for substance.
@@ -202,12 +238,88 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/etf_lookup.py --theme "[keywords]"
 Save candidates to: `outputs/theses/active/DRAFT-[name].md`
 Save monitor: `outputs/collection/YYYY-Www-thesis-monitor.md`
 
-### SKILL 11: Structural Research (IF TRIGGERED by Skill 7)
+**Checkpoint — Skill 7 outputs (thesis monitor + sidecar quality):**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
+  --week YYYY-Www --output-dir outputs/ \
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
+  --skill skill_7_thesis_monitor
+```
+If the check fails, it will report exactly which thesis sidecars are missing, have stale Updated dates, or contain stub/placeholder content instead of real structured data. Fix the failing sidecars before proceeding — this is far cheaper than catching it at the end-of-run postrun check when the thesis context has been evicted.
+
+### SKILL 11: Structural Research (MANDATORY when Skill 7 flags candidates)
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/11-structural-research.md`
-Runs if Skill 7 flagged a structural thesis candidate (from data patterns, analyst-sourced, or structural scanner). Most weeks this does not fire. When triggered by a scanner candidate, the candidate file already contains the quantified imbalance, binding constraint, and bear case inputs — use these as Phase 1 starting points rather than researching from scratch.
+**NON-NEGOTIABLE:** If Skill 7 flagged investigation candidates (check the meta block field `total_investigations_triggered`), Skill 11 MUST execute for ALL flagged candidates. You may NOT defer, skip, or postpone Skill 11 investigations for any reason including "scope of this run", time constraints, context limits, or any other discretionary justification. The ONLY legitimate reason to not investigate a flagged candidate is the 5-candidate cap in Skill 7 (which means Skill 7 already deferred it — Skill 11 never sees it). If Skill 7 sent it, Skill 11 runs it.
+Most weeks no candidates are flagged and Skill 11 does not fire — that is normal. But when candidates ARE flagged, execution is mandatory, not optional.
+When triggered by a scanner candidate, the candidate file already contains the quantified imbalance, binding constraint, and bear case inputs — use these as Phase 1 starting points rather than researching from scratch.
 Data access: read `outputs/data/latest-snapshot.json` first. For FRED series not in the snapshot, pull on-demand to `outputs/data/research-temp/`. Use `etf_lookup.py` for price data. Web search for everything else.
 For analyst-sourced investigations: the analyst's framework is a hypothesis to test, not a conclusion. Evidence independence must be assessed — if the research can't find support beyond the originating analyst's own claims, conviction is reduced.
 Save to: `outputs/research/STRUCTURAL-[theme-name]-[date].md`
+
+### BLIND SPOT COVERAGE REFRESH (weekly, after Skill 7)
+
+Re-evaluate whether the active thesis book covers the causal chain impacts identified in the quarterly Decade Horizon (Skill 14). This keeps the Mega Forces tab's blind spot data current between quarterly runs — mega forces themselves stay quarterly, but coverage status updates weekly as theses activate or close.
+
+**Skip if:** `outputs/strategic/latest-horizon-data.json` does not exist (Skill 14 has never run — no blind spots to refresh).
+
+**Step 1: Gather context.**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/refresh_blind_spots.py --output-dir outputs/
+```
+If the script prints "No horizon data found" or "No second/third-order impacts to check", skip the rest of this section.
+
+**Step 2: Evaluate coverage.**
+Read `outputs/strategic/blind-spot-refresh-context.json`. For each second and third-order impact listed in `impacts_to_check`, check against the `active_theses` summaries:
+- **Covered:** An active thesis directly addresses this impact.
+- **Partially covered:** An active thesis touches the area but through a different mechanism or timeline.
+- **Blind spot:** No active thesis addresses this impact.
+
+This is the same Phase 3 logic from Skill 14, applied to the current thesis book. Do NOT re-evaluate mega-forces, causal chains, or run any new research. Just the coverage comparison.
+
+**Step 3: Write result and apply.**
+Write the evaluation result to `outputs/strategic/blind-spot-refresh-result.json`:
+```json
+{
+  "prior_blind_spot_count": 4,
+  "blind_spots": [
+    {
+      "priority": "HIGH",
+      "name": "Supply Chain Bifurcation",
+      "coverage_gap": "description of what the thesis book misses",
+      "investability": "HIGH",
+      "timeline": "2-5 years",
+      "recommendation": "FLAG FOR SKILL 13"
+    }
+  ],
+  "force_coverage": [
+    {"name": "Fiscal Dominance Crystallization", "coverage_status": "WELL-COVERED"}
+  ],
+  "changes_summary": "1 blind spot resolved (now covered by ACTIVE-supply-chain-thesis.md), 0 new blind spots"
+}
+```
+
+Then apply:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/refresh_blind_spots.py --output-dir outputs/ --apply outputs/strategic/blind-spot-refresh-result.json
+```
+
+The script updates `latest-horizon-data.json` in place (blind_spots array + meta counts) and writes a refresh log to `outputs/strategic/blind-spot-refreshes/`.
+
+**Note:** This step is lightweight — it's a coverage comparison, not a full Skill 14 run. No mega-force identification, no causal chain mapping, no contrarian stress test. Those remain quarterly.
+
+### POST-SKILL-11 VALIDATION (mandatory checkpoint)
+
+After Skill 11 completes (or after Skill 7 if no candidates were flagged), verify investigation integrity:
+
+1. Read the Skill 7 meta block from this week's thesis monitor output (`outputs/collection/YYYY-Www-thesis-monitor.md`)
+2. Extract `total_investigations_triggered` count
+3. If count > 0: list all `outputs/research/STRUCTURAL-*-[today's date].md` files produced this run
+4. If research briefs produced < investigations triggered:
+   - **STOP.** Do not proceed to Skill 8.
+   - Report: "INVESTIGATION INTEGRITY FAILURE: Skill 7 flagged [N] candidates but only [M] research briefs were produced. Missing: [list candidates without briefs]."
+   - Re-run Skill 11 for the missing candidates.
+   - Only proceed when brief count matches candidate count.
+5. If count == 0: proceed (no investigations expected).
 
 ### SKILL 8: Self-Improvement Loop
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/08-self-improvement-loop.md` + meta blocks from all outputs (including Skill 14 decade horizon meta if it ran, Skill 13 structural scanner meta if it ran) + structural scanner last-run tracker (`outputs/structural/last-scan.json`) + decade horizon last-run tracker (`outputs/strategic/last-horizon.json` if exists) + regime evaluator output (`outputs/synthesis/YYYY-Www-regime-evaluation.md`) + evaluation history (`outputs/synthesis/regime-evaluation-history.json`) + prior improvement output (if exists).
@@ -234,6 +346,15 @@ The memo is narrative prose — no markdown tables, no bullet lists, no formatte
 Save memo to: `outputs/briefings/YYYY-Www-briefing.md`
 Save JSON sidecar to: `outputs/briefings/YYYY-Www-briefing-data.json` (e.g. `2026-W13-briefing-data.json` — the week prefix is mandatory)
 
+**Checkpoint — Skill 9 outputs:**
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
+  --week YYYY-Www --output-dir outputs/ \
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
+  --skill skill_9_briefing
+```
+If the check fails, re-run Skill 9. Both the briefing markdown and the briefing-data.json sidecar are required for dashboard generation.
+
 ## DASHBOARD GENERATION
 
 After Skill 9, generate the HTML dashboard.
@@ -242,10 +363,29 @@ After Skill 9, generate the HTML dashboard.
 Before running the dashboard generator, update the regime history file used for the regime trail visualization:
 
 1. Read `outputs/regime-history.json` (create if it doesn't exist — start with an empty array `[]`).
-2. Read the current week's synthesis meta block for `growth_score` and `inflation_score`. If these fields are missing (older synthesis format), fall back to the discrete coordinate mapping: Goldilocks=(0.5, -0.5), Overheating=(0.5, 0.5), Stagflation=(-0.5, 0.5), Disinflation=(-0.5, -0.5).
-3. Append a new entry for the current week: `{"week": "YYYY-Www", "x": growth_score, "y": inflation_score, "regime": "quadrant_name", "confidence": "High/Medium/Low"}`.
+2. Read the current week's synthesis-data.json for regime fields. If the JSON sidecar is not available, read the synthesis meta block. If `growth_score` and `inflation_score` are missing (older format), fall back to the discrete coordinate mapping: Goldilocks=(0.5, -0.5), Overheating=(0.5, 0.5), Stagflation=(-0.5, 0.5), Disinflation=(-0.5, -0.5).
+3. Append a new entry for the current week:
+   ```json
+   {
+     "week": "YYYY-Www",
+     "x": growth_score,
+     "y": inflation_score,
+     "regime": "full 8-regime label",
+     "regime_family": "quadrant_name",
+     "liquidity_condition": "ample or tight",
+     "liquidity_score": liquidity_score,
+     "confidence": "High/Medium/Low"
+   }
+   ```
+   If liquidity fields are unavailable (pre-upgrade synthesis), omit `liquidity_condition` and `liquidity_score` — the entry remains valid with just `regime` (treated as `regime_family`).
 4. If an entry for this week already exists (same-week rerun), overwrite it rather than appending a duplicate.
 5. Save the updated `outputs/regime-history.json`.
+
+**Backfill check:** If `outputs/regime-history.json` exists but entries lack `regime_family` or `liquidity_condition` fields (pre-8-regime data), run the backfill:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/regime_backtest.py --backfill --history outputs/regime-history.json
+```
+This retroactively tags all historical entries with 8-regime labels using the FRED liquidity data. Run once — subsequent entries will include liquidity fields automatically.
 
 Then generate the dashboard:
 ```bash
@@ -283,7 +423,7 @@ Only proceed to the post-run summary once the check exits 0.
 Present to the user:
 
 1. **Dashboard** — link to the HTML dashboard file (this contains the full briefing, regime map, theses, and system health — no need to share the briefing markdown separately)
-2. **Regime identified** — which quadrant, confidence level, and whether it changed from last week
+2. **Regime identified** — full 8-regime label (family + liquidity condition), confidence level, and whether it changed from last week
 3. **Active theses** — count of ACTIVE- and DRAFT- files, any new or invalidated this week
 4. **Draft thesis recommendations** — render a table of all DRAFT- theses. Source this by: (1) listing `outputs/theses/active/` and collecting every file with a `DRAFT-` prefix — this is the authoritative set, not the Skill 12 briefing cards; (2) for each draft thesis, read its JSON sidecar (`outputs/theses/active/DRAFT-[slug]-data.json`) for conviction, direction, and ETFs — the same source the dashboard uses; (3) if no sidecar exists for a thesis, read the thesis file directly and extract those fields. Columns: Thesis Name | Direction | Key ETFs | Conviction | Catalyst/Timeline. If no drafts exist, skip this item.
 5. **Decade horizon** — if it ran this cycle: mega-forces mapped, blind spots identified, blind spots flagged for scanner/research. If skipped: "Decade horizon: last ran [date], next cycle [date]."
@@ -297,7 +437,7 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 
 1. Read RULES.md before anything else and re-read before each skill.
 2. Run Skill 0 first. Everything depends on it.
-3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→7→11(if triggered)→8→12→9.
+3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→11(if candidates flagged)→blind-spot-refresh→8→12→9.
 4. Every number must be sourced. Never fabricate.
 5. All investment views use specific ETF tickers. User's preferred currency where available.
 6. Write briefing and theses in accessible language.
@@ -312,3 +452,4 @@ If Skill 8 proposed any amendments, include: "X skill amendments proposed this w
 15. Analyst-sourced thesis candidates must be tagged with provenance. Max 2 per week. Skill 11 is the quality filter — not a human approval gate.
 16. Analyst-sourced investigations must produce independent evidence. If evidence base relies primarily on the originating analyst, conviction is reduced.
 17. Skill 6b reads no regime history and no evaluation history. The divergence streak comes from a deterministic script, not from the LLM reading the history file.
+18. Skill 11 is MANDATORY when Skill 7 flags candidates. Never defer flagged investigations for "scope" reasons. The post-Skill-11 validation checkpoint enforces this — if briefs don't match flagged count, the run stops.

@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
 Macro Advisor — Regime Backtest
-Tests whether the four-quadrant regime model (Growth × Inflation) has predictive
-power for forward asset class returns, and whether a liquidity overlay improves it.
+Tests whether the eight-regime model (Growth × Inflation × Liquidity) has predictive
+power for forward asset class returns.
 
-Layer 1: Four-quadrant regime → forward 1/3/6M asset returns
-Layer 2: Four-quadrant regime × liquidity condition → forward asset returns
+Layer 1: Four-quadrant regime family (Growth × Inflation) → forward 1/3/6M asset returns
+Layer 2: Eight-regime model (Growth × Inflation × Liquidity) → forward asset returns
+Layer 3: Liquidity value-added analysis (how much does the liquidity axis improve signal?)
+
+Naming convention:
+    "[Family] — [Ample/Tight] Liquidity"
+    e.g. "Goldilocks — Ample Liquidity", "Stagflation — Tight Liquidity"
 
 Usage:
     python regime_backtest.py --fred-key YOUR_KEY --output-dir ./outputs/backtest/
     python regime_backtest.py --fred-key YOUR_KEY --output-dir ./outputs/backtest/ --years 15
+    python regime_backtest.py --fred-key YOUR_KEY --output-dir ./outputs/backtest/ --backfill --history outputs/regime-history.json
 """
 
 import argparse
@@ -284,8 +290,9 @@ def classify_regimes(fred_data):
         confirmed.append(current_confirmed)
 
     monthly["regime"] = confirmed
-
-    monthly["regime"] = monthly.apply(assign_regime, axis=1)
+    # NOTE: The confirmed regime is the authoritative classification.
+    # The 2-month confirmation filter prevents single-month noise flips.
+    # Do NOT overwrite with raw regime assignment.
 
     # --- Liquidity overlay ---
     # Use RELATIVE thresholds (rolling 36-month median) not absolute levels.
@@ -324,6 +331,23 @@ def classify_regimes(fred_data):
         monthly["liquidity_condition"] = monthly["liquidity_score"].apply(
             lambda x: "strong_loose" if x >= 0.8 else "loose" if x > 0.5
             else "tight" if x > 0.2 else "strong_tight")
+
+    # --- Eight-regime classification ---
+    # Combine regime family (4-quadrant) with liquidity condition (ample/tight)
+    # to create the full 8-regime label.
+    # regime_family preserves the 4-quadrant label for backward compatibility
+    # (kill switches, streak counting, template lookup all use regime_family).
+    monthly["regime_family"] = monthly["regime"]
+
+    if "liquidity_binary" in monthly.columns:
+        monthly["regime_8"] = monthly.apply(
+            lambda row: f"{row['regime']} — {'Ample' if row['liquidity_binary'] == 'loose' else 'Tight'} Liquidity"
+            if pd.notna(row.get("regime")) and pd.notna(row.get("liquidity_binary"))
+            else row.get("regime"),
+            axis=1
+        )
+    else:
+        monthly["regime_8"] = monthly["regime"]
 
     # Drop rows where regime couldn't be assigned
     monthly = monthly.dropna(subset=["regime"])
@@ -378,7 +402,7 @@ def analyze_regime_returns(regime_df, returns_df):
 
         for col in returns_df.columns:
             vals = subset[col].dropna()
-            if len(vals) < 3:
+            if len(vals) < 10:
                 continue
             regime_stats["assets"][col] = {
                 "mean": round(float(vals.mean()), 2),
@@ -388,6 +412,7 @@ def analyze_regime_returns(regime_df, returns_df):
                 "p25": round(float(vals.quantile(0.25)), 2),
                 "p75": round(float(vals.quantile(0.75)), 2),
                 "n": int(len(vals)),
+                "low_n_warning": len(vals) < 20,
             }
 
         results[regime] = regime_stats
@@ -395,9 +420,58 @@ def analyze_regime_returns(regime_df, returns_df):
     return results
 
 
+def analyze_eight_regimes(regime_df, returns_df):
+    """
+    Layer 2: Eight-regime model (Growth × Inflation × Liquidity).
+    Returns stats keyed by the full 8-regime label.
+    """
+    if "regime_8" not in regime_df.columns:
+        return None
+
+    combined = regime_df.join(returns_df, how="inner")
+    results = {}
+
+    # All 8 regime labels
+    eight_regimes = [
+        "Goldilocks — Ample Liquidity", "Goldilocks — Tight Liquidity",
+        "Overheating — Ample Liquidity", "Overheating — Tight Liquidity",
+        "Disinflationary Slowdown — Ample Liquidity", "Disinflationary Slowdown — Tight Liquidity",
+        "Stagflation — Ample Liquidity", "Stagflation — Tight Liquidity",
+    ]
+
+    for regime_8 in eight_regimes:
+        mask = combined["regime_8"] == regime_8
+        subset = combined[mask]
+        n_months = int(mask.sum())
+
+        if n_months < 10:
+            results[regime_8] = {"n_months": n_months, "assets": {}, "insufficient_data": True}
+            continue
+
+        stats = {"n_months": n_months, "assets": {}}
+        for col in returns_df.columns:
+            vals = subset[col].dropna()
+            if len(vals) < 10:
+                continue
+            stats["assets"][col] = {
+                "mean": round(float(vals.mean()), 2),
+                "median": round(float(vals.median()), 2),
+                "std": round(float(vals.std()), 2),
+                "win_rate": round(float((vals > 0).mean()) * 100, 1),
+                "p25": round(float(vals.quantile(0.25)), 2),
+                "p75": round(float(vals.quantile(0.75)), 2),
+                "n": int(len(vals)),
+                "low_n_warning": len(vals) < 20,
+            }
+        results[regime_8] = stats
+
+    return results
+
+
 def analyze_liquidity_overlay(regime_df, returns_df):
     """
-    Layer 2: Same as Layer 1 but conditioned on liquidity (loose vs tight).
+    Legacy Layer 2 format: Same as Layer 1 but conditioned on liquidity (loose vs tight).
+    Kept for backward compatibility with existing reports.
     """
     if "liquidity_binary" not in regime_df.columns:
         return None
@@ -412,21 +486,24 @@ def analyze_liquidity_overlay(regime_df, returns_df):
             subset = combined[mask]
             n_months = int(mask.sum())
 
-            if n_months < 3:
+            if n_months < 10:
                 results[key] = {"n_months": n_months, "assets": {}, "insufficient_data": True}
                 continue
 
             stats = {"n_months": n_months, "assets": {}}
             for col in returns_df.columns:
                 vals = subset[col].dropna()
-                if len(vals) < 3:
+                if len(vals) < 10:
                     continue
                 stats["assets"][col] = {
                     "mean": round(float(vals.mean()), 2),
                     "median": round(float(vals.median()), 2),
                     "std": round(float(vals.std()), 2),
                     "win_rate": round(float((vals > 0).mean()) * 100, 1),
+                    "p25": round(float(vals.quantile(0.25)), 2),
+                    "p75": round(float(vals.quantile(0.75)), 2),
                     "n": int(len(vals)),
+                    "low_n_warning": len(vals) < 20,
                 }
             results[key] = stats
 
@@ -549,7 +626,7 @@ def compute_liquidity_value_added(layer1, layer2):
 # ---------------------------------------------------------------------------
 
 def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
-                         regime_df, returns_df, years):
+                         regime_df, returns_df, years, layer2_eight=None):
     """Generate a self-contained HTML report with tables and charts."""
 
     regime_colors = {
@@ -571,8 +648,30 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
     dist_values = json.dumps(list(regime_counts.values()))
     dist_colors = json.dumps([regime_colors.get(r, "#888") for r in regime_counts.keys()])
 
-    # Build Layer 1 return tables (3M focus)
-    def build_return_table(data, window="3M"):
+    # Extended color map for 8-regime labels
+    eight_regime_colors = {
+        "Goldilocks — Ample Liquidity": "#16a34a",
+        "Goldilocks — Tight Liquidity": "#86efac",
+        "Overheating — Ample Liquidity": "#ea580c",
+        "Overheating — Tight Liquidity": "#fdba74",
+        "Disinflationary Slowdown — Ample Liquidity": "#2563eb",
+        "Disinflationary Slowdown — Tight Liquidity": "#93c5fd",
+        "Stagflation — Ample Liquidity": "#dc2626",
+        "Stagflation — Tight Liquidity": "#fca5a5",
+    }
+
+    def _regime_family_color(regime_name):
+        """Get color for a regime name — works for both 4-regime and 8-regime labels."""
+        if regime_name in regime_colors:
+            return regime_colors[regime_name]
+        if regime_name in eight_regime_colors:
+            return eight_regime_colors[regime_name]
+        # Fallback: extract family from "Family — Liquidity" pattern
+        family = regime_name.split(" — ")[0].split(" + ")[0] if " — " in regime_name or " + " in regime_name else regime_name
+        return regime_colors.get(family, "#888")
+
+    # Build return tables (works for both 4-regime and 8-regime data)
+    def build_return_table(data, window="3M", regime_names=None):
         assets_seen = set()
         for regime_data in data.values():
             if isinstance(regime_data, dict) and "assets" in regime_data:
@@ -584,12 +683,17 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
         if not assets:
             return "<p>No data available for this window.</p>"
 
+        # Use provided regime names, or auto-detect from data keys
+        if regime_names is None:
+            regime_names = ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]
+
         rows = ""
-        for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+        for regime in regime_names:
             rd = data.get(regime, {})
             n = rd.get("n_months", 0)
-            color = regime_colors.get(regime, "#888")
-            row = f'<tr><td style="border-left: 4px solid {color}; padding-left: 8px; font-weight: 600;">{regime}</td><td>{n}</td>'
+            color = _regime_family_color(regime)
+            warn = " ⚠" if rd.get("insufficient_data") else (" *" if any(a.get("low_n_warning") for a in rd.get("assets", {}).values()) else "")
+            row = f'<tr><td style="border-left: 4px solid {color}; padding-left: 8px; font-weight: 600;">{regime}{warn}</td><td>{n}</td>'
             for asset in assets:
                 ad = rd.get("assets", {}).get(asset, {})
                 mean = ad.get("mean", "—")
@@ -615,15 +719,28 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
     layer1_3m = build_return_table(layer1, "3M")
     layer1_6m = build_return_table(layer1, "6M")
 
-    # Build Layer 2 tables
+    # Build Layer 2 tables (liquidity overlay with correct regime names from data)
     layer2_html = ""
     if layer2:
-        layer2_3m = build_return_table(layer2, "3M")
+        layer2_regime_names = [k for k in layer2.keys() if not k.startswith("_")]
+        layer2_3m = build_return_table(layer2, "3M", regime_names=layer2_regime_names)
         layer2_html = f"""
         <div class="section">
-            <h2>Layer 2: Regime × Liquidity — 3-Month Forward Returns</h2>
+            <h2>Layer 2: Regime × Liquidity (Legacy Overlay) — 3-Month Forward Returns</h2>
             <p class="subtitle">Does conditioning on liquidity (M2 growth + NFCI) improve the signal?</p>
             {layer2_3m}
+        </div>"""
+
+    # Build Layer 2 eight-regime tables
+    layer2_eight_html = ""
+    if layer2_eight:
+        eight_regime_names = sorted([k for k in layer2_eight.keys() if not k.startswith("_")])
+        l2e_3m = build_return_table(layer2_eight, "3M", regime_names=eight_regime_names)
+        layer2_eight_html = f"""
+        <div class="section">
+            <h2>Layer 2: Full 8-Regime Model — 3-Month Forward Returns</h2>
+            <p class="subtitle">Growth × Inflation × Liquidity: each of the 8 regimes independently. (* = low N warning, ⚠ = insufficient data)</p>
+            {l2e_3m}
         </div>"""
 
     # Build liquidity value-added table
@@ -695,11 +812,6 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
 
     # Build regime timeline data for chart
     # We need month-by-month data for the stacked area / bar chart
-    regime_monthly = []
-    sp500_monthly = []
-    if "^GSPC" in []:  # We'll use returns_df
-        pass
-
     combined = regime_df.join(returns_df, how="inner")
     chart_dates = [d.strftime("%Y-%m") for d in combined.index]
     chart_regimes = combined["regime"].tolist()
@@ -707,14 +819,6 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
         {"Goldilocks": 0, "Overheating": 1, "Disinflationary Slowdown": 2, "Stagflation": 3}.get(r, -1)
         for r in chart_regimes
     ]
-
-    # Get S&P 500 levels for overlay
-    sp500_col = [c for c in returns_df.columns if "S&P_500" in c.replace("and", "&") or "S&P" in c]
-    # Actually let's just find the column
-    sp500_levels = []
-    if "^GSPC" in YAHOO_ASSETS:
-        # We need raw prices, not returns. Let's pass them through.
-        pass
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -801,15 +905,15 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
         <div>
             <h3 style="margin-bottom: 12px; font-size: 1.1em;">Classification Logic</h3>
             <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
-                <strong>Growth axis:</strong> 3-month direction of Industrial Production YoY, Unemployment Rate (inverted),
-                Retail Sales YoY, Nonfarm Payrolls YoY. Majority vote.
+                <strong>Growth axis:</strong> 6-month direction of Industrial Production YoY, Unemployment Rate (inverted),
+                Retail Sales YoY, Nonfarm Payrolls YoY. Majority vote. 2-month confirmation filter.
             </p>
             <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
-                <strong>Inflation axis:</strong> 3-month direction of CPI YoY, with Core CPI as confirmation.
+                <strong>Inflation axis:</strong> 6-month direction of CPI YoY, with Core CPI as confirmation/tiebreaker.
             </p>
             <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
-                <strong>Liquidity overlay:</strong> M2 YoY growth (expanding >2% / contracting <0%) combined with
-                NFCI (negative = loose, positive = tight).
+                <strong>Liquidity overlay:</strong> M2 YoY, NFCI (inverted), Fed balance sheet YoY —
+                each compared to its own 36-month rolling median. Majority vote determines loose/tight.
             </p>
             <table class="data-table" style="margin-top: 12px;">
                 <thead><tr><th></th><th>Inflation Falling</th><th>Inflation Rising</th></tr></thead>
@@ -832,9 +936,9 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
     <p class="subtitle">Average forward total return from each regime. Green = positive, red = negative. Win rate = % of months with positive return.</p>
 
     <div class="tabs">
-        <button class="tab active" onclick="showTab('l1', '1m')">1-Month</button>
-        <button class="tab" onclick="showTab('l1', '3m')">3-Month</button>
-        <button class="tab" onclick="showTab('l1', '6m')">6-Month</button>
+        <button class="tab active" onclick="showTab('l1', '1m', event)">1-Month</button>
+        <button class="tab" onclick="showTab('l1', '3m', event)">3-Month</button>
+        <button class="tab" onclick="showTab('l1', '6m', event)">6-Month</button>
     </div>
     <div id="l1-1m" class="tab-content active">{layer1_1m}</div>
     <div id="l1-3m" class="tab-content">{layer1_3m}</div>
@@ -842,6 +946,7 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
 </div>
 
 {layer2_html}
+{layer2_eight_html}
 {lva_html}
 {trans_html}
 
@@ -913,13 +1018,13 @@ new Chart(document.getElementById('timelineChart'), {{
 }});
 
 // Tab switching
-function showTab(group, tab) {{
+function showTab(group, tab, evt) {{
     document.querySelectorAll(`#${{group}}-1m, #${{group}}-3m, #${{group}}-6m`).forEach(el => el.classList.remove('active'));
     document.getElementById(`${{group}}-${{tab}}`).classList.add('active');
     // Update tab buttons
     const section = document.getElementById(`${{group}}-${{tab}}`).closest('.section');
     section.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
+    if (evt && evt.target) evt.target.classList.add('active');
 }}
 </script>
 
@@ -933,11 +1038,86 @@ function showTab(group, tab) {{
 # MAIN
 # ---------------------------------------------------------------------------
 
+def backfill_regime_history(regime_df, history_path):
+    """
+    Backfill regime-history.json with 8-regime labels for all historical months.
+
+    Uses the regime classification from the backtest to add regime_family,
+    liquidity_condition, and regime_8 fields to each entry. Existing entries
+    are updated; new entries are added for months not yet in the file.
+
+    Args:
+        regime_df: DataFrame from classify_regimes() with regime_8, regime_family,
+                   liquidity_binary, growth_score, inflation_score, liquidity_score columns.
+        history_path: Path to the regime-history.json file.
+    """
+    history_path = Path(history_path)
+
+    # Load existing history if present
+    existing = []
+    if history_path.exists():
+        with open(history_path) as f:
+            existing = json.load(f)
+
+    # Build a lookup of existing entries by week
+    existing_by_week = {}
+    for entry in existing:
+        existing_by_week[entry.get("week", "")] = entry
+
+    # Convert monthly regime data to weekly-like entries
+    # The backtest produces monthly data; regime-history.json uses ISO weeks.
+    # We'll create one entry per month, using the last ISO week of that month.
+    for date, row in regime_df.iterrows():
+        iso_year, iso_week, _ = date.isocalendar()
+        week_key = f"{iso_year}-W{iso_week:02d}"
+
+        entry = existing_by_week.get(week_key, {})
+        entry["week"] = week_key
+
+        # Core regime data
+        entry["regime"] = row.get("regime_8", row.get("regime"))
+        entry["regime_family"] = row.get("regime_family", row.get("regime"))
+
+        # Liquidity condition
+        liq_binary = row.get("liquidity_binary")
+        if pd.notna(liq_binary):
+            entry["liquidity_condition"] = "ample" if liq_binary == "loose" else "tight"
+        else:
+            entry["liquidity_condition"] = None
+
+        # Continuous scores
+        if "growth_score" in row and pd.notna(row["growth_score"]):
+            entry["x"] = round(float(row["growth_score"]), 4)
+        if "inflation_score" in row and pd.notna(row["inflation_score"]):
+            entry["y"] = round(float(row["inflation_score"]), 4)
+        if "liquidity_score" in row and pd.notna(row["liquidity_score"]):
+            entry["liquidity_score"] = round(float(row["liquidity_score"]), 4)
+
+        # Confidence (backfilled data gets "Backfilled" confidence)
+        if "confidence" not in entry:
+            entry["confidence"] = "Backfilled"
+
+        existing_by_week[week_key] = entry
+
+    # Sort by week and write
+    all_entries = sorted(existing_by_week.values(), key=lambda e: e.get("week", ""))
+
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(history_path, "w") as f:
+        json.dump(all_entries, f, indent=2, default=str)
+
+    return len(all_entries)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Macro Advisor — Regime Backtest")
     parser.add_argument("--fred-key", required=True, help="FRED API key")
     parser.add_argument("--output-dir", required=True, help="Output directory for results")
     parser.add_argument("--years", type=int, default=10, help="Years of history (default: 10)")
+    parser.add_argument("--backfill", action="store_true",
+                        help="Backfill regime-history.json with 8-regime labels")
+    parser.add_argument("--history", type=str, default=None,
+                        help="Path to regime-history.json (required with --backfill)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -968,6 +1148,24 @@ def main():
         for liq, count in regime_df["liquidity_binary"].value_counts().items():
             print(f"    {liq}: {count} months")
 
+    if "regime_8" in regime_df.columns:
+        print(f"  Eight-regime distribution:")
+        for regime_8, count in regime_df["regime_8"].value_counts().sort_index().items():
+            pct = count / len(regime_df) * 100
+            sufficient = "✓" if count >= 10 else "⚠ <10"
+            print(f"    {regime_8}: {count} months ({pct:.1f}%) {sufficient}")
+
+    # Handle --backfill mode
+    if args.backfill:
+        if not args.history:
+            print("\nERROR: --history path required with --backfill")
+            return 1
+        print(f"\n[BACKFILL] Writing 8-regime labels to {args.history}...")
+        n_entries = backfill_regime_history(regime_df, args.history)
+        print(f"  Backfilled {n_entries} entries")
+        print("  Done. Exiting (backfill-only mode).")
+        return 0
+
     # 3. Compute forward returns
     print("\n[4/6] Computing forward returns...")
     returns_df = compute_forward_returns(yahoo_data, regime_df)
@@ -976,20 +1174,24 @@ def main():
     # 4. Analyze
     print("\n[5/6] Analyzing...")
     layer1 = analyze_regime_returns(regime_df, returns_df)
-    layer2 = analyze_liquidity_overlay(regime_df, returns_df)
+    layer2_eight = analyze_eight_regimes(regime_df, returns_df)
+    layer2_legacy = analyze_liquidity_overlay(regime_df, returns_df)
     transitions = analyze_transitions(regime_df, returns_df)
     timeline = compute_regime_timeline(regime_df)
-    liquidity_va = compute_liquidity_value_added(layer1, layer2)
+    liquidity_va = compute_liquidity_value_added(layer1, layer2_legacy)
 
     # 5. Save results
     print("\n[6/6] Generating report...")
+    regime_8_dist = regime_df["regime_8"].value_counts().to_dict() if "regime_8" in regime_df.columns else {}
     results = {
         "generated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "years": args.years,
         "total_months": len(regime_df),
         "regime_distribution": regime_df["regime"].value_counts().to_dict(),
-        "layer1_regime_returns": layer1,
-        "layer2_liquidity_overlay": layer2,
+        "regime_8_distribution": regime_8_dist,
+        "layer1_regime_family_returns": layer1,
+        "layer2_eight_regime_returns": layer2_eight,
+        "layer2_liquidity_overlay_legacy": layer2_legacy,
         "transitions": transitions,
         "timeline": timeline,
         "liquidity_value_added": liquidity_va,
@@ -1000,8 +1202,8 @@ def main():
         json.dump(results, f, indent=2, default=str)
     print(f"  Results JSON: {json_path}")
 
-    html = generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
-                                regime_df, returns_df, args.years)
+    html = generate_html_report(layer1, layer2_legacy, transitions, timeline, liquidity_va,
+                                regime_df, returns_df, args.years, layer2_eight=layer2_eight)
     html_path = output_dir / "regime-backtest-report.html"
     with open(html_path, "w") as f:
         f.write(html)
@@ -1028,8 +1230,23 @@ def main():
                     print(f"  {regime} ({n}mo): {col} avg {vals['mean']:+.1f}%, win rate {vals['win_rate']:.0f}%")
                     break
 
+    if layer2_eight:
+        print("\n=== Key Findings (Layer 2: Eight-Regime Model, 3M) ===")
+        for regime_8, rd in sorted(layer2_eight.items()):
+            n = rd.get("n_months", 0)
+            if rd.get("insufficient_data"):
+                print(f"  {regime_8} ({n}mo): insufficient data")
+                continue
+            sp_3m = None
+            for col, vals in rd.get("assets", {}).items():
+                if ("SandP" in col or "S_P" in col or "S&P" in col or "500" in col) and "3M" in col:
+                    sp_3m = vals
+                    break
+            if sp_3m:
+                print(f"  {regime_8} ({n}mo): S&P 500 3M avg {sp_3m['mean']:+.1f}%, win rate {sp_3m['win_rate']:.0f}%")
+
     if liquidity_va:
-        print("\n=== Key Findings (Layer 2: Liquidity Value-Added, 3M) ===")
+        print("\n=== Key Findings (Liquidity Value-Added, 3M) ===")
         for regime, assets in liquidity_va.items():
             for col, va in assets.items():
                 if "SandP" in col or "500" in col or "S&P" in col:

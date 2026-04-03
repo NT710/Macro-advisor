@@ -646,7 +646,7 @@ canvas {
         {# Equity Curve #}
         {% if chart_labels %}
         <div class="chart-container">
-            <h4>Portfolio Equity Curve</h4>
+            <h4>Portfolio vs S&amp;P 500 (% Return)</h4>
             <canvas id="valueChart" height="80"></canvas>
         </div>
         {% else %}
@@ -2071,37 +2071,55 @@ function toggleAccordion(header) {
     });
 })();
 
-/* Portfolio value chart (Chart.js) */
+/* Portfolio vs S&P 500 (% Return) chart */
 (function() {
     var ctx = document.getElementById('valueChart');
     if (!ctx) return;
     var labels = {{ chart_labels_json }};
-    var values = {{ chart_values_json }};
-    if (labels.length === 0) return;
+    var pctValues = {{ chart_pct_values_json }};
+    var spyValues = {{ spy_pct_values_json }};
+    var hasBenchmark = {{ 'true' if has_benchmark else 'false' }};
+    if (labels.length === 0 || pctValues.length === 0) return;
+
+    var datasets = [{
+        label: 'Portfolio',
+        data: pctValues,
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+        fill: true,
+        tension: 0.3,
+        pointRadius: labels.length > 20 ? 0 : 3,
+        borderWidth: 2
+    }];
+
+    if (hasBenchmark && spyValues.length > 0) {
+        datasets.push({
+            label: 'S&P 500',
+            data: spyValues,
+            borderColor: '#f59e0b',
+            backgroundColor: 'transparent',
+            fill: false,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 1.5,
+            borderDash: [6, 3],
+            spanGaps: true
+        });
+    }
 
     new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Portfolio Value',
-                data: values,
-                borderColor: '#3b82f6',
-                backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                fill: true,
-                tension: 0.3,
-                pointRadius: labels.length > 20 ? 0 : 3,
-                borderWidth: 2
-            }]
-        },
+        data: { labels: labels, datasets: datasets },
         options: {
             responsive: true,
             plugins: {
-                legend: { display: false },
+                legend: { display: hasBenchmark, labels: { color: '#a3a3a3', boxWidth: 12 } },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            return '$' + context.parsed.y.toLocaleString(undefined, {minimumFractionDigits: 2});
+                            var v = context.parsed.y;
+                            var sign = v >= 0 ? '+' : '';
+                            return context.dataset.label + ': ' + sign + v.toFixed(2) + '%';
                         }
                     }
                 }
@@ -2114,7 +2132,10 @@ function toggleAccordion(header) {
                 y: {
                     ticks: {
                         color: '#737373',
-                        callback: function(value) { return '$' + value.toLocaleString(); }
+                        callback: function(value) {
+                            var sign = value >= 0 ? '+' : '';
+                            return sign + value.toFixed(1) + '%';
+                        }
                     },
                     grid: { color: '#2a2a2a' }
                 }

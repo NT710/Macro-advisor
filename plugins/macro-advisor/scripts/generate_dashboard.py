@@ -248,6 +248,34 @@ def _emit_h2(text):
     return f'## {clean}'
 
 
+def _sidecar_is_stub(sidecar):
+    """Return True if sidecar has placeholder content instead of real structured data.
+
+    Stub sidecars pass structural validation (correct types/fields) but contain
+    placeholder text like "See thesis document for assumptions" instead of the
+    actual data.  When detected, the dashboard should fall back to markdown
+    parsing which has the full thesis content.
+    """
+    _STUB_PHRASES = ("see thesis document", "see thesis doc", "see document")
+
+    def _has_stub(text):
+        return any(p in text.lower() for p in _STUB_PHRASES)
+
+    # what_has_to_stay_true: single-item stub
+    whst = sidecar.get("what_has_to_stay_true", [])
+    if isinstance(whst, list) and len(whst) == 1 and isinstance(whst[0], dict):
+        if _has_stub(whst[0].get("text", "")):
+            return True
+
+    # mechanism: single-item stub
+    mech = sidecar.get("mechanism", [])
+    if isinstance(mech, list) and len(mech) == 1 and isinstance(mech[0], dict):
+        if _has_stub(mech[0].get("link", "")):
+            return True
+
+    return False
+
+
 def format_thesis_from_json(sidecar):
     """Render thesis HTML directly from a JSON sidecar — no markdown parsing needed.
 
@@ -974,7 +1002,11 @@ def parse_regime_from_json(json_data):
     forecasts = json_data.get("forecasts", [])
     forecast_table = json_data.get("forecast_table", [])
 
-    regime = _regime_name_from_string(regime_block.get("quadrant", "Unknown"))
+    # Support both old format (quadrant) and new 8-regime format (regime_family + regime)
+    regime_family = regime_block.get("regime_family", regime_block.get("quadrant", "Unknown"))
+    regime = _regime_name_from_string(regime_family)
+    regime_full = regime_block.get("regime", regime)  # Full 8-regime label
+    liquidity_condition = regime_block.get("liquidity_condition", None)
     direction = regime_block.get("direction", "Stable")
     confidence = regime_block.get("confidence", "Medium")
     weeks_held = str(regime_block.get("weeks_held", "")) if regime_block.get("weeks_held") else ""
@@ -982,6 +1014,7 @@ def parse_regime_from_json(json_data):
     # Use actual growth/inflation scores for chart coordinates when available
     gs = regime_block.get("growth_score")
     inf = regime_block.get("inflation_score")
+    liq = regime_block.get("liquidity_score")
     if gs is not None and inf is not None:
         x = max(-1.0, min(1.0, float(gs)))
         y = max(-1.0, min(1.0, float(inf)))
@@ -1035,6 +1068,10 @@ def parse_regime_from_json(json_data):
 
     return {
         "regime": regime,
+        "regime_family": regime,
+        "regime_full": regime_full,
+        "liquidity_condition": liquidity_condition,
+        "liquidity_score": float(liq) if liq is not None else None,
         "direction": direction,
         "confidence": confidence,
         "x": x,
@@ -1890,7 +1927,11 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     # Regime JSON override — now that briefing_json_raw is loaded
     if briefing_json_raw and "regime" in briefing_json_raw:
         rj = briefing_json_raw["regime"]
-        regime_data["regime"] = rj.get("quadrant", regime_data["regime"])
+        # Support both old format (quadrant) and new 8-regime format (regime_family + regime)
+        regime_data["regime_family"] = rj.get("regime_family", rj.get("quadrant", regime_data.get("regime", "Unknown")))
+        regime_data["regime"] = regime_data["regime_family"]  # Display uses family name for color/layout
+        regime_data["regime_full"] = rj.get("regime", regime_data["regime_family"])  # Full 8-regime label
+        regime_data["liquidity_condition"] = rj.get("liquidity_condition", None)
         regime_data["direction"] = rj.get("direction", regime_data["direction"])
         regime_data["confidence"] = rj.get("confidence", regime_data["confidence"])
         if rj.get("weeks_in_regime"):
@@ -1900,6 +1941,9 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         if gs is not None and inf is not None:
             regime_data["x"] = max(-1.0, min(1.0, float(gs)))
             regime_data["y"] = max(-1.0, min(1.0, float(inf)))
+        liq = rj.get("liquidity_score")
+        if liq is not None:
+            regime_data["liquidity_score"] = max(-1.0, min(1.0, float(liq)))
 
     # Fallback: parse briefing markdown tables for weeks that pre-date the JSON output
     if not thesis_recommendations and briefing:
@@ -2121,7 +2165,17 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             updated = thesis_sidecar.get("updated", "")
             # time_horizon can be nested under the_trade or at top level
             trade = thesis_sidecar.get("the_trade", {})
-            horizon = trade.get("how_long", thesis_sidecar.get("time_horizon", ""))
+            raw_horizon = trade.get("how_long", thesis_sidecar.get("time_horizon", ""))
+            # Extract just the duration (e.g. "2-5 years") from potentially long prose
+            # like "2-5 years. This is a structural thesis — it unfolds over years..."
+            horizon = ""
+            if raw_horizon:
+                h_match = re.search(r'(\d+[-–]\d+\s*(?:months?|years?|yr|mo|weeks?|wk))', raw_horizon, re.IGNORECASE)
+                if h_match:
+                    horizon = h_match.group(1)
+                else:
+                    # Fallback: take text before first period or parenthesis
+                    horizon = raw_horizon.split('.')[0].split('(')[0].strip()[:40]
         else:
             provenance = ""
             prov_match = re.search(r'\*\*Provenance:\*\*\s*(.+)', content)
@@ -2293,11 +2347,40 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
                 f'</div>'
             )
 
-        # Render thesis body: prefer JSON sidecar (no parsing needed), fall back to markdown
-        if thesis_sidecar:
+        # Render thesis body: prefer JSON sidecar (no parsing needed), fall back to markdown.
+        # Skip stub sidecars — they have placeholder text instead of real data.
+        if thesis_sidecar and not _sidecar_is_stub(thesis_sidecar):
             thesis_body_html = md_to_html(format_thesis_from_json(thesis_sidecar))
         else:
             thesis_body_html = md_to_html(format_thesis_html(render_content))
+
+        # Build update history from sidecar change_log (if available)
+        changelog_html = ""
+        if thesis_sidecar:
+            change_log = thesis_sidecar.get("change_log", [])
+            updated_date = thesis_sidecar.get("updated", "")
+            if change_log:
+                log_rows = ""
+                for entry in change_log:
+                    log_date = entry.get("date", "")
+                    log_changes = entry.get("changes", "")
+                    log_rows += (
+                        f'<tr>'
+                        f'<td style="white-space: nowrap; padding: 4px 12px 4px 0; color: var(--text-dim); font-size: 12px;">{log_date}</td>'
+                        f'<td style="padding: 4px 0; font-size: 13px; color: var(--text);">{log_changes}</td>'
+                        f'</tr>'
+                    )
+                changelog_html = (
+                    f'<details style="margin-top: 20px; padding: 12px 16px; background: var(--surface2); border-radius: 8px;">'
+                    f'<summary style="cursor: pointer; color: var(--text-dim); font-size: 13px;">Update History ({len(change_log)} entries)</summary>'
+                    f'<table style="margin-top: 12px; width: 100%; border-collapse: collapse;">{log_rows}</table>'
+                    f'</details>'
+                )
+            elif updated_date:
+                changelog_html = (
+                    f'<div style="margin-top: 20px; padding: 8px 16px; background: var(--surface2); border-radius: 8px; '
+                    f'font-size: 12px; color: var(--text-dim);">Last updated: {updated_date}</div>'
+                )
 
         display = "block" if i == 0 else "none"
         thesis_contents += (
@@ -2305,6 +2388,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             f'{chart_html}'
             f'{thesis_body_html}'
             f'{source_viewer}'
+            f'{changelog_html}'
             f'</div>\n'
         )
 
@@ -3216,11 +3300,44 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     )
     # Week labels for tooltips on trail dots
     trail_week_labels = json.dumps([r.get("week", "") for r in trail_entries])
+    # Per-dot colors based on regime family
+    _trail_color_map = {
+        "Goldilocks": "rgba(34, 197, 94, 0.4)",
+        "Overheating": "rgba(245, 158, 11, 0.4)",
+        "Stagflation": "rgba(239, 68, 68, 0.4)",
+        "Disinflationary Slowdown": "rgba(59, 130, 246, 0.4)",
+    }
+    trail_bg_colors = json.dumps([
+        _trail_color_map.get(
+            _regime_name_from_string(r.get("regime_family", r.get("regime", ""))),
+            "rgba(168, 85, 247, 0.2)"
+        )
+        for r in trail_entries
+    ])
+    # Per-dot border colors (stronger)
+    _trail_border_map = {
+        "Goldilocks": "rgba(34, 197, 94, 0.6)",
+        "Overheating": "rgba(245, 158, 11, 0.6)",
+        "Stagflation": "rgba(239, 68, 68, 0.6)",
+        "Disinflationary Slowdown": "rgba(59, 130, 246, 0.6)",
+    }
+    trail_border_colors = json.dumps([
+        _trail_border_map.get(
+            _regime_name_from_string(r.get("regime_family", r.get("regime", ""))),
+            "rgba(168, 85, 247, 0.3)"
+        )
+        for r in trail_entries
+    ])
+    # Per-dot style: filled circle for ample liquidity, hollow 'rectRot' for tight, default circle for unknown
+    trail_point_styles = json.dumps([
+        'circle' if r.get("liquidity_condition", "ample") == "ample" else 'rectRot'
+        for r in trail_entries
+    ])
 
     # Render regime narrative as markdown
     regime_narrative_html = md_to_html(regime_data.get('regime_narrative', '')) if regime_data.get('regime_narrative') else '<p style="color: var(--text-muted);">Narrative not available — run the weekly cycle to populate.</p>'
 
-    # Map regime to color for topbar
+    # Map regime family to color for topbar
     regime_color_map = {
         "Goldilocks": "#22c55e",
         "Overheating": "#f59e0b",
@@ -3228,7 +3345,12 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
         "Disinflationary Slowdown": "#3b82f6",
         "Disinflationary": "#3b82f6",
     }
-    regime_color = regime_color_map.get(regime_data['regime'], "#a855f7")
+    # Use _regime_name_from_string to normalize — handles both 4-regime and 8-regime labels
+    regime_family_normalized = _regime_name_from_string(regime_data.get('regime', 'Unknown'))
+    regime_color = regime_color_map.get(regime_family_normalized, "#a855f7")
+    # Build display label: full 8-regime label if available, else family name
+    regime_display_label = regime_data.get('regime_full', regime_data.get('regime', 'Unknown'))
+    liquidity_condition = regime_data.get('liquidity_condition', None)
 
     # Briefing word count for reading time estimate
     briefing_word_count = len(briefing.split()) if briefing else 0
@@ -4026,7 +4148,7 @@ tr:hover td {{
         <span class="topbar-logo">MACRO ADVISOR</span>
         <div class="topbar-regime">
             <span class="regime-dot"></span>
-            <span class="regime-name">{regime_data['regime']}</span>
+            <span class="regime-name">{regime_display_label}</span>
             <span class="regime-conf">W{regime_data.get('weeks_held', '—')} · {regime_data['confidence'].upper()} CONF</span>
         </div>
     </div>
@@ -4055,7 +4177,7 @@ tr:hover td {{
         <div class="kpi-grid">
             <div class="kpi-card">
                 <div class="kpi-label">REGIME</div>
-                <div class="kpi-number" style="color: {regime_color};">{regime_data['regime']}</div>
+                <div class="kpi-number" style="color: {regime_color};">{regime_display_label}</div>
                 <div class="kpi-sub">W{regime_data.get('weeks_held', '—')} · {regime_data['confidence'].upper()}</div>
             </div>
             <div class="kpi-card">
@@ -4138,7 +4260,7 @@ tr:hover td {{
                 <div class="panel-header">Regime Narrative</div>
                 <div class="panel-body" style="font-size: 12px; line-height: 1.6; font-family: var(--sans);">
                     <div style="margin-bottom: 16px;">
-                        <div style="font-size: 14px; font-weight: 600; color: {regime_color}; margin-bottom: 4px;">{regime_data['regime']}</div>
+                        <div style="font-size: 14px; font-weight: 600; color: {regime_color}; margin-bottom: 4px;">{regime_display_label}</div>
                         <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">W{regime_data.get('weeks_held', '—')} · {regime_data['confidence'].upper()} CONFIDENCE</div>
                         {regime_narrative_html}
                     </div>
@@ -4419,11 +4541,11 @@ function renderRegimeChart(canvasId) {{
                 {{
                     label: 'Historical Trail',
                     data: [{history_points}],
-                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                    borderColor: 'rgba(59, 130, 246, 0.3)',
+                    backgroundColor: {trail_bg_colors},
+                    borderColor: {trail_border_colors},
                     pointRadius: 5,
                     pointHoverRadius: 7,
-                    pointStyle: 'circle',
+                    pointStyle: {trail_point_styles},
                     showLine: true,
                     borderWidth: 1,
                     borderDash: [2, 2],
