@@ -8,7 +8,7 @@ Both plugins are built on a **three-force framework**: **Growth** (expanding or 
 
 ## Plugins
 
-### Macro Advisor `v0.8.0`
+### Macro Advisor `v0.8.1`
 
 Autonomous macro research system. Pulls 90+ economic data series from FRED, Yahoo Finance, CFTC COT, ECB, Eurostat, EIA, and BIS, identifies the current macro regime using the Alpine Macro eight-regime model (Growth × Inflation × Liquidity), produces 6 and 12-month regime forecasts with probability distributions and conditional triggers, runs empirical pattern matching to find historical analog periods and compute per-asset risk/reward ratios, generates investment theses with specific ETF implementation and kill switches, scores its own accuracy, and delivers a weekly HTML dashboard.
 
@@ -26,7 +26,7 @@ The 17-skill analysis chain runs in sequence: data collection across all sources
 
 [Full documentation →](plugins/macro-advisor/README.md)
 
-### Trading Engine `v0.2.5-beta`
+### Trading Engine `v0.2.6-beta`
 
 Autonomous paper trading system. Reads the Macro Advisor's 8-regime assessments, theses, empirical sentiment signals, and regime forecasts (including the underlying Growth, Inflation, and Liquidity driver readings and trajectories), reconciles current Alpaca positions against target allocation, reasons through trades with mandatory devil's advocate for every new position, executes on Alpaca, and tracks performance with P&L attribution. Includes forecast-aware trade reasoning (durability assessment based on driver sensitivity, not just regime label), structural thesis turnover reservation (prevents structural theses from being indefinitely deferred by the regime scaling queue), empirical sentiment as informational context (hard rule: never sole justification for a position), and a self-improvement loop that proposes amendments to its own execution logic — with human approval required before any change takes effect.
 
