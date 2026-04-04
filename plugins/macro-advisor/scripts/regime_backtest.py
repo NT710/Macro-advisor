@@ -28,6 +28,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from regime_core import (
+    build_monthly_df, compute_growth_score, compute_growth_direction,
+    compute_inflation_score, compute_inflation_direction,
+    compute_liquidity_score, classify_liquidity,
+    assign_regime_family, assign_regime_8, apply_confirmation_filter,
+)
+
 warnings.filterwarnings("ignore")
 
 # ---------------------------------------------------------------------------
@@ -133,225 +140,57 @@ def fetch_yahoo_assets(years=10):
 
 def classify_regimes(fred_data):
     """
-    Classify each month into one of four regimes based on growth and inflation direction.
+    Classify each month into one of eight regimes based on growth, inflation,
+    and liquidity direction. Uses shared regime_core module.
 
-    Growth axis: 3-month direction of Industrial Production YoY, Unemployment Rate (inverted),
-                 Retail Sales YoY. Majority vote.
-    Inflation axis: 3-month direction of CPI YoY. Core CPI as confirmation.
-
-    Returns DataFrame with columns: growth_direction, inflation_direction, regime, plus components.
+    Returns DataFrame with columns: growth_direction, inflation_direction, regime,
+    regime_family, regime_8, liquidity_binary, plus component scores.
     """
+    monthly = build_monthly_df(fred_data)
 
-    # Build monthly aligned DataFrame
-    # For level series (INDPRO, RSAFS, PAYEMS, M2SL, WALCL): compute YoY % change
-    # For rate series (UNRATE, CPIAUCSL, CPILFESL): use level or YoY as appropriate
+    # Growth scoring
+    monthly["growth_score"], _ = compute_growth_score(monthly)
+    monthly["growth_direction"] = compute_growth_direction(monthly["growth_score"])
 
-    monthly = pd.DataFrame()
+    # Inflation scoring
+    monthly["inflation_score"] = compute_inflation_score(monthly)
+    monthly["inflation_direction"] = compute_inflation_direction(monthly["inflation_score"])
 
-    # Industrial Production - YoY growth
-    if "INDPRO" in fred_data:
-        s = fred_data["INDPRO"].resample("ME").last().dropna()
-        monthly["indpro_yoy"] = s.pct_change(12) * 100
+    # Raw regime assignment (before confirmation filter)
+    monthly["regime_raw"] = assign_regime_family(
+        monthly["growth_direction"], monthly["inflation_direction"]
+    )
 
-    # Unemployment Rate - level (lower = better growth, so we invert for direction)
-    if "UNRATE" in fred_data:
-        s = fred_data["UNRATE"].resample("ME").last().dropna()
-        monthly["unrate"] = s
+    # Confirmation filter: 2 consecutive months required
+    monthly["regime"] = apply_confirmation_filter(monthly["regime_raw"].tolist())
 
-    # Retail Sales - YoY growth
-    if "RSAFS" in fred_data:
-        s = fred_data["RSAFS"].resample("ME").last().dropna()
-        monthly["retail_yoy"] = s.pct_change(12) * 100
-
-    # Nonfarm Payrolls - YoY growth
-    if "PAYEMS" in fred_data:
-        s = fred_data["PAYEMS"].resample("ME").last().dropna()
-        monthly["payrolls_yoy"] = s.pct_change(12) * 100
-
-    # CPI - YoY inflation
-    if "CPIAUCSL" in fred_data:
-        s = fred_data["CPIAUCSL"].resample("ME").last().dropna()
-        monthly["cpi_yoy"] = s.pct_change(12) * 100
-
-    # Core CPI - YoY
-    if "CPILFESL" in fred_data:
-        s = fred_data["CPILFESL"].resample("ME").last().dropna()
-        monthly["core_cpi_yoy"] = s.pct_change(12) * 100
-
-    # M2 - YoY growth (for liquidity overlay)
-    if "M2SL" in fred_data:
-        s = fred_data["M2SL"].resample("ME").last().dropna()
-        monthly["m2_yoy"] = s.pct_change(12) * 100
-
-    # NFCI (for liquidity overlay) - weekly, take month-end
-    if "NFCI" in fred_data:
-        s = fred_data["NFCI"].resample("ME").last().dropna()
-        monthly["nfci"] = s
-
-    # Fed Total Assets - YoY growth (for liquidity overlay)
-    if "WALCL" in fred_data:
-        s = fred_data["WALCL"].resample("ME").last().dropna()
-        monthly["fed_assets_yoy"] = s.pct_change(12) * 100
-
-    monthly = monthly.dropna(subset=["cpi_yoy"], how="all")
-
-    # --- Growth direction: 6-month change in each growth indicator ---
-    # Using 6-month window (not 3) to identify structural direction, not noise.
-    # This matches the Skill 6 regime stability principle: regimes are structural
-    # conditions that persist for quarters, not monthly fluctuations.
-    DIRECTION_WINDOW = 6
-
-    growth_signals = pd.DataFrame(index=monthly.index)
-
-    # INDPRO YoY: rising = growth improving
-    if "indpro_yoy" in monthly.columns:
-        growth_signals["indpro"] = monthly["indpro_yoy"].diff(DIRECTION_WINDOW).apply(
-            lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
-
-    # UNRATE: falling = growth improving (inverted)
-    if "unrate" in monthly.columns:
-        growth_signals["unrate"] = monthly["unrate"].diff(DIRECTION_WINDOW).apply(
-            lambda x: -1 if x > 0 else (1 if x < 0 else 0))
-
-    # Retail Sales YoY: rising = growth improving
-    if "retail_yoy" in monthly.columns:
-        growth_signals["retail"] = monthly["retail_yoy"].diff(DIRECTION_WINDOW).apply(
-            lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
-
-    # Payrolls YoY: rising = growth improving
-    if "payrolls_yoy" in monthly.columns:
-        growth_signals["payrolls"] = monthly["payrolls_yoy"].diff(DIRECTION_WINDOW).apply(
-            lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
-
-    # Majority vote
-    monthly["growth_score"] = growth_signals.mean(axis=1)
-    monthly["growth_direction"] = monthly["growth_score"].apply(
-        lambda x: "rising" if x > 0 else "falling")
-
-    # --- Inflation direction: 6-month change in CPI YoY ---
-    if "cpi_yoy" in monthly.columns:
-        cpi_dir_chg = monthly["cpi_yoy"].diff(DIRECTION_WINDOW)
-        # Core CPI as confirmation / tiebreaker
-        core_dir_chg = monthly["core_cpi_yoy"].diff(DIRECTION_WINDOW) if "core_cpi_yoy" in monthly.columns else cpi_dir_chg
-
-        # Blend: if both agree, strong signal. If they disagree, use headline.
-        monthly["inflation_score"] = (cpi_dir_chg.fillna(0) + core_dir_chg.fillna(0)) / 2
-        monthly["inflation_direction"] = monthly["inflation_score"].apply(
-            lambda x: "rising" if x > 0 else "falling")
-
-    # --- Raw regime assignment (before confirmation filter) ---
-    def assign_regime(row):
-        g = row.get("growth_direction", None)
-        i = row.get("inflation_direction", None)
-        if g == "rising" and i == "falling":
-            return "Goldilocks"
-        elif g == "rising" and i == "rising":
-            return "Overheating"
-        elif g == "falling" and i == "falling":
-            return "Disinflationary Slowdown"
-        elif g == "falling" and i == "rising":
-            return "Stagflation"
-        return None
-
-    monthly["regime_raw"] = monthly.apply(assign_regime, axis=1)
-
-    # --- Confirmation filter: require 2 consecutive months in new regime ---
-    # A regime change only registers after 2 months of the new classification.
-    # This eliminates single-month noise flips while preserving real transitions.
-    CONFIRMATION_MONTHS = 2
-    confirmed = []
-    current_confirmed = None
-    pending_regime = None
-    pending_count = 0
-
-    for idx, row in monthly.iterrows():
-        raw = row["regime_raw"]
-        if current_confirmed is None:
-            # First observation — accept it
-            current_confirmed = raw
-            pending_regime = None
-            pending_count = 0
-        elif raw == current_confirmed:
-            # Still in confirmed regime — reset any pending change
-            pending_regime = None
-            pending_count = 0
-        elif raw == pending_regime:
-            # Same new regime as last month — increment counter
-            pending_count += 1
-            if pending_count >= CONFIRMATION_MONTHS:
-                current_confirmed = raw
-                pending_regime = None
-                pending_count = 0
-        else:
-            # Different regime than both confirmed and pending — start new pending
-            pending_regime = raw
-            pending_count = 1
-
-        confirmed.append(current_confirmed)
-
-    monthly["regime"] = confirmed
-    # NOTE: The confirmed regime is the authoritative classification.
-    # The 2-month confirmation filter prevents single-month noise flips.
-    # Do NOT overwrite with raw regime assignment.
-
-    # --- Liquidity overlay ---
-    # Use RELATIVE thresholds (rolling 36-month median) not absolute levels.
-    # Reason: NFCI has been negative for almost the entire post-GFC era,
-    # and M2 was >2% for most of the sample. Absolute thresholds produce
-    # a 95%+ "loose" classification that is useless for conditioning.
-    # Relative thresholds ask: "is liquidity looser or tighter than recent history?"
-
-    liquidity_scores = pd.DataFrame(index=monthly.index)
-
-    # M2 YoY growth: above rolling median = loosening, below = tightening
-    if "m2_yoy" in monthly.columns:
-        m2_median = monthly["m2_yoy"].rolling(36, min_periods=12).median()
-        monthly["m2_condition"] = (monthly["m2_yoy"] > m2_median).map(
-            {True: "above_trend", False: "below_trend"})
-        liquidity_scores["m2"] = (monthly["m2_yoy"] > m2_median).astype(int)
-
-    # NFCI: below rolling median = looser than usual, above = tighter
-    # (NFCI is inverted: more negative = looser)
-    if "nfci" in monthly.columns:
-        nfci_median = monthly["nfci"].rolling(36, min_periods=12).median()
-        monthly["nfci_condition"] = (monthly["nfci"] < nfci_median).map(
-            {True: "looser_than_trend", False: "tighter_than_trend"})
-        liquidity_scores["nfci"] = (monthly["nfci"] < nfci_median).astype(int)
-
-    # Fed balance sheet: above rolling median growth = loosening
-    if "fed_assets_yoy" in monthly.columns:
-        fed_median = monthly["fed_assets_yoy"].rolling(36, min_periods=12).median()
-        liquidity_scores["fed_bs"] = (monthly["fed_assets_yoy"] > fed_median).astype(int)
-
-    # Combined: majority vote across available signals
-    if len(liquidity_scores.columns) > 0:
-        monthly["liquidity_score"] = liquidity_scores.mean(axis=1)
-        monthly["liquidity_binary"] = monthly["liquidity_score"].apply(
-            lambda x: "loose" if x > 0.5 else "tight")
-        monthly["liquidity_condition"] = monthly["liquidity_score"].apply(
+    # Liquidity overlay (relative thresholds via rolling 36-month median)
+    liq_score, liq_signals, _ = compute_liquidity_score(monthly)
+    if len(liq_signals.columns) > 0:
+        monthly["liquidity_score"] = liq_score
+        monthly["liquidity_binary"] = classify_liquidity(liq_score)
+        monthly["liquidity_condition"] = liq_score.apply(
             lambda x: "strong_loose" if x >= 0.8 else "loose" if x > 0.5
-            else "tight" if x > 0.2 else "strong_tight")
+            else "tight" if x > 0.2 else "strong_tight"
+        )
+        # Preserve per-signal condition columns for backward compatibility
+        if "m2" in liq_signals.columns:
+            monthly["m2_condition"] = liq_signals["m2"].map(
+                {1.0: "above_trend", 0.0: "below_trend"})
+        if "nfci" in liq_signals.columns:
+            monthly["nfci_condition"] = liq_signals["nfci"].map(
+                {1.0: "looser_than_trend", 0.0: "tighter_than_trend"})
 
-    # --- Eight-regime classification ---
-    # Combine regime family (4-quadrant) with liquidity condition (ample/tight)
-    # to create the full 8-regime label.
-    # regime_family preserves the 4-quadrant label for backward compatibility
-    # (kill switches, streak counting, template lookup all use regime_family).
+    # Eight-regime classification
     monthly["regime_family"] = monthly["regime"]
-
     if "liquidity_binary" in monthly.columns:
-        monthly["regime_8"] = monthly.apply(
-            lambda row: f"{row['regime']} — {'Ample' if row['liquidity_binary'] == 'loose' else 'Tight'} Liquidity"
-            if pd.notna(row.get("regime")) and pd.notna(row.get("liquidity_binary"))
-            else row.get("regime"),
-            axis=1
+        monthly["regime_8"] = assign_regime_8(
+            monthly["regime"], monthly["liquidity_binary"]
         )
     else:
         monthly["regime_8"] = monthly["regime"]
 
-    # Drop rows where regime couldn't be assigned
     monthly = monthly.dropna(subset=["regime"])
-
     return monthly
 
 

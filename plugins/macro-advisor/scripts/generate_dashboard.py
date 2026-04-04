@@ -18,6 +18,7 @@ import os
 import re
 import sys
 from datetime import datetime
+from html import escape as html_escape
 from pathlib import Path
 
 
@@ -1072,6 +1073,8 @@ def parse_regime_from_json(json_data):
     forecast_6m_x, forecast_6m_y = 0, 0
     forecast_12m_x, forecast_12m_y = 0, 0
 
+    forecast_probabilities = {}  # {horizon: {regime, probability, base_rate, rationale, alt_regime, alt_prob, alt_base}}
+
     for fc in forecasts:
         horizon = fc.get("horizon", "").lower()
         fc_regime = _regime_name_from_string(fc.get("regime", "Unknown"))
@@ -1090,6 +1093,21 @@ def parse_regime_from_json(json_data):
         elif "12" in horizon and forecast_12m == "Unknown":
             forecast_12m = fc_regime
             forecast_12m_x, forecast_12m_y = fc_x, fc_y
+
+        # Extract probability comparison data (base rate vs. adjusted)
+        h_key = "6m" if "6" in horizon else "12m" if "12" in horizon else None
+        if h_key:
+            forecast_probabilities[h_key] = {
+                "regime": fc.get("regime", "Unknown"),
+                "probability": fc.get("probability"),
+                "base_rate": fc.get("base_rate_probability"),
+                "base_rate_n": fc.get("base_rate_source_n"),
+                "matrix_type": fc.get("base_rate_matrix_type"),
+                "rationale": fc.get("adjustment_rationale"),
+                "alt_regime": fc.get("alternative_regime"),
+                "alt_prob": fc.get("alternative_probability"),
+                "alt_base": fc.get("alternative_base_rate"),
+            }
 
     # Build narrative text from JSON narrative block
     regime_narrative = narrative_block.get("regime_assessment", "") or ""
@@ -1121,6 +1139,7 @@ def parse_regime_from_json(json_data):
         "confidence": confidence,
         "x": x,
         "y": y,
+        "forecast_probabilities": forecast_probabilities,
         "forecast_6m": forecast_6m,
         "forecast_6m_x": forecast_6m_x,
         "forecast_6m_y": forecast_6m_y,
@@ -2898,6 +2917,72 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     regime_forecast_html = md_to_html(regime_data.get("forecast_section_md", "")) if regime_data.get("forecast_section_md") else ""
     regime_what_changed_html = md_to_html(regime_data.get("what_changed_md", "")) if regime_data.get("what_changed_md") else ""
 
+    # Build forecast probability comparison panel (base rate vs. adjusted)
+    forecast_prob_html = ""
+    fp = regime_data.get("forecast_probabilities", {})
+    if fp:
+        rows_html = ""
+        for h_key, label in [("6m", "6-Month"), ("12m", "12-Month")]:
+            d = fp.get(h_key)
+            if not d:
+                continue
+            regime_name = d.get("regime", "Unknown")
+            prob = d.get("probability")
+            base = d.get("base_rate")
+            rationale = d.get("rationale", "")
+            alt_regime = d.get("alt_regime", "")
+            alt_prob = d.get("alt_prob")
+            alt_base = d.get("alt_base")
+            n = d.get("base_rate_n")
+            matrix = d.get("matrix_type", "")
+
+            if base is not None and prob is not None:
+                delta = prob - base
+                delta_sign = "+" if delta >= 0 else ""
+                delta_color = "var(--text-dim)" if abs(delta) < 0.05 else ("#e8a838" if abs(delta) < 0.20 else "#e06c5a")
+                prob_pct = f"{prob * 100:.0f}%"
+                base_pct = f"{base * 100:.0f}%"
+                delta_pct = f"{delta_sign}{delta * 100:.0f}pp"
+                n_label = f"(N={n})" if n else ""
+
+                row = (
+                    f'<div style="margin-bottom: 12px;">'
+                    f'<div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 4px;">{label}</div>'
+                    f'<div style="font-size: 13px; font-weight: 500; color: var(--text);">{regime_name}</div>'
+                    f'<div style="display: flex; gap: 16px; margin-top: 4px; font-size: 12px;">'
+                    f'<span style="color: var(--text-dim);">Base: {base_pct} {n_label}</span>'
+                    f'<span style="color: var(--text);">Adjusted: <b>{prob_pct}</b></span>'
+                    f'<span style="color: {delta_color};">{delta_pct}</span>'
+                    f'</div>'
+                )
+                if rationale:
+                    display_rationale = html_escape(rationale)
+                    row += f'<div style="font-size: 11px; color: var(--text-dim); margin-top: 2px; font-style: italic;">{display_rationale}</div>'
+                if alt_regime and alt_prob is not None:
+                    alt_pct = f"{alt_prob * 100:.0f}%"
+                    alt_base_str = f" (base: {alt_base * 100:.0f}%)" if alt_base is not None else ""
+                    row += f'<div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Alt: {alt_regime} {alt_pct}{alt_base_str}</div>'
+                row += '</div>'
+                rows_html += row
+            elif prob is not None:
+                # No base rate available, just show the probability
+                prob_pct = f"{prob * 100:.0f}%"
+                rows_html += (
+                    f'<div style="margin-bottom: 12px;">'
+                    f'<div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent); margin-bottom: 4px;">{label}</div>'
+                    f'<div style="font-size: 13px; font-weight: 500; color: var(--text);">{regime_name} ({prob_pct})</div>'
+                    f'</div>'
+                )
+
+        if rows_html:
+            forecast_prob_html = (
+                f'<div class="panel" style="margin-top: 8px;">'
+                f'<div class="panel-header">Forecast Probabilities</div>'
+                f'<div class="panel-body" style="font-size: 12px; line-height: 1.5;">'
+                f'{rows_html}'
+                f'</div></div>'
+            )
+
     # Build methodology (About) HTML — parse into h2 sections for accordion display
     methodology_html = ""
     methodology_meta = {"version": "", "framework": "", "updated": ""}
@@ -2961,7 +3046,7 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
     # --- Build Mega Forces tab HTML from Skill 14 horizon map ---
     # Prefer pre-parsed JSON sidecar (horizon-data.json) over markdown parsing
     if horizon_json_data:
-        # JSON sidecar matches parse_horizon_map() output shape — use directly
+        # JSON sidecar uses list-of-dicts for causal_chains; renderer handles both formats
         horizon_data = horizon_json_data
         # Ensure expected top-level keys exist
         horizon_data.setdefault("meta", {})
@@ -3110,27 +3195,41 @@ def generate_html(week, briefing, theses, improvement, synthesis, snapshot_data,
             for a in force.get("data_anchor", [])[:4]:
                 anchor_html += f'<li style="margin: 2px 0; color: var(--text); font-size: 11px;">{apply_inline(a)}</li>'
 
-            # Causal chains
+            # Causal chains — handles both formats:
+            #   Parser (markdown path): single dict per order {"chain": ..., "direction": ...}
+            #   Sidecar (JSON path): list of dicts per order [{"impact": ..., "direction": ...}]
             chains = force.get("causal_chains", {})
             chains_html = ""
             for order_key, order_label in [("first_order", "1ST ORDER"), ("second_order", "2ND ORDER"), ("third_order", "3RD ORDER")]:
-                chain = chains.get(order_key, {})
-                if not chain:
+                chain_items = chains.get(order_key) or []
+                # Normalize: if legacy single-dict format (from markdown parser), wrap in list
+                if isinstance(chain_items, dict):
+                    chain_items = [chain_items]
+                if not chain_items:
                     continue
-                chain_dir = chain.get("direction", "")
-                chain_cons = chain.get("consensus", "")
-                chain_tl = chain.get("timeline", "")
-                chain_arrow = chain.get("chain", "")
-                cons_color = "var(--red)" if "VERY LOW" in chain_cons.upper() else ("var(--amber)" if "LOW" in chain_cons.upper() else "var(--text-muted)")
+                # Render order header once, then iterate all items within
                 chains_html += f'''
                 <div style="margin-bottom: 8px; padding: 8px 10px; background: var(--surface); border-left: 2px solid var(--border-bright);">
-                    <div style="font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 4px;">{order_label}</div>
-                    <div style="font-size: 11px; color: var(--text); margin-bottom: 4px; line-height: 1.5;">{apply_inline(chain_arrow)}</div>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; font-family: var(--mono); font-size: 10px;">
-                        <span style="color: var(--text-muted);">Direction: <span style="color: var(--text);">{chain_dir}</span></span>
-                        <span style="color: var(--text-muted);">Consensus: <span style="color: {cons_color};">{chain_cons}</span></span>
-                        {"<span style='color: var(--text-muted);'>Timeline: <span style=color:var(--text);>" + chain_tl + "</span></span>" if chain_tl else ""}
-                    </div>
+                    <div style="font-family: var(--mono); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin-bottom: 4px;">{order_label}</div>'''
+                for i, item in enumerate(chain_items):
+                    # Handle both field names: sidecar uses "impact", parser uses "chain"
+                    # Use `or ""` to guard against JSON null values (key present, value None)
+                    chain_arrow = item.get("impact") or item.get("chain") or ""
+                    chain_dir = item.get("direction") or ""
+                    chain_cons = item.get("consensus") or ""
+                    chain_tl = item.get("timeline") or ""
+                    cons_color = "var(--red)" if "VERY LOW" in chain_cons.upper() else ("var(--amber)" if "LOW" in chain_cons.upper() else "var(--text-muted)")
+                    sep_style = "margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);" if i > 0 else ""
+                    chains_html += f'''
+                    <div style="{sep_style}">
+                        <div style="font-size: 11px; color: var(--text); margin-bottom: 4px; line-height: 1.5;">{apply_inline(chain_arrow)}</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px 16px; font-family: var(--mono); font-size: 10px;">
+                            <span style="color: var(--text-muted);">Direction: <span style="color: var(--text);">{chain_dir}</span></span>
+                            <span style="color: var(--text-muted);">Consensus: <span style="color: {cons_color};">{chain_cons}</span></span>
+                            {"<span style='color: var(--text-muted);'>Timeline: <span style=color:var(--text);>" + chain_tl + "</span></span>" if chain_tl else ""}
+                        </div>
+                    </div>'''
+                chains_html += '''
                 </div>'''
 
             # Mechanism first sentence for collapsed view
@@ -4307,6 +4406,7 @@ tr:hover td {{
                     <canvas id="regimeChart" style="max-height: 320px;"></canvas>
                 </div>
             </div>
+            {forecast_prob_html}
             <div class="panel">
                 <div class="panel-header">Regime Narrative</div>
                 <div class="panel-body" style="font-size: 12px; line-height: 1.6; font-family: var(--sans);">

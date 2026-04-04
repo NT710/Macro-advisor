@@ -101,8 +101,8 @@ The macro advisor's regime model is built on three underlying forces: **Growth**
       }
     },
     "6_month": {
-      "most_likely": {"regime": "quadrant name", "probability_pct": 50},
-      "secondary": {"regime": "quadrant name", "probability_pct": 35},
+      "most_likely": {"regime": "quadrant name", "probability_pct": 50, "base_rate_pct": 40, "adjustment_rationale": "why the LLM deviated from base rate"},
+      "secondary": {"regime": "quadrant name", "probability_pct": 35, "base_rate_pct": 25},
       "tail": {"regime": "quadrant name", "probability_pct": 15},
       "key_assumption": "one sentence — the central scenario that drives the base case",
       "confidence": "High|Medium-High|Medium|Low-Medium|Low",
@@ -116,8 +116,8 @@ The macro advisor's regime model is built on three underlying forces: **Growth**
       }
     },
     "12_month": {
-      "most_likely": {"regime": "quadrant name", "probability_pct": 40},
-      "secondary": {"regime": "quadrant name", "probability_pct": 35},
+      "most_likely": {"regime": "quadrant name", "probability_pct": 40, "base_rate_pct": 35, "adjustment_rationale": "why the LLM deviated from base rate"},
+      "secondary": {"regime": "quadrant name", "probability_pct": 35, "base_rate_pct": 30},
       "tail": {"regime": "quadrant name", "probability_pct": 25},
       "key_assumption": "one sentence",
       "confidence": "High|Medium-High|Medium|Low-Medium|Low",
@@ -137,6 +137,7 @@ Parsing rules:
 - **Driver trajectories:** For each horizon, extract the synthesis's view on where each force is heading. The growth trajectory comes from the forecast's key assumption and the Growth Picture's forward signals. The inflation trajectory comes from the forecast's oil/energy assumptions and the inflation data trend. The liquidity trajectory comes from the Policy Picture's Fed path and the Liquidity Picture's credit conditions trend. Write these as concise narrative sentences, not data dumps.
 - **Current driver data:** Extract 3-5 of the most regime-relevant data points for each force. Prefer hard data (FRED series, official releases) over sentiment indicators. These give T3 specific numbers to reference in reasoning.
 - Extract probability percentages as integers. If the synthesis gives a range (e.g., "25-30%"), use the midpoint.
+- **Base rate extraction:** If the synthesis sidecar includes `base_rate_probability` in the forecast objects, extract it as `base_rate_pct` (multiply by 100, round to integer). Also extract `adjustment_rationale`. These tell T3 how much the LLM deviated from historical base rates and why. If `base_rate_probability` is null or absent, set `base_rate_pct` to null. A large deviation (>20pp) with weak rationale is a signal for T3 to discount the forecast's confidence.
 - The `conditional_triggers` array should contain every specific scenario the synthesis identifies as capable of shifting the probability distribution. These are critical — they tell T3 what data to watch for regime transition signals.
 - If the synthesis does not contain a regime forecast section (older format or missing), set `regime_forecast` to `null` and note this in the `conflicts` array. Do not fabricate forecasts.
 

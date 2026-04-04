@@ -132,11 +132,55 @@ Industry reports, government statistical publications (EIA, USGS, IEA, IMF, OECD
 
 ---
 
+## Phase 0: Quantitative Tension Scan (data-driven, always runs first)
+
+Before running the 7 detector categories in Phase 1, check `snapshot.zscore_tensions` for statistically flagged series. The data collector computes z-scores for every macro-relevant series on three dimensions:
+- **Level** (short-term): how far the current value is from the mean of the current history window (~26 weeks for weekly series, ~13 months for monthly)
+- **Level** (long-term): how far the current value is from a running baseline that accumulates across all weekly runs. Uses Welford's online algorithm, stored in `outputs/data/zscore-baseline.json`. Active after 20+ accumulated observations. This catches slow drifts that the short-term window normalizes away.
+- **Rate of change** (8-observation window): how unusual the recent multi-week/month acceleration is
+
+Any series exceeding 2 standard deviations on any dimension is flagged. The `flag_reason` field tells you which triggered: `level`, `long_term`, `rate_of_change`, or combinations like `level+long_term`.
+
+**Interpreting dual baselines:**
+- Flagged on `level` only: sudden deviation from recent behavior. Likely cyclical or event-driven.
+- Flagged on `long_term` only: slow drift. The series has been moving gradually for months, invisible to the short-term window. This is the structural signal.
+- Flagged on both: strong signal. Unusual relative to both recent and long-term history.
+- `long_term_baseline_n` shows how many weekly observations the baseline has accumulated. Higher count = more trustworthy baseline. Under 20 = long-term z-scores not yet available (system is still warming up).
+
+**If `snapshot.zscore_tensions` is empty or missing:** Skip Phase 0 and proceed to Phase 1. No macro series is statistically unusual this cycle.
+
+**If tensions are present, for each flagged series:**
+1. Note the domain (category field: rates, credit, growth, inflation, commodities, employment, etc.)
+2. Check if the tension maps to an existing detector (Signals 1-7 in Phase 1)
+3. If yes: carry it forward as quantitative evidence when that detector runs — it strengthens or weakens the detector's case
+4. If no: investigate as a potential structural tension outside the 7 categories. What's driving the anomaly? Is the deviation structural (would take >12 months to normalize) or cyclical (self-correcting within a few quarters)?
+
+**Priority rule:** Domains with 2+ independently flagged series get priority investigation in Phase 1. A single flagged series could be noise. Two or more in the same domain is a pattern.
+
+**Output format for Phase 0 findings:**
+```
+QUANTITATIVE TENSION DETECTED
+Series: [series ID] — [description]
+Z-score: level [X.X]σ, long-term [X.X]σ (N obs baseline), rate-of-change [X.X]σ
+Domain: [category]
+Flag type: [level / long_term / rate_of_change / combination]
+Maps to detector: [Signal N] or [none — novel domain]
+Preliminary assessment: [structural / cyclical / data artifact — investigate in Phase 1]
+```
+
+**Warm-up period:** The long-term baseline needs ~20 weekly runs to activate (about 5 months). During warm-up, only short-term and rate-of-change z-scores are available. The system improves automatically with each run. After 52 runs (1 year), the baseline spans a full annual cycle.
+
+**What Phase 0 does NOT do:** It does not generate theses or make structural calls. It generates leads. Phase 1's detectors and the LLM's judgment do the actual structural analysis. Phase 0 just points the flashlight.
+
+---
+
 ## Phase 1: Tension Signal Detection
 
 **The core question: "Where in the global economy is there a measurable gap between supply and demand, investment and requirement, or policy and reality — that would take more than 12 months to close?"**
 
 This phase does NOT start from a domain list. It starts from quantitative signals that are domain-agnostic. Run each signal detector below and see what comes back. The output of Phase 1 is a list of flagged domains — NOT a list of theses.
+
+**Phase 0 integration:** If Phase 0 flagged any tensions, incorporate them into the relevant detector below. A detector that has Phase 0 backing (a z-score flag in its domain) starts with quantitative evidence. A detector whose domain has no Phase 0 flags may still fire based on its own logic — Phase 0 is additive, not a gate. If Phase 0 flagged a domain that doesn't map to any of the 7 detectors, investigate it after Signal 7 as a potential novel structural tension.
 
 ### Signal 1: Capacity Utilization Stress
 Pull `TCU` (total capacity utilization) and `CAPUTLB50001SQ` (manufacturing) from FRED.

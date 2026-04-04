@@ -19,8 +19,11 @@ import argparse
 import json
 import re
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+
+
+from run_log_utils import log_event as _log_event
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +613,7 @@ def main():
         help="Check only this skill's outputs (e.g. skill_6b_regime_evaluation). "
              "When omitted, all skills are checked."
     )
+    parser.add_argument("--run-log", default=None, help="Path to JSONL run log (optional)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -650,14 +654,20 @@ def main():
         all_failures += check_thesis_contracts(contract, output_dir, today)
         label = args.week
 
+    run_log = Path(args.run_log) if args.run_log else None
+    phase = f"postrun-{args.skill}" if args.skill else "postrun-full"
+
     # Report
     if not all_failures:
         print(f"POST-RUN CHECK: All output contracts satisfied for {label}.")
+        _log_event(run_log, "INFO", phase, f"All output contracts satisfied for {label}")
         sys.exit(0)
     else:
         print(f"\nPOST-RUN CHECK FAILED — {len(all_failures)} issue(s) found for {label}:\n")
         for f in all_failures:
             print(f"  {f}")
+        for failure in all_failures:
+            _log_event(run_log, "ERROR", phase, failure)
         print(
             "\nDo not share the dashboard with the user until these are resolved. "
             "Re-run the failing skill(s) to produce the missing outputs."

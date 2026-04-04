@@ -22,14 +22,18 @@ from datetime import date, datetime
 
 
 # ---------------------------------------------------------------------------
-# Cross-Asset table parser (markdown table format)
+# Shared markdown table parser
 # ---------------------------------------------------------------------------
 
-def parse_cross_asset_table(text: str) -> list[dict]:
-    """Parse the Cross-Asset Implications markdown table.
+def _strip_bold(text: str) -> str:
+    """Strip markdown bold markers (**text**) from a string."""
+    return re.sub(r'\*\*(.+?)\*\*', r'\1', text)
 
-    Expected columns: Asset Class | Stance | ETF Expression | Rationale | Timing
-    Maps to canonical JSON keys: what, direction, etfs, recommendation, timing
+
+def _parse_markdown_table(text: str) -> list[dict]:
+    """Parse a markdown pipe table into a list of dicts keyed by lowercased header names.
+
+    Strips markdown bold from all cell values. Handles leading/trailing pipes correctly.
     """
     rows = []
     in_table = False
@@ -42,9 +46,8 @@ def parse_cross_asset_table(text: str) -> list[dict]:
                 break  # End of table
             continue
 
-        cells = [c.strip() for c in stripped.split("|")]
-        # Remove empty first/last cells from leading/trailing |
-        cells = [c for c in cells if c or cells.index(c) not in (0, len(cells) - 1)]
+        # Split on pipes and take inner cells (skip empty first/last from leading/trailing |)
+        cells = [_strip_bold(c.strip()) for c in stripped.split("|")[1:-1]]
         if not cells:
             continue
 
@@ -63,27 +66,61 @@ def parse_cross_asset_table(text: str) -> list[dict]:
         for i, cell in enumerate(cells):
             if i < len(headers):
                 row[headers[i]] = cell
-
-        # Map to canonical keys (dashboard reads 'why' not 'recommendation')
-        canonical = {
-            "what": row.get("asset class", row.get("asset", "")),
-            "direction": row.get("stance", row.get("direction", row.get("signal", ""))),
-            "etfs": _extract_etfs(row.get("etf expression", row.get("etfs", row.get("etf", "")))),
-            "conviction": _infer_conviction(row.get("stance", "")),
-            "why": row.get("rationale", ""),
-            "timing": row.get("timing", ""),
-        }
-        if canonical["what"]:
-            rows.append(canonical)
+        if row:
+            rows.append(row)
 
     return rows
+
+
+def _get_col(row: dict, *keys: str, default: str = "") -> str:
+    """Get the first matching column value from a row dict."""
+    for k in keys:
+        if k in row and row[k]:
+            return row[k]
+    return default
+
+
+# ---------------------------------------------------------------------------
+# Cross-Asset table parser (markdown table format)
+# ---------------------------------------------------------------------------
+
+def parse_cross_asset_table(text: str) -> list[dict]:
+    """Parse the Cross-Asset Implications markdown table.
+
+    Handles column name variations across weeks (Stance/Direction/Signal/Stage,
+    Timing/Timeframe/Action, ETF Expression/ETFs/ETF/Ticker, etc.).
+    """
+    raw_rows = _parse_markdown_table(text)
+    results = []
+
+    for row in raw_rows:
+        what = _get_col(row, "asset class", "asset")
+        direction = _get_col(row, "stance", "direction", "signal", "stage")
+        etf_text = _get_col(row, "etf expression", "etfs", "etf", "ticker")
+        canonical = {
+            "what": what,
+            "direction": direction,
+            "etfs": _extract_etfs(etf_text),
+            "conviction": _infer_conviction(direction),
+            "why": _get_col(row, "rationale"),
+            "timing": _get_col(row, "timing", "timeframe", "action"),
+        }
+        if canonical["what"]:
+            results.append(canonical)
+
+    return results
 
 
 def _extract_etfs(text: str) -> str:
     """Extract ETF tickers from text like 'CSSPX.SW (iShares Core S&P 500) / CSNDX.SW'."""
     tickers = re.findall(r'[A-Z]{2,10}\.SW|[A-Z]{2,5}', text)
-    # Filter out common non-ticker words
-    noise = {"ETF", "USD", "CHF", "EUR", "GBP", "SW", "SIX", "IMI"}
+    # Filter out common non-ticker words and macro acronyms
+    noise = {
+        "ETF", "USD", "CHF", "EUR", "GBP", "SW", "SIX", "IMI",
+        "OIL", "PMI", "ISM", "GDP", "AI", "HY", "IG", "FMS",
+        "PCE", "NFP", "CPI", "PPI", "DMA", "OPEC", "GICS", "MATCH",
+        "REIT", "API", "SPR", "IEA", "FED", "ECB", "BOJ", "IMF", "US",
+    }
     return ", ".join(t for t in tickers if t not in noise and len(t) >= 2)
 
 
@@ -100,8 +137,37 @@ def _infer_conviction(stance: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Sector View parser (prose format with bold sector names)
+# Sector View parsers (table format + prose format fallback)
 # ---------------------------------------------------------------------------
+
+def parse_sector_view_table(text: str) -> list[dict]:
+    """Parse sector view from markdown table format.
+
+    Handles column name variations: Sector, Stance/Direction/Stage,
+    Rationale, Timing/Timeframe/Action, Ticker.
+    """
+    raw_rows = _parse_markdown_table(text)
+    results = []
+
+    for row in raw_rows:
+        sector = _get_col(row, "sector")
+        if not sector:
+            continue
+        direction = _get_col(row, "stance", "direction", "stage")
+        # Prefer dedicated ticker/etf column; fall back to extraction from rationale
+        etf_text = _get_col(row, "ticker", "etf expression", "etfs", "etf")
+        etfs = _extract_etfs(etf_text) if etf_text else _extract_etfs(_get_col(row, "rationale"))
+        results.append({
+            "sector": sector,
+            "direction": direction,
+            "conviction": _infer_conviction(direction),
+            "why": _get_col(row, "rationale")[:500],
+            "etfs": etfs,
+            "timing": _get_col(row, "timing", "timeframe", "action"),
+        })
+
+    return results
+
 
 def parse_sector_view(text: str) -> list[dict]:
     """Parse sector view from prose format.
@@ -265,9 +331,9 @@ def build_theses_index(theses_dir: Path) -> dict:
             "conviction": sidecar.get("conviction", "Unknown"),
             "classification": sidecar.get("classification", "tactical"),
             "direction": _infer_direction(trade, summary),
-            "what": summary[:500] if summary else "",
-            "recommendation": _first_sentence(trade.get("what_to_buy", "")),
-            "kill_switch": _first_sentence(trade.get("when_to_get_out", "")),
+            "what": _strip_bold(summary[:500]) if summary else "",
+            "recommendation": _strip_bold(_first_sentence(trade.get("what_to_buy", ""))),
+            "kill_switch": _strip_bold(_first_sentence(trade.get("when_to_get_out", ""))),
             "etfs": _extract_etfs(trade.get("what_to_buy", "")),
             "next_watch": "",  # Would need analyst/watch data
         }
@@ -359,10 +425,17 @@ def compile_briefing(
     cross_asset = parse_cross_asset_table(synthesis_text)
 
     # Parse sector view
-    # Find the sector view section
-    sector_match = re.search(r'## Sector View\s*\n(.*?)(?=\n## |\Z)', synthesis_text, re.DOTALL)
-    sector_text = sector_match.group(1) if sector_match else ""
-    sector_view = parse_sector_view(sector_text)
+    # Find the sector view section(s) — use last match (W13 has two, last is consolidated)
+    sector_matches = re.findall(r'## Sector View[^\n]*\n(.*?)(?=\n## |\Z)', synthesis_text, re.DOTALL)
+    sector_text = sector_matches[-1] if sector_matches else ""
+
+    # Try table format first (current synthesis uses tables), fall back to prose
+    sector_view = parse_sector_view_table(sector_text)
+    if not sector_view:
+        sector_view = parse_sector_view(sector_text)
+
+    if sector_text and not sector_view:
+        print(f"WARNING: Sector View section found but parsed 0 rows", file=sys.stderr)
 
     # Build theses index from compiled sidecars
     theses_dir = outputs_dir / "theses" / "active"

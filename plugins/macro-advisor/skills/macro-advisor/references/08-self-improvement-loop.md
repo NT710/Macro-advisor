@@ -174,17 +174,23 @@ Implication: [what to do about it]
 
 ### 2g-v. Empirical Sentiment Health (from Skill 6c output)
 
-Read `outputs/synthesis/empirical-sentiment.json` if it exists. The analog matcher's out-of-sample backtest showed it does **not** beat naive baselines (57.9% hit rate vs 63.3% naive baseline after debiasing). This means the signal should be treated as informational context, not a directional predictor. Monitor for degradation and misuse.
+Read `outputs/synthesis/empirical-sentiment.json` if it exists. Also read `outputs/synthesis/analog-backtest-results.json` if it exists — this is auto-generated every 90 days by the analog matcher during normal weekly runs.
+
+**Model version tracking:** Check `current_state.dimensionality` in the sentiment output and `state_vector_dimensions` in the backtest results. The system upgraded from 3D (composite growth/inflation/liquidity scores) to 11D (individual features + HY OAS + yield curve) in April 2026. Compare backtest results across model versions to verify the 11D upgrade added value.
+
+**Acceptance gate for 11D:** The 11D model must show 3+ percentage point improvement in `excess_accuracy_vs_naive` over the prior 3D baseline. If backtest results show `excess_accuracy_vs_naive` is still negative or within 3pp of the old baseline, flag for reversion to 3D.
 
 1. **Prediction asymmetry:** Check `bullish_prediction_pct` across equity tickers. If the model predicts "bullish" >80% of the time for equities, the signal is just restating the equity risk premium — not adding information. Flag as a bias concern.
 
-2. **Naive baseline comparison:** When the backtest is re-run periodically, check `excess_accuracy_vs_naive`. If this is negative (model worse than always predicting the majority direction), the signal is net-negative and should be downweighted or suspended. Current baseline: -5.4pp excess (model is worse than naive).
+2. **Naive baseline comparison:** Read `excess_accuracy_vs_naive` from the latest backtest results. If negative (model worse than always predicting the majority direction), the signal is net-negative and should be downweighted or suspended. Track this value across backtest runs to detect trend.
 
 3. **Confidence inflation:** Check whether signals labeled "high confidence" (n ≥ 20) perform differently from "medium confidence" (n ≥ 10). If there is no difference, the confidence label is misleading and should be flagged for recalibration.
 
 4. **Hard rule compliance (cross-check with T7):** When reading the trading engine's improvement output, check whether any T3 reasoning logs cite empirical sentiment as the primary driver of a position. The hard rule says it must be corroborated by a named concrete signal. If compliance is unclear, flag for human review.
 
 5. **Surprise signal noise rate:** Track what percentage of flagged "surprises" from the analog matcher were later evaluated as noise vs. genuine structural patterns. If >80% of surprises are noise after 8+ weeks of tracking, propose tightening the surprise detection criteria or removing the surprise feature entirely.
+
+6. **Backtest freshness:** Check the modification date of `analog-backtest-results.json`. If older than 90 days and the weekly run did not auto-refresh it, flag as stale validation. The auto-validation should have triggered — investigate why it didn't.
 
 For each issue found:
 ```
@@ -227,6 +233,39 @@ Biggest miss: [what we didn't see coming]
 - Update the cumulative table
 
 Over time (4+ weeks), the cumulative rates reveal where the system adds value and where it doesn't. This is the most important output of the improvement loop — it tells the user how much to trust each section of the briefing.
+
+### 2i. LLM Forecast Alpha (Base Rate Comparison)
+
+This section measures whether the LLM's probability adjustments improve or degrade forecasting accuracy compared to raw empirical base rates. It is the system's first falsifiable feedback loop for regime forecasts.
+
+**When to evaluate:** Check each prior synthesis sidecar (`synthesis-data.json`) for the `forecasts` array. For each forecast where `base_rate_probability` is not null AND the horizon has elapsed (e.g., a 6-month forecast from 6+ months ago), score it:
+
+1. Read `regime-history.json` to determine what regime actually occurred at the target date.
+2. Compute **Brier score** for both the base rate distribution and the LLM-adjusted distribution:
+   - Brier score = sum over all regimes of (probability - actual)^2, where actual = 1 for the regime that occurred, 0 for all others
+   - Lower Brier score = better calibration
+3. Track per resolved forecast:
+   - `base_rate_brier`: Brier score using `base_rate_probability` values
+   - `adjusted_brier`: Brier score using `probability` values (the LLM-adjusted ones)
+   - `alpha`: base_rate_brier minus adjusted_brier. Positive = LLM adjustments improved the forecast.
+   - `adjustment_magnitude`: average of |probability - base_rate_probability| across target regimes
+
+**Cumulative tracking** (append to accuracy tracker):
+
+```
+FORECAST ALPHA (cumulative, N resolved forecasts):
+  Mean base rate Brier:   [score]
+  Mean adjusted Brier:    [score]
+  Mean alpha:             [+/- score]  (positive = LLM adds value)
+  Mean adjustment magnitude: [score]
+  Verdict: [LLM adds value / LLM neutral / LLM degrades]
+```
+
+**Quantitative-only baseline:** Also track what would have happened with zero LLM adjustment (just using base rate probabilities as-is). This is the benchmark the LLM must beat to justify its adjustments.
+
+**Alert threshold:** If alpha is negative (LLM degrades forecast) for 8+ consecutive resolved forecasts, flag an amendment: "Regime forecast adjustments are consistently making predictions worse. Consider: (a) reducing adjustment magnitudes, (b) deferring to base rates for the next 4 weeks, (c) investigating which adjustment types are most harmful."
+
+**Minimum sample size:** Do not compute cumulative alpha or trigger alerts until at least 20 forecasts have resolved. Before that threshold, track individual scores but note "insufficient sample for statistical significance."
 
 Produce an inspection report:
 

@@ -63,6 +63,14 @@ Before doing anything else, read `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/ref
 8. Read ETF references — two files, both consulted by Skills 7, 9, and 12:
    - `config/etf-overrides.md` (workspace) — currency-specific equivalents. Read first. May not exist if user chose USD.
    - `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/etf-reference.md` (plugin) — USD defaults and thematic/sector ETFs.
+9. **Initialize the run log.** Create the run log file for this week's run. All Python scripts and skill completions will append to this log throughout the run.
+```bash
+mkdir -p outputs/run-logs
+python ${CLAUDE_PLUGIN_ROOT}/scripts/log_event.py \
+  --log-file outputs/run-logs/YYYY-Www-run-log.jsonl \
+  --severity INFO --phase run-start --message "Weekly run started" --status IN_PROGRESS
+```
+Replace `YYYY-Www` with the current ISO week (same as used for output files). Use this same `--run-log` path in all subsequent commands that accept it.
 
 ## SKILL 0: DATA COLLECTION (MANDATORY — run first, every time, no exceptions)
 
@@ -74,23 +82,23 @@ pip install -r ${CLAUDE_PLUGIN_ROOT}/scripts/requirements.txt --break-system-pac
 
 Check if `outputs/data/latest-data-full.json` exists. If NOT (first run), use historical mode:
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode historical
+python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode historical --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 
 If it exists (subsequent runs), use weekly mode:
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode weekly
+python ${CLAUDE_PLUGIN_ROOT}/scripts/data_collector.py --fred-key "FRED_KEY_FROM_CONFIG" --output-dir outputs/data/ --mode weekly --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 
 Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. EIA petroleum data, CFTC COT, and BIS credit data are all pulled automatically (no API key needed). Never hardcode keys in any output file.
 
 **After the collector finishes, run the pre-flight check:**
 ```bash
-python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/data/ --config config/user-config.json
+python ${CLAUDE_PLUGIN_ROOT}/scripts/preflight_check.py --output-dir outputs/data/ --config config/user-config.json --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 **If the pre-flight check fails (non-zero exit code), STOP.** Do not proceed to any skill. The check validates that: (1) the snapshot was generated within the last 18 hours — not yesterday, not last week; (2) key market data (oil, S&P, gold, VIX) is present; (3) config is valid. A failed pre-flight means every downstream output will be built on stale or missing data. Fix the issue (usually: re-run the data collector) and re-run the check until it passes.
 
-## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing)
+## EXECUTION SEQUENCE: 0→preflight→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→regime_classifier→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing)
 
 **Sidecar compilation (after Skill 7):** Run `python ${CLAUDE_PLUGIN_ROOT}/scripts/compile_sidecars.py` to deterministically extract JSON sidecars from thesis markdown. Then run `postrun_check.py --skill skill_7_thesis_monitor` to verify fidelity. If the check fails, fix the thesis markdown (not the JSON) and re-run the compiler.
 
@@ -105,6 +113,13 @@ Each skill MUST:
 6. Write in accessible language — explain acronyms, define technical terms
 7. Save output with meta block (self-score, confidence, data gaps)
 8. Never invent, estimate, or fabricate any data point
+9. **Log to run log.** After completing each skill, log the result:
+   ```bash
+   python ${CLAUDE_PLUGIN_ROOT}/scripts/log_event.py \
+     --log-file outputs/run-logs/YYYY-Www-run-log.jsonl \
+     --severity INFO --phase skill-N --message "Skill name completed"
+   ```
+   If any issues were encountered (data gaps, web search failures, unavailable sources), also log a WARN entry with the issue description. If the skill was skipped (e.g., Skill 14 not due), log an INFO entry with the skip reason.
 
 ### SKILL 1: Central Bank Watch
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/01-central-bank-watch.md` + snapshot.
@@ -170,6 +185,60 @@ The script outputs JSON like: `{"regime": "Stagflation", "streak": 3, "note": "T
 
 **Pass this output to Skill 6 as an input.** The synthesis must use the script's streak number — not a number from any prior synthesis file, not a number from memory, not a number it computes itself.
 
+### PRE-SKILL 6b: Transition Matrix Freshness Check
+Before running the synthesis, check if the empirical transition probability matrix exists and is fresh. This provides base rates for Skill 6's regime forecast.
+
+```bash
+if [ -f outputs/data/regime-transitions.json ]; then
+  GENERATED=$(python3 -c "import json; print(json.load(open('outputs/data/regime-transitions.json'))['generated'])" 2>/dev/null)
+  DAYS_OLD=$(python3 -c "from datetime import datetime; print((datetime.utcnow() - datetime.strptime('$GENERATED', '%Y-%m-%dT%H:%M:%S')).days)" 2>/dev/null || echo "999")
+  echo "Transition matrix exists, generated $GENERATED ($DAYS_OLD days ago)"
+  if [ "$DAYS_OLD" -gt 90 ]; then
+    echo "Matrix is stale (>90 days). Regenerating..."
+    NEEDS_REGEN=true
+  else
+    NEEDS_REGEN=false
+  fi
+else
+  echo "No transition matrix found. Generating..."
+  NEEDS_REGEN=true
+fi
+
+if [ "$NEEDS_REGEN" = true ]; then
+  mkdir -p outputs/data
+  python ${CLAUDE_PLUGIN_ROOT}/scripts/compute_transition_matrix.py \
+    --fred-key "FRED_KEY_FROM_CONFIG" \
+    --output-dir outputs/data/
+fi
+```
+
+Replace `FRED_KEY_FROM_CONFIG` with the actual key from `config/user-config.json`. Alternatively, set the `FRED_API_KEY` environment variable and omit `--fred-key`.
+
+If the script fails, log the error to the run log and continue. Skill 6 will operate in qualitative-only mode (no base rate anchoring) when the matrix is unavailable. This is not a blocking dependency.
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/log_event.py \
+  --log-file outputs/run-logs/YYYY-Www-run-log.jsonl \
+  --severity WARN --phase pre-skill-6 --message "Transition matrix script failed, continuing without base rates"
+```
+
+### PRE-SKILL 6b: Deterministic Regime Classifier
+Run the deterministic regime classifier. This produces a quantitative reference for Skill 6b's evaluation — it computes growth/inflation/liquidity scores from FRED data using the same methodology as `regime_backtest.py` (shared via `regime_core.py`).
+
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/regime_classifier.py --data-dir outputs/data/
+```
+
+If the classifier succeeds, it writes `outputs/data/regime-classifier-output.json`. Skill 6b reads this as its deterministic reference instead of performing its own LLM-based blind classification.
+
+**If the classifier fails** (missing `regime_history` in the data, FRED gaps, etc.), log the warning to the run log and continue. Skill 6b will fall back to its legacy LLM-based blind classification. This is not a blocking dependency.
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/log_event.py \
+  --log-file outputs/run-logs/YYYY-Www-run-log.jsonl \
+  --severity WARN --phase pre-skill-6b --message "Regime classifier failed, falling back to LLM-based classification"
+```
+
+**Note:** Skill 6 does NOT read `regime-classifier-output.json`. Skill 6 classifies independently from raw data to preserve evaluator independence.
+
 ### SKILL 6: Weekly Macro Synthesis
 Read: `${CLAUDE_PLUGIN_ROOT}/skills/macro-advisor/references/06-weekly-macro-synthesis.md` + ALL collection outputs (Skills 1-5) + analyst monitor (Skill 10) + snapshot + **regime streak output from the script above** + prior synthesis from a **previous ISO week** (if exists in `outputs/synthesis/`). "Prior" means the most recent `YYYY-Www` file where Www is strictly less than the current week. The current week's own synthesis file is NOT prior — same-week reruns update the current assessment, they don't start a new week.
 **Regime week count:** Use the streak script output. If this week's regime matches the script's reported regime, set `regime_weeks_held` = streak + 1. If the regime changed, set `regime_weeks_held` = 1. If the script returned streak=0 (first run, no history), estimate from 6-month data trends. **Do NOT read `regime_weeks_held` from any prior synthesis file — the script is the single source of truth.**
@@ -181,7 +250,8 @@ Save to: `outputs/synthesis/YYYY-Www-synthesis.md`
 python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
   --week YYYY-Www --output-dir outputs/ \
   --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
-  --skill skill_6_synthesis
+  --skill skill_6_synthesis \
+  --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 If the check fails, re-run Skill 6. Do not proceed to Skill 6b until the synthesis file exists.
 
@@ -208,7 +278,8 @@ Update: `outputs/synthesis/regime-evaluation-history.json`
 python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
   --week YYYY-Www --output-dir outputs/ \
   --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
-  --skill skill_6b_regime_evaluation
+  --skill skill_6b_regime_evaluation \
+  --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 If the check fails, re-run Skill 6b. Do not proceed until both the regime evaluation markdown and history JSON exist.
 
@@ -247,7 +318,8 @@ Save monitor: `outputs/collection/YYYY-Www-thesis-monitor.md`
 python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
   --week YYYY-Www --output-dir outputs/ \
   --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
-  --skill skill_7_thesis_monitor
+  --skill skill_7_thesis_monitor \
+  --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 If the check fails, it will report exactly which thesis sidecars are missing, have stale Updated dates, or contain stub/placeholder content instead of real structured data. Fix the failing sidecars before proceeding — this is far cheaper than catching it at the end-of-run postrun check when the thesis context has been evicted.
 
@@ -264,7 +336,14 @@ Save to: `outputs/research/STRUCTURAL-[theme-name]-[date].md`
 
 Re-evaluate whether the active thesis book covers the causal chain impacts identified in the quarterly Decade Horizon (Skill 14). This keeps the Mega Forces tab's blind spot data current between quarterly runs — mega forces themselves stay quarterly, but coverage status updates weekly as theses activate or close.
 
-**Skip if:** `outputs/strategic/latest-horizon-data.json` does not exist (Skill 14 has never run — no blind spots to refresh).
+**Skip if:** No horizon data exists at all — neither `outputs/strategic/latest-horizon-data.json` nor `outputs/strategic/latest-horizon-map.md` (Skill 14 has never run).
+
+**Step 0: Auto-migrate if needed.**
+If `outputs/strategic/latest-horizon-data.json` does NOT exist but `outputs/strategic/latest-horizon-map.md` DOES exist, the markdown predates the sidecar spec. Run the one-time migration to backfill:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/migrate_horizon_sidecar.py --output-dir outputs/
+```
+This converts the existing markdown horizon map into the JSON sidecar format so blind spot refresh can operate. The migration is idempotent — it skips if the sidecar already exists.
 
 **Step 1: Gather context.**
 ```bash
@@ -355,7 +434,8 @@ Save JSON sidecar to: `outputs/briefings/YYYY-Www-briefing-data.json` (e.g. `202
 python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
   --week YYYY-Www --output-dir outputs/ \
   --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
-  --skill skill_9_briefing
+  --skill skill_9_briefing \
+  --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 If the check fails, re-run Skill 9. Both the briefing markdown and the briefing-data.json sidecar are required for dashboard generation.
 
@@ -410,7 +490,8 @@ Before presenting anything to the user, run the post-run contract check:
 python ${CLAUDE_PLUGIN_ROOT}/scripts/postrun_check.py \
   --week YYYY-Www \
   --output-dir outputs/ \
-  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json
+  --contract ${CLAUDE_PLUGIN_ROOT}/config/output-contract.json \
+  --run-log outputs/run-logs/YYYY-Www-run-log.jsonl
 ```
 
 **If the check fails (non-zero exit code), do not present the dashboard.** The output lists exactly which files are missing and which skill is responsible. Re-run the failing skill(s) to produce the missing outputs, then re-run the check until it passes. Common failures:
@@ -437,11 +518,22 @@ Present to the user:
 
 If Skill 8 proposed any amendments, include: "X skill amendments proposed this week. Run `/macro-advisor:implement-improvements` to review and apply them."
 
+9. **Run log** — Finalize the run log and present summary:
+```bash
+python ${CLAUDE_PLUGIN_ROOT}/scripts/log_event.py \
+  --log-file outputs/run-logs/YYYY-Www-run-log.jsonl \
+  --severity INFO --phase run-end --message "Weekly run completed" --status COMPLETE
+
+python ${CLAUDE_PLUGIN_ROOT}/scripts/run_log_summary.py \
+  --log-file outputs/run-logs/YYYY-Www-run-log.jsonl
+```
+If warnings or errors were logged: "[N] issues logged during this run ([W] warnings, [E] errors). Full log: `outputs/run-logs/YYYY-Www-run-log.jsonl`." If clean: "Clean run — no warnings or errors."
+
 ## CRITICAL RULES (reinforced)
 
 1. Read RULES.md before anything else and re-read before each skill.
 2. Run Skill 0 first. Everything depends on it.
-3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing).
+3. Execute in order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→regime_classifier→6→6b→6c→7→compile_sidecars→postrun_check(theses)→11(if candidates flagged)→blind-spot-refresh→8→12→9→compile_briefing→postrun_check(briefing).
 4. Every number must be sourced. Never fabricate.
 5. All investment views use specific ETF tickers. User's preferred currency where available.
 6. Write briefing and theses in accessible language.

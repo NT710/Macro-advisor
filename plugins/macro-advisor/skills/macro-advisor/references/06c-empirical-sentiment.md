@@ -12,8 +12,8 @@ After Skill 6 (Weekly Macro Synthesis) completes. Consumes the regime scores fro
 
 ## Inputs
 
-1. **Current state vector** — `growth_score`, `inflation_score`, `liquidity_score` from the current week's `synthesis-data.json` (regime block).
-2. **Historical FRED data** — pulled via `analog_matcher.py` (same series as `regime_backtest.py`).
+1. **Current state vector** — computed directly from FRED data as 11 individual features (growth: INDPRO, UNRATE, Retail, Payrolls; inflation: CPI, Core CPI; liquidity: M2, NFCI, Fed BS; credit: HY OAS; curve: 10Y-2Y spread). Composite scores from `synthesis-data.json` are used for backward-compatible output only.
+2. **Historical FRED data** — 11 series pulled via `analog_matcher.py`.
 3. **Historical weekly asset prices** — pulled via yfinance for the core ETF universe.
 
 ## Execution
@@ -26,12 +26,13 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/analog_matcher.py \
 ```
 
 The script:
-1. Computes monthly state vectors (growth, inflation, liquidity scores) for all historical months
-2. Finds the top 20 most similar periods using cosine similarity
+1. Computes monthly state vectors — 11 individual features, each rank-normalized to [-1, 1] using expanding-window percentiles (no future data leakage)
+2. Finds the top 20 most similar periods using 11-dimensional cosine similarity
 3. Computes forward 4/12/26-week returns per asset in those analog periods
 4. Expresses results as upside/downside risk/reward ratios
-5. Flags surprising findings that contradict textbook expectations
+5. Flags surprising findings that contradict textbook expectations (growth, inflation, and liquidity axes)
 6. Saves output to `outputs/synthesis/empirical-sentiment.json`
+7. **Auto-validates:** if `analog-backtest-results.json` is missing or older than 90 days, automatically runs the out-of-sample backtest and saves results alongside
 
 ## Output Format
 
@@ -42,7 +43,14 @@ The script produces `empirical-sentiment.json` with this structure:
   "current_state": {
     "growth_score": -0.28,
     "inflation_score": 0.42,
-    "liquidity_score": -0.35
+    "liquidity_score": -0.35,
+    "features": {
+      "f_indpro": -0.31, "f_unrate": -0.15, "f_retail": -0.42, "f_payrolls": -0.22,
+      "f_cpi": 0.38, "f_core_cpi": 0.46,
+      "f_m2": -0.55, "f_nfci": -0.28, "f_fed_bs": -0.22,
+      "f_hy_oas": -0.41, "f_yield_curve": 0.12
+    },
+    "dimensionality": 11
   },
   "analog_count": 20,
   "mean_similarity": 0.92,
@@ -78,10 +86,10 @@ The script produces `empirical-sentiment.json` with this structure:
   "forward_windows_weeks": [4, 12, 26],
   "methodology": {
     "method": "cosine_similarity",
-    "dimensions": ["growth_score", "inflation_score", "liquidity_score"],
+    "dimensions": ["f_indpro", "f_unrate", "f_retail", "f_payrolls", "f_cpi", "f_core_cpi", "f_m2", "f_nfci", "f_fed_bs", "f_hy_oas", "f_yield_curve"],
     "top_n": 20,
     "min_analogs": 10,
-    "history_months": 180
+    "history_months": "(computed at runtime, ~336 with 15yr history)"
   }
 }
 ```
@@ -135,7 +143,9 @@ References empirical risk/reward ratios as data input, NOT as sole positioning j
 
 ## Out-of-Sample Validation
 
-Run periodically to verify the analog matcher adds value:
+**Automatic:** The script auto-validates every 90 days during normal weekly runs. When `analog-backtest-results.json` is missing or stale, the backtest runs automatically after producing the weekly sentiment output, using a rolling 3-month train/test split. Results are saved to `outputs/synthesis/analog-backtest-results.json` and include the state vector dimensionality for tracking model changes.
+
+**Manual (for immediate comparison):**
 
 ```bash
 python ${CLAUDE_PLUGIN_ROOT}/scripts/analog_matcher.py \
@@ -144,7 +154,9 @@ python ${CLAUDE_PLUGIN_ROOT}/scripts/analog_matcher.py \
   --backtest --train-end 2019-12-31
 ```
 
-This tests 2020-2025 using only pre-2020 data for analog matching. The output includes a directional hit rate — what percentage of bullish/bearish signals correctly predicted the direction of the actual forward return.
+**Acceptance criteria:** The 11D model must show 3+ percentage point improvement over naive baseline with non-overlapping 95% confidence intervals. If it fails to beat the 3D baseline, revert to the 3-dimensional composite approach.
+
+The backtest output includes `state_vector_dimensions` and `feature_columns` so Skill 8 can track which model version produced which results.
 
 ## Quality Standards
 
@@ -167,8 +179,9 @@ This tests 2020-2025 using only pre-2020 data for analog matching. The output in
 ---
 meta:
   skill: empirical-sentiment
-  skill_version: "1.0"
+  skill_version: "2.0"
   run_date: "[ISO date]"
+  state_vector_dimensions: 11
   state_vector:
     growth_score: [number]
     inflation_score: [number]
@@ -177,6 +190,7 @@ meta:
   mean_similarity: [number]
   surprises_count: [number]
   confidence: [high/medium/low/insufficient_data]
+  validation_status: "[fresh/stale/missing]"
   notes: "[any issues]"
 ---
 ```

@@ -70,7 +70,7 @@ The regime label is the starting point. Asset implications are derived from each
 ### Execution Chain (Single Sunday Run)
 
 ```
-Skill 0:  Data Collection (FRED + Yahoo + CFTC + ECB + Eurostat + EIA + BIS → structured JSON)
+Skill 0:  Data Collection (FRED + Yahoo + CFTC + ECB + Eurostat + EIA + BIS + OECD + IMF + BIS-GLI + BIS-Property + World Bank → structured JSON)
 Skill 1:  Central Bank Watch (Fed, ECB, SNB, BoJ, PBoC)
 Skill 2:  Liquidity & Credit Monitor (M2, credit spreads, NFCI, Fed balance sheet)
 Skill 3:  Macro Data Tracker (PMIs, employment, inflation, GDP, surprises)
@@ -250,6 +250,75 @@ Free, no API key required. Fetches from the BIS data portal (data.bis.org). 5 ec
 
 Available at `snapshot.international_structural`. Quarterly frequency — the most recent observation may lag by 1-2 quarters. Used by Skill 13 Signal 5 as a quantitative anchor for sovereign/credit structural analysis.
 
+#### Source 8: OECD Composite Leading Indicators (CLI)
+Free, no API key required. Fetches from the OECD SDMX REST API (sdmx.oecd.org). 5 economies:
+
+**Composite Leading Indicator (amplitude-adjusted):**
+- Monthly frequency, centred around 100. Designed to identify turning points 6-9 months before hard data confirms them.
+- Countries: USA, DEU (Germany, Euro proxy), CHN, JPN, GBR
+- Signal classification based on level + direction:
+  - CLI > 100 + rising → `expanding` (growth accelerating)
+  - CLI > 100 + falling → `decelerating` (early warning — the classic leading recession signal)
+  - CLI < 100 + falling → `contracting` (growth deteriorating)
+  - CLI < 100 + rising → `recovering` (trough forming)
+- Note: OECD does NOT publish a CLI for the Euro Area aggregate. Germany (DEU) serves as Euro proxy, which is standard macro practice.
+- Note: OECD revises prior 2-3 months when new data arrives. Revision detection is implemented — `revised` flag set when a prior month's direction changes.
+
+Available at `snapshot.leading_indicators`. Includes per-country CLI data plus a `global_divergence` section with US-vs-world assessment and simultaneous deceleration detection. Used by Skill 6 as a forward-looking global cycle context layer (NOT a weight in the US growth score).
+
+#### Source 9: IMF World Economic Outlook (WEO) Forecasts
+Free, no API key required. Fetches from the IMF DataMapper API (imf.org). 5 economies:
+
+**GDP Growth and CPI Inflation Forecasts:**
+- Semi-annual frequency (April + October vintage). Fetches current year, next year, and year-after-next.
+- Countries: USA, EURO (Euro area), CHN, JPN, GBR
+- Indicators: Real GDP growth (NGDP_RPCH, %), CPI inflation (PCPIPCH, %)
+- Important: The DataMapper API blocks URL-path country filters — must fetch all countries and filter client-side.
+- Vintage detection: inferred from current date (April vintage for Apr-Sep, October vintage for Oct-Mar).
+- Staleness threshold: 4 months from vintage date. Flagged as `stale` when consensus no longer reflects the current data environment.
+
+Available at `snapshot.consensus_forecasts`. Used by Skill 6 as a sanity check for regime forecasts — when the system's 6/12-month forecast diverges > 0.5pp from WEO consensus, the divergence must be explained.
+
+#### Source 7b: BIS Global Liquidity Indicators (GLI)
+Free, no API key required. Fetches from the BIS SDMX REST API (stats.bis.org/api/v2/). Quarterly frequency.
+
+**USD-Denominated Cross-Border Credit:**
+- Tracks bank loans + debt securities to non-bank borrowers, denominated in USD
+- Aggregates: 4T (all reporting countries), 3C (advanced economies), 3P (emerging markets)
+- YoY growth rate is the key signal: `rapid_expansion` (>8%), `moderate_expansion` (3-8%), `stagnant` (0-3%), `contracting` (<0%)
+- AE/EMDE divergence flag when growth rates differ by >3 percentage points
+- This is the dominant global liquidity transmission channel. When global dollar liquidity contracts, even fundamentally sound economies get hit.
+
+Available at `snapshot.international_structural.global_liquidity`. Used by Skill 6 as the 4th voting indicator in the liquidity condition majority rule (alongside M2, NFCI, Fed balance sheet). 3-of-4 majority, 2-2 ties hold current condition.
+
+#### Source 7c: BIS Residential Property Prices
+Free, no API key required. Fetches from the BIS SDMX REST API (stats.bis.org/api/v2/). Quarterly frequency. 10 economies.
+
+**Real (CPI-Deflated) Property Price YoY Growth:**
+- Countries: US, DE, CN, JP, GB, IN, BR, KR, MX, ID
+- Signal classification uses percentile-based thresholds vs each country's own 10-year history: `overheating` (>90th), `hot` (70-90th), `moderate` (30-70th), `cooling` (10-30th), `declining` (<10th)
+- Systemic risk flag: when 3+ economies show `overheating` simultaneously
+- Property bubbles are the #1 predictor of financial crises (Reinhart & Rogoff)
+
+Available at `snapshot.international_structural.property_[xx]` per country + `property_systemic`. Used by Skill 13 Signal 5 (credit/financial detector) for structural financial stability analysis.
+
+#### Source 10: World Bank Structural Indicators
+Free, no API key required. Fetches from the World Bank Indicators API v2 (api.worldbank.org). Annual frequency, 1-2 year data lag. 10 economies (US, DE, CN, JP, GB, IN, BR, KR, MX, ID).
+
+**Demographics:**
+- Population 65+ (% of total) — aging drag on growth
+- Labor force participation (% ages 15-64) — labor supply constraints
+
+**Credit & External:**
+- Domestic credit to private sector (% GDP) — financial deepening, different methodology from BIS credit gap
+- Current account balance (% GDP) — external vulnerability
+- Trade openness (% GDP) — structural sensitivity to trade shocks
+- GDP per capita PPP (constant $) — EM convergence, relative valuation
+- Gini coefficient — social stability (sparse coverage, survey-dependent)
+- External debt (% GNI) — EM crisis predictor
+
+Available at `snapshot.structural_demographics` and `snapshot.structural_external`. Includes derived signals: `aging_hotspots` (countries with 65+ > 25%) and `twin_deficit_warning` (current account < -2% GDP). Used by Skill 13 (structural scanner) and Skill 14 (decade horizon) for multi-year structural analysis. NOT used by Skill 6 — annual data has no place in weekly regime assessment.
+
 #### Derived Signals (computed automatically)
 The data collector computes higher-level signals from raw data:
 
@@ -270,6 +339,11 @@ The data collector computes higher-level signals from raw data:
 - **Inventory-to-Sales Ratios:** Retail, manufacturing, and wholesale I/S ratios with 4w/8w trend — `drawing` (contraction bias) / `building` (expansion bias) / `stable`
 - **EIA Energy Data** (free, no key): US commercial crude inventories, SPR level, refinery utilization, days of supply. Available at `snapshot.energy`.
 - **BIS Credit-to-GDP Gap** (free, no key): Credit-to-GDP gap deviation from trend for US, Euro area, China, Japan, UK — `overheating` (>+10pp) / `above_trend` / `near_trend` / `below_trend` / `depressed` (<-10pp). Available at `snapshot.international_structural`.
+- **OECD Composite Leading Indicators** (free, no key): CLI amplitude-adjusted index for USA, DEU, CHN, JPN, GBR. Direction classified as `expanding` / `decelerating` / `contracting` / `recovering`. Includes global divergence assessment. Available at `snapshot.leading_indicators`.
+- **IMF WEO Consensus Forecasts** (free, no key): GDP growth and CPI inflation forecasts for USA, Euro area, CHN, JPN, GBR. Semi-annual vintage with staleness detection. Available at `snapshot.consensus_forecasts`.
+- **BIS Global Liquidity Indicators** (free, no key): USD cross-border credit YoY growth for all countries, AE, and EMDE aggregates. `rapid_expansion` / `moderate_expansion` / `stagnant` / `contracting`. AE/EMDE divergence flag. Available at `snapshot.international_structural.global_liquidity`. 4th voting indicator for liquidity condition.
+- **BIS Residential Property Prices** (free, no key): Real property price YoY growth for 10 economies. Percentile-based signals vs 10-year history: `overheating` / `hot` / `moderate` / `cooling` / `declining`. Systemic risk flag when 3+ overheating. Available at `snapshot.international_structural.property_[xx]`.
+- **World Bank Structural** (free, no key): Demographics (aging, labor), credit depth, current account, trade openness, GDP per capita, Gini, external debt for 10 economies. Annual, 1-2yr lag. Available at `snapshot.structural_demographics` and `snapshot.structural_external`.
 
 Every series includes a **percentile rank** vs. the full history fetched — "where is the current value relative to the range?" This enables statements like "HY OAS is at the 97th percentile of tightness" without needing external benchmarking.
 

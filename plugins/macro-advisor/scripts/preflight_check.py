@@ -20,11 +20,15 @@ Exit codes:
     3 = config missing or invalid
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from run_log_utils import log_event as _log_event
 
 
 def check_snapshot_freshness(output_dir: Path) -> list[str]:
@@ -141,10 +145,12 @@ def main():
     parser = argparse.ArgumentParser(description="Pre-flight checks for weekly macro run")
     parser.add_argument("--output-dir", required=True, help="Path to outputs/data/")
     parser.add_argument("--config", required=True, help="Path to config/user-config.json")
+    parser.add_argument("--run-log", default=None, help="Path to JSONL run log (optional)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     config_path = Path(args.config)
+    run_log = Path(args.run_log) if args.run_log else None
 
     all_errors = []
     all_warnings = []
@@ -163,6 +169,7 @@ def main():
     # Report
     if not all_errors and not all_warnings:
         print("PRE-FLIGHT: All checks passed.")
+        _log_event(run_log, "INFO", "preflight", "All checks passed")
         try:
             snap = json.loads((output_dir / "latest-snapshot.json").read_text(encoding="utf-8"))
             print(f"  Snapshot generated: {snap.get('generated', 'unknown')}")
@@ -178,10 +185,12 @@ def main():
     if all_warnings:
         for w in all_warnings:
             print(w, file=sys.stderr)
+            _log_event(run_log, "WARN", "preflight", w)
 
     if all_errors:
         for e in all_errors:
             print(e, file=sys.stderr)
+            _log_event(run_log, "FATAL", "preflight", e)
         print(
             "\nPRE-FLIGHT FAILED. Fix the issues above before running skills. "
             "Do NOT proceed with stale or missing data.",
@@ -189,6 +198,7 @@ def main():
         )
         sys.exit(1)
     else:
+        _log_event(run_log, "INFO", "preflight", f"Passed with {len(all_warnings)} warning(s)")
         print("PRE-FLIGHT: Passed with warnings (see above).")
         sys.exit(0)
 

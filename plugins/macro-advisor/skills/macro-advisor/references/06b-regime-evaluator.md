@@ -28,24 +28,29 @@ The absence of history is the point. This skill sees only this week's data, this
 
 ---
 
-## Step 1: BLIND CLASSIFICATION
+## Step 1: DETERMINISTIC REFERENCE COMPARISON
 
-Read only the collection skill outputs (Skills 1-5) and the data snapshot. Without referencing Skill 6's conclusions, classify the current regime:
+Read `outputs/data/regime-classifier-output.json`. This is the deterministic reference — a Python script (`regime_classifier.py`) that computes growth/inflation/liquidity scores from FRED data using the exact same methodology as `regime_backtest.py` (6-month direction window, majority vote, 36-month rolling medians, 2-month confirmation filter). It runs before this skill in the orchestration chain.
 
-1. **Growth direction:** Extract growth indicators from Skill 3 and the snapshot. ISM manufacturing, unemployment direction, NFP trend, retail sales, GDP tracking. Is growth rising or falling based on this week's data alone?
+**If `regime-classifier-output.json` does not exist** (classifier failed or hasn't been deployed yet), fall back to the legacy blind classification: read Skills 1-5 and the data snapshot, classify the regime yourself using the methodology documented in `references/06-weekly-macro-synthesis.md`. Note "classifier unavailable — using LLM blind classification" in the output.
 
-2. **Inflation direction:** Extract inflation indicators from Skill 3 and the snapshot. Core PCE, PPI, breakeven inflation, wage growth, commodity prices. Is inflation rising or falling based on this week's data alone?
+**If the classifier output exists:**
 
-3. **Liquidity condition:** Extract liquidity indicators from Skill 2 and the snapshot. M2 YoY vs. 36-month median, NFCI vs. 36-month median, Fed balance sheet YoY vs. 36-month median. Classify as Ample (majority above trend) or Tight (majority below trend). Note: this is a single-week blind reading. Skill 6 uses a rolling 4-week assessment for its official liquidity condition — a single-week divergence is expected and not concerning. Only flag liquidity divergence if the blind reading has disagreed for 3+ consecutive weeks.
+1. **Read the classifier's scores:** `growth.score`, `inflation.score`, `liquidity.score`, `regime_family`, `regime_8`, and the `confirmation_filter` block.
 
-4. **Classify:** Place the data in the regime model. First determine the regime family (four-quadrant: Growth × Inflation), then apply the liquidity condition for the full 8-regime label. Growth × inflation classification is a point-in-time reading. Liquidity classification is compared against Skill 6's 4-week rolling assessment.
+2. **Compare against Skill 6:** Does the classifier's `regime_family` match Skill 6's regime family? Compare the CONFIRMED regimes (both the classifier and Skill 6 apply the 2-month confirmation filter, so divergences are substantive, not artifacts of raw-vs-confirmed timing).
 
-5. **Score:** Produce growth_score (-1.0 to +1.0), inflation_score (-1.0 to +1.0), and liquidity_score (-1.0 to +1.0) using the same weighting methodology as Skill 6 (documented in `references/06-weekly-macro-synthesis.md`).
+3. **Score comparison:** How far apart are the continuous scores? A growth score of -0.25 (classifier) vs. -0.30 (Skill 6) is noise. A growth score of -0.25 (classifier) vs. +0.15 (Skill 6) is a meaningful divergence that requires explanation.
 
-6. **Compare:** Does the blind classification match Skill 6's regime call? Compare on `regime_family` (four-quadrant) for the primary divergence check. Flag liquidity condition divergence separately — it's informative but does not drive the streak count.
+4. **Flag divergence type:**
+   - **Family divergence:** Classifier and Skill 6 disagree on the 4-quadrant regime family. This is the primary signal.
+   - **Score divergence:** Same family but scores differ by >0.3 on any axis. Informative but secondary.
+   - **Liquidity divergence:** Classifier and Skill 6 disagree on Ample/Tight. Note: the classifier uses monthly data while Skill 6 uses a rolling 4-week assessment — minor divergence is expected. Only flag if the liquidity condition is opposite.
 
-If yes → the data and the official call agree this week.
-If no → record the divergence.
+5. **LLM value-add check:** If Skill 6 AGREES with the classifier (same family, scores within 0.3), note this. If agreement persists for 8+ consecutive weeks, flag: "Skill 6 has agreed with the deterministic classifier for N weeks — is the LLM adding qualitative value, or just echoing the numbers?" Some divergence is healthy — it means the LLM is incorporating context the classifier cannot see (Fed forward guidance, geopolitical risk, positioning data).
+
+If the classifier and Skill 6 agree → the data and the official call agree this week.
+If they diverge → record the divergence and examine whether Skill 6's reasoning justifies the override.
 
 ---
 
@@ -131,13 +136,14 @@ Save as `outputs/synthesis/YYYY-Www-regime-evaluation.md`:
 ```markdown
 ## Regime Evaluation — Week of [Date]
 
-### Blind Classification
-**Regime from data alone:** [full 8-regime label]
-**Regime family (blind):** [quadrant]
-**Growth score (blind):** [value]
-**Inflation score (blind):** [value]
-**Liquidity score (blind):** [value]
-**Liquidity condition (blind):** [Ample / Tight]
+### Deterministic Reference
+**Source:** [regime-classifier-output.json / LLM blind classification (fallback)]
+**Regime (reference):** [full 8-regime label]
+**Regime family (reference):** [quadrant]
+**Growth score (reference):** [value]
+**Inflation score (reference):** [value]
+**Liquidity score (reference):** [value]
+**Liquidity condition (reference):** [Ample / Tight]
 **Skill 6 called:** [full 8-regime label] (family: [quadrant], growth: [value], inflation: [value], liquidity: [value])
 **Family agreement:** [Yes / No]
 **Liquidity agreement:** [Yes / No]
@@ -181,12 +187,12 @@ After producing the output, update `outputs/synthesis/regime-evaluation-history.
 [
   {
     "week": "2026-W13",
-    "blind_regime": "Disinfl. Slowdown — Tight Liquidity",
-    "blind_regime_family": "Disinflationary Slowdown",
-    "blind_growth_score": -0.35,
-    "blind_inflation_score": -0.18,
-    "blind_liquidity_score": -0.25,
-    "blind_liquidity_condition": "tight",
+    "reference_regime": "Disinfl. Slowdown — Tight Liquidity",
+    "reference_regime_family": "Disinflationary Slowdown",
+    "reference_growth_score": -0.35,
+    "reference_inflation_score": -0.18,
+    "reference_liquidity_score": -0.25,
+    "reference_liquidity_condition": "tight",
     "skill6_regime": "Overheating — Ample Liquidity",
     "skill6_regime_family": "Overheating",
     "skill6_growth_score": 0.22,
@@ -211,7 +217,8 @@ Rules:
 
 ## Quality Standards
 
-- The blind classification must use the SAME weighting methodology as Skill 6 (documented in `references/06-weekly-macro-synthesis.md`). The only difference is the absence of prior context. If the methodology produces a different result without history, that's the signal.
+- When the deterministic classifier is available, the reference classification is computed by `regime_classifier.py` using the shared `regime_core.py` module — the same methodology as `regime_backtest.py`. This is a deterministic computation, not an LLM judgment. Divergences between this reference and Skill 6's LLM-based classification are the signal.
+- When falling back to LLM blind classification (classifier unavailable), use the SAME weighting methodology as Skill 6 (documented in `references/06-weekly-macro-synthesis.md`). The only difference is the absence of prior context.
 - The reasoning audit must quote exact claims from Skill 6's output. No paraphrasing — the reader should be able to trace every flag back to the source text.
 - PASS is the expected verdict on most weeks. Skill 8 monitors CHALLENGE frequency in context (stability vs. transition periods).
 - The evaluator must NOT recommend a regime change. It identifies divergence and flags reasoning issues. The regime call belongs to Skill 6.
@@ -235,12 +242,12 @@ meta:
   skill: regime-evaluator
   skill_version: "1.0"
   run_date: "[ISO date]"
-  blind_regime: "[full 8-regime label]"
-  blind_regime_family: "[quadrant]"
-  blind_growth_score: [number]
-  blind_inflation_score: [number]
-  blind_liquidity_score: [number]
-  blind_liquidity_condition: "[ample/tight]"
+  reference_regime: "[full 8-regime label]"
+  reference_regime_family: "[quadrant]"
+  reference_growth_score: [number]
+  reference_inflation_score: [number]
+  reference_liquidity_score: [number]
+  reference_liquidity_condition: "[ample/tight]"
   skill6_regime: "[full 8-regime label]"
   skill6_regime_family: "[quadrant]"
   diverged: [true/false]

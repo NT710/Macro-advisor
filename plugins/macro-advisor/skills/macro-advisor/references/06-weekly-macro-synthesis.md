@@ -52,7 +52,7 @@ A regime is a structural macroeconomic condition that persists for quarters, not
 2. That new direction must persist for at least 2 months (~8 weekly prints) before the regime change registers. During this confirmation period, flag the emerging shift as "regime under review — data pointing toward [new quadrant] but confirmation period not yet met." Continue to classify and position under the current regime until confirmation completes.
 3. If the data is ambiguous — one indicator says growth is rising, another says falling — hold the current regime and flag the conflict. The burden of proof is on the change, not on continuity.
 
-**Liquidity condition does NOT use the 2-month confirmation filter, but it is NOT a weekly tactical signal either.** Liquidity condition (Ample/Tight) uses a rolling 4-week directional assessment: updated weekly, but assessed over the trailing month of Skill 2 data. A single week's liquidity reading flipping from loose to tight does not change the condition — the majority of the trailing 4 weeks must point in the new direction before the condition flips. This prevents weekly noise while still being far more responsive than the 2-month confirmation filter used for regime family changes. A change from "Goldilocks — Ample Liquidity" to "Goldilocks — Tight Liquidity" is NOT a regime change — the regime family is unchanged. Only growth × inflation transitions trigger the 2-month confirmation filter.
+**Liquidity condition does NOT use the 2-month confirmation filter, but it is NOT a weekly tactical signal either.** Liquidity condition (Ample/Tight) uses a rolling 4-week directional assessment: updated weekly, but assessed over the trailing month of Skill 2 data. Each week, four indicators vote: (1) M2 YoY vs. 36-month median, (2) NFCI vs. 36-month median, (3) Fed balance sheet YoY vs. 36-month median, (4) BIS GLI USD credit YoY growth vs. 36-month median (from `snapshot.international_structural.global_liquidity`). Majority rule: 3-of-4 or 4-of-4 = clear signal. A 2-2 tie resolves as "hold current liquidity condition" (burden of proof on the change). If GLI data is unavailable, fall back to the original 3-indicator vote (2-of-3). A single week's liquidity reading flipping from loose to tight does not change the condition — the majority of the trailing 4 weeks must point in the new direction before the condition flips. This prevents weekly noise while still being far more responsive than the 2-month confirmation filter used for regime family changes. A change from "Goldilocks — Ample Liquidity" to "Goldilocks — Tight Liquidity" is NOT a regime change — the regime family is unchanged. Only growth × inflation transitions trigger the 2-month confirmation filter.
 
 **Equally important — challenge continuity too.** The confirmation requirement must not create a bias toward holding the current regime indefinitely. If the same regime has been active for 16+ consecutive weeks (~4 months), actively stress-test it: what evidence would it take to call a different regime? If you can't articulate what would change your mind, you may be anchored rather than analytical. The burden of proof applies symmetrically — it's on the change when data is noisy, and it's on continuity when the regime has persisted well beyond the confirmation window and the underlying data is shifting.
 
@@ -82,6 +82,7 @@ Also read the **prior week's** synthesis output (if it exists) for trend context
 
 1. Read all five collection skill outputs for the current week
 2. Read prior week's synthesis (if available) for continuity — "prior week" means the most recent `YYYY-Www` synthesis where Www < current week. Never read the current week's own file as prior.
+2b. Read `outputs/data/regime-transitions.json` if it exists. This file contains empirical transition probabilities computed from historical FRED data. Check the `generated` timestamp — if older than 120 days, note "empirical base rates stale" but still use them (stale base rates are better than no base rates). If the file does not exist, note "empirical base rates unavailable" and proceed with qualitative-only forecasting in the Regime Forecast section. **Important:** Use YOUR regime determination (from steps 4-5) as the lookup key into the transition matrix, not the `current_regime` field in the JSON (which may be from a prior month's computation).
 3. Extract the key signal from each skill:
    - Skill 1: Policy direction and liquidity regime implication
    - Skill 2: Liquidity regime classification (the most important input)
@@ -128,7 +129,7 @@ Do NOT compute this from prior synthesis files. Do NOT carry forward a number fr
 **Regime coordinates (for dashboard visualization):**
 - Growth score: [continuous value from -1.0 to +1.0, derived from the growth data. Map from the underlying indicators: ISM manufacturing (weight 0.3), unemployment direction (0.2), NFP trend (0.2), retail sales trend (0.15), GDP tracking (0.15). Normalize: +1.0 = all indicators strongly improving, -1.0 = all indicators strongly deteriorating, 0 = mixed/flat. This is NOT a binary quadrant assignment — it's a continuous measure of where within the quadrant the economy sits.]
 - Inflation score: [continuous value from -1.0 to +1.0, derived from the inflation data. Map from: core PCE direction (weight 0.3), PPI direction (0.2), breakeven inflation trend (0.2), wage growth trend (0.15), commodity price direction (0.15). Normalize: +1.0 = inflation clearly accelerating, -1.0 = inflation clearly decelerating, 0 = stable/ambiguous.]
-- Liquidity score: [continuous value from -1.0 to +1.0, derived from Skill 2 liquidity data. Determined by majority vote of three indicators: M2 YoY vs. 36-month median (above = positive), NFCI vs. 36-month median (below = positive, since lower NFCI = looser conditions), Fed balance sheet YoY vs. 36-month median (above = positive). +1.0 = all three strongly above trend (ample), -1.0 = all three strongly below trend (tight), 0 = mixed. Binary classification: positive = Ample, negative = Tight.]
+- Liquidity score: [continuous value from -1.0 to +1.0, derived from Skill 2 liquidity data + BIS Global Liquidity Indicators. Determined by majority vote of FOUR indicators: (1) M2 YoY vs. 36-month median (above = positive), (2) NFCI vs. 36-month median (below = positive, since lower NFCI = looser conditions), (3) Fed balance sheet YoY vs. 36-month median (above = positive), (4) BIS GLI USD credit YoY growth vs. 36-month median (above = positive, from `snapshot.international_structural.global_liquidity.4t.yoy_growth_pct`). Majority rule: 3-of-4 or 4-of-4 = clear signal. 2-2 tie = hold current liquidity condition (burden of proof on the change). +1.0 = all four strongly above trend (ample), -1.0 = all four strongly below trend (tight), 0 = mixed/tied. Binary classification: positive = Ample, negative = Tight. If BIS GLI data is unavailable (`snapshot.international_structural.global_liquidity` absent), fall back to the original 3-indicator majority vote.]
 
 **Coordinate-label consistency check (mandatory):** After assigning all three scores, verify that the sign of each score matches the regime label. The mapping is: Goldilocks = growth positive, inflation negative. Overheating = growth positive, inflation positive. Stagflation = growth negative, inflation positive. Disinflationary Slowdown = growth negative, inflation negative. Ample Liquidity = liquidity score positive. Tight Liquidity = liquidity score negative. If your scores land in a different quadrant than your label, you must do one of two things: (1) revise the scores to reflect the data more accurately, explaining what you got wrong on the first pass, or (2) revise the regime label, explaining why the data actually points to the other quadrant. You may NOT leave them contradicting silently. A score near zero (between -0.15 and +0.15) on any axis is exempt from this check — it means the signal is genuinely ambiguous on that dimension, which is useful information. Report the exemption explicitly: "Growth score near zero — signal ambiguous, consistent with either [X] or [Y] regime."
 
@@ -136,6 +137,8 @@ Do NOT compute this from prior synthesis files. Do NOT carry forward a number fr
 
 ### Liquidity Picture
 [2-3 sentences synthesized from Skill 2. Regime classification, key data points, direction of change.]
+
+**Global Dollar Liquidity (BIS GLI):** If `snapshot.international_structural.global_liquidity` is present, report the total (4T) USD credit YoY growth rate and signal. Note whether global liquidity confirms or diverges from domestic liquidity indicators. If AE/EMDE divergence is flagged, note the capital flow implication. If GLI data is absent, note: "BIS GLI unavailable this week."
 
 ### Growth Picture
 [2-3 sentences synthesized from Skill 3. Growth regime, surprise direction, key indicators.]
@@ -145,6 +148,29 @@ Do NOT compute this from prior synthesis files. Do NOT carry forward a number fr
 
 ### Positioning Picture
 [2-3 sentences synthesized from Skill 5. Where is the crowd, any extremes, what's the vulnerability.]
+
+### Global Cycle Assessment (OECD CLI)
+If `snapshot.leading_indicators` is present, produce this section. If absent (OECD API was unavailable), skip with a note: "OECD CLI unavailable this week."
+
+For each economy in the CLI data (USA, DEU, CHN, JPN, GBR):
+- State the CLI value, MoM change, and direction classification (expanding/decelerating/contracting/recovering)
+
+Then assess global cycle divergence from `snapshot.leading_indicators.global_divergence`:
+- **US vs. world:** aligned, diverging_up (US accelerating while world slows), or diverging_down
+- **Simultaneous deceleration:** if 3+ economies are decelerating/contracting, flag as a global slowdown signal that should increase conviction in a growth-down regime call
+- **Key divergences:** name any economy whose direction differs from the majority and note the implication for cross-asset positioning (e.g., "Eurozone decelerating while US expanding suggests overweight US vs. EFA")
+
+This section is informational context for the regime call, NOT an input to the growth score. CLI adds a forward-looking global lens that the FRED-based regime model (which is US-only) cannot provide.
+
+### Consensus Anchor (IMF WEO)
+If `snapshot.consensus_forecasts` is present, produce this section. If absent (IMF API was unavailable), skip with a note: "IMF WEO unavailable this week."
+
+After producing the 6-month and 12-month regime forecasts (below), compare the system's implied GDP and inflation trajectory against IMF WEO consensus:
+- For each economy, flag divergences > 0.5 percentage points between the system's forecast direction and WEO consensus
+- When the system diverges from WEO, explain WHY — what signals does the system see that WEO doesn't (positioning, real-time liquidity data, leading indicators)?
+- If WEO vintage is flagged as stale (`snapshot.consensus_forecasts.stale == true`), note: "WEO vintage is [N] months old — consensus may not reflect recent data shifts"
+
+The WEO is a sanity check, not a constraint. The system can and should diverge when it has better real-time information. But unexplained divergence is a red flag.
 
 ### Cross-Asset Implications (ETF-Focused)
 Express all allocation views using specific ETFs. The reader trades ETFs on Monday morning.
@@ -168,13 +194,43 @@ Also flag any thematic sub-sectors made relevant by active theses or current eve
 
 ### Regime Forecast — 6 and 12 Months
 
-Based on the current data, policy trajectory, and thesis logic, project where the regime is likely to be in 6 months and 12 months. This is not a linear extrapolation — it's a reasoned assessment derived from the analysis above. The forecast now covers three trajectories: growth, inflation, and liquidity.
+Project where the regime is likely to be in 6 months and 12 months. This is not a linear extrapolation — it's a base-rate-anchored assessment where you start from empirical transition probabilities and adjust based on current policy trajectory and data.
 
-For each horizon:
-- **Most likely regime:** [full 8-regime label] — [why, based on what the data and policy trajectory point to]
-- **Liquidity trajectory:** [e.g., "Fed expected to pause QT by Q3 → liquidity shifts from tight to ample" or "M2 contraction continuing → liquidity stays tight"]
+**Step 1: State the empirical base rates.**
+
+If `regime-transitions.json` was read in step 2b, look up the current regime (YOUR regime determination from steps 4-5) in the transition matrix. Use the `full_sample` window by default. For each horizon (6-month and 12-month), state the base rates:
+
+> "Given current regime [X] (held for N months; average duration M months), historical transition probabilities at [horizon] are:
+> - Stay in [X]: [base rate]%
+> - Transition to [Y]: [base rate]%
+> - Transition to [Z]: [base rate]%
+> ..."
+
+Use the `eight_regime` matrix (which includes Bayesian shrinkage toward the 4-regime prior). If the `eight_regime` section is absent (liquidity data was unavailable during matrix computation), use `four_regime` and note the fallback.
+
+If the `post_covid` window is available in the JSON, briefly note any material differences from the full sample (e.g., "Post-COVID base rates show higher persistence in current regime: 65% vs. 55% full-sample").
+
+If `regime-transitions.json` was unavailable, note "empirical base rates unavailable" and proceed with qualitative-only assessment (skip to Step 2, providing narrative estimates without a quantitative anchor).
+
+**Step 2: Adjust base rates with explicit rationale.**
+
+For each target regime, state your adjusted probability and why it differs from the base rate:
+
+> "Base rate says 40% chance of staying in Goldilocks-Ample at 6 months. I adjust to 55% because: Fed has signaled rate cuts through Q3, M2 growth is accelerating, and fiscal stimulus is front-loaded — all pointing to sustained ample liquidity."
+
+Rules for adjustments:
+- Adjustments >20 percentage points from the base rate require specific, falsifiable justification (name the data point or policy action).
+- Adjusted probabilities across all target regimes must sum to approximately 100%. If they don't, reconcile before writing.
+- If the base rate feels right, say so: "Base rate of 35% aligns with current data — no adjustment."
+
+**Step 3: Produce the forecast.**
+
+For each horizon, after stating base rates and adjustments, write the standard forecast:
+
+- **Most likely regime:** [full 8-regime label] — [why, grounded in adjusted base rate + policy trajectory]
+- **Liquidity trajectory:** [e.g., "Fed expected to pause QT by Q3 → liquidity shifts from tight to ample"]
 - **Key assumption:** [what has to hold true for this forecast to play out]
-- **What would change it:** [the specific development that would shift the trajectory to a different quadrant or liquidity condition]
+- **What would change it:** [specific development that shifts trajectory]
 - **Confidence:** [High/Medium/Low — and why]
 
 The 6-month forecast should be grounded in visible policy paths and data trends (Fed rate trajectory, credit cycle direction, oil supply dynamics, QT/QE timeline). The 12-month forecast is inherently less certain — acknowledge that. If the 12-month view is genuinely unclear, say so rather than forcing a prediction.
@@ -267,8 +323,13 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
       "regime_family": "Disinflationary Slowdown",
       "liquidity_condition": "ample",
       "probability": 0.60,
+      "base_rate_probability": 0.45,
+      "base_rate_source_n": 32,
+      "base_rate_matrix_type": "eight_regime",
+      "adjustment_rationale": "Fed has signaled rate cuts through Q3, M2 growth accelerating. Base rate of 45% adjusted up to 60%.",
       "alternative_regime": "Stagflation — Tight Liquidity",
-      "alternative_probability": 0.35,
+      "alternative_probability": 0.25,
+      "alternative_base_rate": 0.15,
       "growth_score_range": [0.10, -0.30],
       "inflation_score_range": [-0.10, 0.30],
       "liquidity_score_range": [0.10, 0.40],
@@ -284,8 +345,13 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
       "regime_family": "Goldilocks",
       "liquidity_condition": "ample",
       "probability": 0.45,
+      "base_rate_probability": 0.40,
+      "base_rate_source_n": 32,
+      "base_rate_matrix_type": "eight_regime",
+      "adjustment_rationale": "Cyclical recovery pattern + policy normalization points slightly above base rate.",
       "alternative_regime": "Disinfl. Slowdown — Ample Liquidity",
-      "alternative_probability": 0.40,
+      "alternative_probability": 0.35,
+      "alternative_base_rate": 0.30,
       "growth_score_range": [0.15, 0.40],
       "inflation_score_range": [-0.20, 0.10],
       "liquidity_score_range": [0.20, 0.50],
@@ -377,6 +443,7 @@ The JSON must contain **all** structured data from the synthesis. The markdown f
 5. The `drivers` block captures the current state of the three underlying forces. This feeds dashboard visualizations and the trading engine's driver-level reasoning.
 6. If a section is unavailable (e.g., analyst monitor didn't run), set the value to `null`, not an empty string.
 7. The YAML front matter in the markdown file continues to exist for backward compatibility. The JSON sidecar supersedes it for all downstream consumers.
+8. The `forecasts` array must include `base_rate_probability` for each forecast when `regime-transitions.json` was read. If unavailable, set to `null`. The `adjustment_rationale` field is mandatory whenever `probability` differs from `base_rate_probability` by more than 0.02. Set `base_rate_source_n` to the N count from the transition matrix and `base_rate_matrix_type` to "four_regime" or "eight_regime" depending on which matrix was used.
 
 ## Meta Block
 

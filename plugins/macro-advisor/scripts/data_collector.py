@@ -22,6 +22,21 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+
+from run_log_utils import log_event as _log_event
+
+# ---------------------------------------------------------------------------
+# REGIME CLASSIFICATION SERIES — extended history for regime_classifier.py
+# These 9 series get 5 years of monthly regime_history in the output JSON,
+# regardless of the lookback_days parameter. This feeds the deterministic
+# regime classifier (36-month rolling medians need 3+ years of data).
+# ---------------------------------------------------------------------------
+REGIME_SERIES = {
+    "INDPRO", "UNRATE", "RSAFS", "PAYEMS",  # growth axis
+    "CPIAUCSL", "CPILFESL",                  # inflation axis
+    "M2SL", "NFCI", "WALCL",                 # liquidity axis
+}
+
 # ---------------------------------------------------------------------------
 # FRED SERIES CONFIGURATION
 # ---------------------------------------------------------------------------
@@ -379,6 +394,224 @@ def validate_data_ranges(fred_data, yahoo_data):
     return anomalies
 
 
+# ---------------------------------------------------------------------------
+# Z-SCORE TENSION DETECTION
+# ---------------------------------------------------------------------------
+# The structural scanner (Skill 13) has 7 prompt-defined detector categories.
+# In practice, the LLM finds what those 7 descriptions tell it to look for.
+# This pass lets the DATA decide which domains deserve attention: for every
+# macro-relevant series, compute z-scores on level and 8-observation rate of
+# change. Anything >2σ gets flagged and fed to Skill 13 as Phase 0 input.
+# ---------------------------------------------------------------------------
+
+# Categories relevant for structural macro analysis.
+# Excludes: equities, volatility, ETF prices (positioning/sentiment, not macro).
+MACRO_CATEGORIES = {
+    "rates", "credit", "financial_conditions", "inflation", "employment",
+    "growth", "inventories", "money_supply", "fed_balance_sheet",
+    "activity_index", "housing", "regional_fed_mfg", "credit_conditions",
+    "commodities", "fx", "money_markets",
+}
+
+
+def _category_for_series(series_key):
+    """Look up the category for a FRED or Yahoo series key."""
+    if series_key in FRED_SERIES:
+        return FRED_SERIES[series_key][1]
+    if series_key in YAHOO_TICKERS:
+        return YAHOO_TICKERS[series_key][1]
+    return None
+
+
+def load_zscore_baseline(output_dir):
+    """Load the running z-score baseline from disk.
+
+    The baseline accumulates mean/variance/count across weekly runs using
+    Welford's online algorithm. This gives a long-term reference that grows
+    with each run, catching slow drifts that a 26-week window normalizes away.
+
+    Returns dict: {series_id: {"mean": float, "m2": float, "count": int}}
+    m2 is the running sum of squared deviations (variance = m2 / count).
+    """
+    baseline_path = Path(output_dir) / "zscore-baseline.json"
+    if baseline_path.exists():
+        try:
+            with open(baseline_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            return {}
+    return {}
+
+
+def update_zscore_baseline(baseline, series_values):
+    """Update baseline with new observations using Welford's online algorithm.
+
+    series_values: dict of {series_id: latest_value}
+    Returns updated baseline dict.
+    """
+    for sid, val in series_values.items():
+        if val is None:
+            continue
+        if sid not in baseline:
+            baseline[sid] = {"mean": val, "m2": 0.0, "count": 1}
+        else:
+            entry = baseline[sid]
+            entry["count"] += 1
+            delta = val - entry["mean"]
+            entry["mean"] += delta / entry["count"]
+            delta2 = val - entry["mean"]
+            entry["m2"] += delta * delta2
+    return baseline
+
+
+def save_zscore_baseline(baseline, output_dir):
+    """Persist the running baseline to disk."""
+    baseline_path = Path(output_dir) / "zscore-baseline.json"
+    with open(baseline_path, "w") as f:
+        json.dump(baseline, f, indent=2)
+
+
+def compute_zscore_tensions(fred_data, yahoo_data, data_anomalies=None,
+                            baseline=None, threshold=2.0):
+    """Flag macro series whose current level or 8-observation rate of change
+    is >threshold standard deviations from historical norm.
+
+    Two baselines:
+    - Short-term: z-scores against the current history window (~26 weeks).
+      Catches sudden deviations.
+    - Long-term: z-scores against the running baseline that accumulates across
+      weekly runs (Welford's algorithm). Catches slow drifts that a 26-week
+      window normalizes away. Only active after 20+ accumulated observations.
+
+    Returns (tensions_list, series_values_dict).
+    series_values_dict is {series_id: latest_value} for baseline update.
+    """
+    tensions = []
+    series_values = {}  # for baseline update
+    anomaly_series = set()
+    if data_anomalies:
+        anomaly_series = {a["series"] for a in data_anomalies}
+    if baseline is None:
+        baseline = {}
+
+    # Merge FRED and Yahoo data into a single iteration
+    all_series = {}
+    for source_label, source_data in [("FRED", fred_data), ("Yahoo", yahoo_data)]:
+        if not source_data:
+            continue
+        for sid, sdata in source_data.get("data", {}).items():
+            cat = _category_for_series(sid)
+            if cat not in MACRO_CATEGORIES:
+                continue
+            if sid in anomaly_series:
+                continue
+            desc = sdata.get("name", FRED_SERIES.get(sid, YAHOO_TICKERS.get(sid, ("", "")))[0])
+            all_series[sid] = (source_label, sdata, cat, desc)
+
+    for sid, (source_label, sdata, cat, desc) in all_series.items():
+        history = sdata.get("history", [])
+        # Minimum 10 observations for level z-score. Monthly macro series
+        # (CPI, unemployment, payrolls) get ~13 observations in weekly mode
+        # due to the yoy_start extension. We want to include them.
+        if len(history) < 10:
+            # Still record value for baseline accumulation even if too few
+            # observations for short-term z-score
+            if history:
+                series_values[sid] = history[-1]["value"]
+            continue
+
+        values = [h["value"] for h in history]
+        latest = values[-1]
+        series_values[sid] = latest
+
+        # --- Short-term level z-score (current window) ---
+        mean_val = sum(values) / len(values)
+        variance = sum((v - mean_val) ** 2 for v in values) / len(values)
+        std_val = variance ** 0.5
+        if std_val < 1e-6:
+            continue
+
+        level_z = (latest - mean_val) / std_val
+
+        # --- Long-term level z-score (accumulated baseline) ---
+        lt_z = None
+        lt_mean = None
+        lt_std = None
+        if sid in baseline and baseline[sid]["count"] >= 20:
+            b = baseline[sid]
+            lt_mean = b["mean"]
+            lt_var = b["m2"] / b["count"]
+            lt_std = lt_var ** 0.5
+            if lt_std > 1e-6:
+                lt_z = (latest - lt_mean) / lt_std
+
+        # --- Rate-of-change z-score (8-observation window) ---
+        # For monthly series with ~13 observations, this gives 5 rolling windows
+        # (13 - 8 = 5). Tight but usable. For weekly series with 26+, plenty.
+        roc_z = None
+        roc_direction = None
+        roc_window = 8
+        if len(values) >= roc_window + 3:  # need at least 3 rolling windows
+            changes = []
+            for i in range(roc_window, len(values)):
+                changes.append(values[i] - values[i - roc_window])
+            if len(changes) >= 3:
+                latest_change = changes[-1]
+                roc_mean = sum(changes) / len(changes)
+                roc_var = sum((c - roc_mean) ** 2 for c in changes) / len(changes)
+                roc_std = roc_var ** 0.5
+                if roc_std > 1e-6:
+                    roc_z = (latest_change - roc_mean) / roc_std
+                    roc_direction = "accelerating" if latest_change > roc_mean else "decelerating"
+
+        # --- Flag if any z-score exceeds threshold ---
+        level_flagged = abs(level_z) >= threshold
+        lt_flagged = lt_z is not None and abs(lt_z) >= threshold
+        roc_flagged = roc_z is not None and abs(roc_z) >= threshold
+
+        if level_flagged or lt_flagged or roc_flagged:
+            # Determine flag reason
+            reasons = []
+            if level_flagged:
+                reasons.append("level")
+            if lt_flagged:
+                reasons.append("long_term")
+            if roc_flagged:
+                reasons.append("rate_of_change")
+            reason = "+".join(reasons) if len(reasons) > 1 else reasons[0]
+
+            tensions.append({
+                "source": source_label,
+                "series": sid,
+                "description": desc,
+                "category": cat,
+                "latest_value": round(latest, 4),
+                "level_zscore": round(level_z, 2),
+                "long_term_zscore": round(lt_z, 2) if lt_z is not None else None,
+                "long_term_baseline_n": baseline[sid]["count"] if sid in baseline else 0,
+                "roc_zscore": round(roc_z, 2) if roc_z is not None else None,
+                "roc_window": roc_window,
+                "flag_reason": reason,
+                "direction": "above_mean" if latest > mean_val else "below_mean",
+                "roc_direction": roc_direction,
+                "historical_mean": round(mean_val, 4),
+                "historical_std": round(std_val, 4),
+                "long_term_mean": round(lt_mean, 4) if lt_mean is not None else None,
+                "long_term_std": round(lt_std, 4) if lt_std is not None else None,
+            })
+
+    # Sort by max absolute z-score descending (strongest signals first)
+    def _max_z(t):
+        zs = [abs(t["level_zscore"])]
+        if t["roc_zscore"] is not None:
+            zs.append(abs(t["roc_zscore"]))
+        if t["long_term_zscore"] is not None:
+            zs.append(abs(t["long_term_zscore"]))
+        return max(zs)
+    tensions.sort(key=_max_z, reverse=True)
+    return tensions, series_values
+
+
 def fetch_fred_data(api_key, lookback_days=182):
     """Fetch all FRED series with trailing history."""
     try:
@@ -391,16 +624,24 @@ def fetch_fred_data(api_key, lookback_days=182):
     end_date = datetime.now()
     start_date = end_date - timedelta(days=lookback_days)
 
-    # For YoY calculations, we need at least 13 months of data
+    # For YoY calculations, we need at least 13 months of data.
+    # For regime series, we need 5 years for the 36-month rolling median.
     yoy_start = end_date - timedelta(days=max(lookback_days, 400))
+    regime_start = end_date - timedelta(days=1825)  # 5 years for regime_history
 
     results = {}
     errors = []
 
     for series_id, (name, category, freq) in FRED_SERIES.items():
         try:
-            # Use extended start for YoY calculation
-            fetch_start = yoy_start if freq in ("monthly", "quarterly") else start_date
+            # Use extended start for YoY calculation.
+            # Regime series get 5-year history for regime_classifier.py.
+            if series_id in REGIME_SERIES:
+                fetch_start = regime_start
+            elif freq in ("monthly", "quarterly"):
+                fetch_start = yoy_start
+            else:
+                fetch_start = start_date
             # Retry with backoff on rate limit (FRED: 120 req/min)
             data = None
             for attempt in range(3):
@@ -469,6 +710,15 @@ def fetch_fred_data(api_key, lookback_days=182):
                         "history": history,
                         "observation_count": len(history_data),
                     }
+
+                    # Regime series: add 5-year monthly history for regime_classifier.py
+                    if series_id in REGIME_SERIES:
+                        regime_data = data[data.index >= regime_start]
+                        regime_monthly = regime_data.resample("ME").last().dropna()
+                        results[series_id]["regime_history"] = [
+                            {"date": ts.strftime("%Y-%m-%d"), "value": round(float(val), 4)}
+                            for ts, val in regime_monthly.items()
+                        ]
                 else:
                     errors.append(f"{series_id}: no data after dropping NaN")
             else:
@@ -1180,6 +1430,669 @@ def fetch_bis_credit_data():
     return {"data": results, "errors": errors} if results or errors else None
 
 
+# ---------------------------------------------------------------------------
+# OECD CLI CONFIGURATION
+# ---------------------------------------------------------------------------
+# OECD publishes CLI at country level only (no Euro Area aggregate).
+# DEU (Germany) serves as Euro proxy — standard practice in macro analysis.
+OECD_CLI_COUNTRIES = {
+    "USA": "United States",
+    "DEU": "Germany",  # Euro Area proxy (OECD has no EA aggregate for CLI)
+    "CHN": "China",
+    "JPN": "Japan",
+    "GBR": "United Kingdom",
+}
+
+
+def fetch_oecd_cli_data():
+    """Fetch OECD Composite Leading Indicators (CLI) for major economies.
+
+    Uses the OECD SDMX REST API (sdmx.oecd.org). Free, no auth required.
+    CLI is amplitude-adjusted, centred around 100. Values above 100 indicate
+    above-trend growth; below 100 indicates below-trend.
+
+    The key signal is DIRECTION, not level:
+      > 100 + rising  → "expanding"   (growth accelerating)
+      > 100 + falling → "decelerating" (early warning)
+      < 100 + falling → "contracting"  (growth deteriorating)
+      < 100 + rising  → "recovering"   (trough forming)
+
+    Returns:
+        dict with country-level CLI data + global divergence assessment, or None on total failure
+    """
+    import urllib.request
+    import json as _json
+
+    errors = []
+    results = {}
+
+    # Single multi-country query — avoids rate limiting
+    country_keys = "+".join(OECD_CLI_COUNTRIES.keys())
+    # Dataflow: OECD.SDD.STES, DSD_STES@DF_CLI
+    # Dimensions (9): REF_AREA.FREQ.MEASURE.UNIT_MEASURE.ACTIVITY.ADJUSTMENT.TRANSFORMATION.TIME_HORIZ.METHODOLOGY
+    # LI = Composite Leading Indicator, IX = Index, AA = Amplitude adjusted, H = OECD harmonised
+    url = (
+        f"https://sdmx.oecd.org/public/rest/data/OECD.SDD.STES,DSD_STES@DF_CLI,/"
+        f"{country_keys}.M.LI.IX._Z.AA.IX._Z.H+N"
+        f"?startPeriod={(datetime.now() - timedelta(days=1095)).strftime('%Y-%m')}"  # 3 years back
+        f"&detail=dataonly"
+    )
+
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "MacroAdvisor/1.0",
+                "Accept": "application/vnd.sdmx.data+json;charset=utf-8;version=1.0",
+            })
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                raw = resp.read().decode("utf-8")
+            data = _json.loads(raw)
+
+            # Parse SDMX-JSON structure
+            structure = data.get("data", {}).get("structure", {})
+            dims = structure.get("dimensions", {})
+
+            # Map dimension indices to values
+            series_dims = dims.get("series", [])
+            ref_areas = [v.get("id") for v in next((d for d in series_dims if d["id"] == "REF_AREA"), {}).get("values", [])]
+            obs_dims = dims.get("observation", [])
+            time_periods = sorted([v.get("id") for v in next((d for d in obs_dims if d["id"] == "TIME_PERIOD"), {}).get("values", [])])
+
+            if not time_periods:
+                errors.append("OECD CLI: response had no time periods")
+                break
+
+            datasets = data.get("data", {}).get("dataSets", [{}])
+            if not datasets:
+                errors.append("OECD CLI: response had no datasets")
+                break
+
+            series = datasets[0].get("series", {})
+
+            for sk, sv in series.items():
+                parts = sk.split(":")
+                country_idx = int(parts[0])
+                country = ref_areas[country_idx] if country_idx < len(ref_areas) else None
+                if not country or country not in OECD_CLI_COUNTRIES:
+                    continue
+
+                obs = sv.get("observations", {})
+                if not obs:
+                    errors.append(f"OECD CLI {country}: no observations")
+                    continue
+
+                # Build sorted history
+                history = []
+                for ok, ov in obs.items():
+                    t_idx = int(ok)
+                    if t_idx < len(time_periods):
+                        history.append({"date": time_periods[t_idx], "value": round(ov[0], 4)})
+                history.sort(key=lambda x: x["date"])
+
+                if len(history) < 2:
+                    errors.append(f"OECD CLI {country}: insufficient data ({len(history)} points)")
+                    continue
+
+                latest = history[-1]
+                prior = history[-2]
+                mom_change = round(latest["value"] - prior["value"], 4)
+
+                # Signal classification
+                above_100 = latest["value"] >= 100
+                rising = mom_change > 0
+                if above_100 and rising:
+                    direction = "expanding"
+                elif above_100 and not rising:
+                    direction = "decelerating"
+                elif not above_100 and not rising:
+                    direction = "contracting"
+                else:
+                    direction = "recovering"
+
+                # Revision detection: OECD revises prior 2-3 months when new data arrives.
+                # Full implementation would read prior snapshot and compare values.
+                # Deferred: requires persistent state across runs (TODO in plan).
+                revised = False
+
+                results[country] = {
+                    "country": OECD_CLI_COUNTRIES[country],
+                    "value": latest["value"],
+                    "date": latest["date"],
+                    "mom_change": mom_change,
+                    "direction": direction,
+                    "revised": revised,
+                    "observation_count": len(history),
+                    "history": history[-24:],  # Last 2 years monthly
+                }
+
+            break  # Success, no need to retry
+
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+                errors.append(f"OECD CLI: HTTP {e.code}, retrying...")
+            else:
+                errors.append(f"OECD CLI: HTTP {e.code} — {str(e)[:100]}")
+                break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                errors.append(f"OECD CLI: {str(e)[:150]}")
+                break
+
+    if not results:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # Compute global divergence assessment
+    directions = {k: v["direction"] for k, v in results.items()}
+    decelerating_count = sum(1 for d in directions.values() if d in ("decelerating", "contracting"))
+    us_dir = directions.get("USA")
+    non_us_dirs = {k: v for k, v in directions.items() if k != "USA"}
+
+    # US vs world divergence
+    us_expanding = us_dir in ("expanding", "recovering")
+    world_contracting = sum(1 for d in non_us_dirs.values() if d in ("decelerating", "contracting")) >= len(non_us_dirs) / 2
+    if us_expanding and world_contracting:
+        us_vs_world = "diverging_up"
+    elif not us_expanding and not world_contracting:
+        us_vs_world = "diverging_down"
+    else:
+        us_vs_world = "aligned"
+
+    divergence = {
+        "us_vs_world": us_vs_world,
+        "simultaneous_deceleration": decelerating_count >= 3,
+        "economies_decelerating": decelerating_count,
+        "directions": directions,
+    }
+
+    return {"data": results, "divergence": divergence, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
+# IMF WEO FORECAST CONFIGURATION
+# ---------------------------------------------------------------------------
+IMF_WEO_COUNTRIES = {
+    "USA": "United States",
+    "EURO": "Euro area",
+    "CHN": "China",
+    "JPN": "Japan",
+    "GBR": "United Kingdom",
+}
+
+IMF_WEO_INDICATORS = {
+    "NGDP_RPCH": "Real GDP growth (%)",
+    "PCPIPCH": "CPI inflation (%)",
+}
+
+
+def fetch_imf_weo_data():
+    """Fetch IMF World Economic Outlook forecasts for major economies.
+
+    Uses the IMF DataMapper API (free, no auth). WEO updates twice yearly
+    (April + October). Fetches GDP growth and CPI inflation forecasts for
+    current year, next year, and year after.
+
+    Important: The DataMapper API blocks requests with country codes in the URL path.
+    Must use the indicator-only endpoint and filter client-side.
+
+    Returns:
+        dict with country-level GDP and CPI forecasts + vintage info, or None on total failure
+    """
+    import urllib.request
+    import json as _json
+
+    errors = []
+    results = {}
+
+    current_year = datetime.now().year
+    periods = f"{current_year},{current_year + 1},{current_year + 2}"
+
+    for indicator, desc in IMF_WEO_INDICATORS.items():
+        # IMF blocks country-filtered URLs but allows indicator-only + periods
+        url = f"https://www.imf.org/external/datamapper/api/v1/{indicator}?periods={periods}"
+
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Referer": "https://www.imf.org/external/datamapper/",
+                    "Accept-Language": "en-US,en;q=0.9",
+                })
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw = resp.read().decode("utf-8")
+                data = _json.loads(raw)
+
+                values = data.get("values", {}).get(indicator, {})
+                if not values:
+                    errors.append(f"IMF WEO {indicator}: no values in response")
+                    break
+
+                for country_code, country_name in IMF_WEO_COUNTRIES.items():
+                    if country_code not in values:
+                        # IMF may not have data for all countries
+                        continue
+
+                    country_data = values[country_code]
+                    if country_code not in results:
+                        results[country_code] = {"country": country_name}
+
+                    # Map year values
+                    for year_str, val in country_data.items():
+                        year = int(year_str)
+                        if year == current_year:
+                            key = f"{indicator.lower()}_current"
+                        elif year == current_year + 1:
+                            key = f"{indicator.lower()}_next"
+                        elif year == current_year + 2:
+                            key = f"{indicator.lower()}_next2"
+                        else:
+                            continue
+                        results[country_code][key] = round(val, 2) if isinstance(val, (int, float)) else val
+
+                break  # Success
+
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                    time.sleep(2 ** (attempt + 1))
+                else:
+                    errors.append(f"IMF WEO {indicator}: HTTP {e.code}")
+                    break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                else:
+                    errors.append(f"IMF WEO {indicator}: {str(e)[:150]}")
+                    break
+
+    if not results:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # Determine WEO vintage — IMF updates April and October
+    # We can't detect vintage from the API directly, so infer from current date
+    now = datetime.now()
+    if now.month >= 10:
+        vintage = f"Oct {now.year}"
+    elif now.month >= 4:
+        vintage = f"Apr {now.year}"
+    else:
+        vintage = f"Oct {now.year - 1}"
+
+    # Staleness check: flag if vintage is > 4 months old
+    vintage_month = 10 if "Oct" in vintage else 4
+    vintage_year = int(vintage.split()[-1])
+    months_since = (now.year - vintage_year) * 12 + (now.month - vintage_month)
+    stale = months_since > 4
+
+    return {
+        "data": results,
+        "vintage": vintage,
+        "stale": stale,
+        "months_since_vintage": months_since,
+        "errors": errors,
+    }
+
+
+# ---------------------------------------------------------------------------
+# BIS GLOBAL LIQUIDITY INDICATORS (GLI)
+# ---------------------------------------------------------------------------
+
+# BIS aggregate codes for GLI
+BIS_GLI_AGGREGATES = {
+    "4T": "All reporting countries",
+    "3P": "Emerging market economies",
+    "3C": "Advanced economies",
+}
+
+
+def fetch_bis_gli_data():
+    """Fetch BIS Global Liquidity Indicators — USD credit to non-bank borrowers.
+
+    Uses the BIS SDMX REST API (stats.bis.org). Free, no auth required.
+    Tracks cross-border USD-denominated credit via bank loans + debt securities.
+    This is the dominant global liquidity transmission channel.
+
+    Key series: CURR_DENOM=USD, L_INSTR=B (loans+bonds), UNIT_MEASURE=771 (YoY growth %),
+    BORROWERS_SECTOR=N (non-bank), aggregates 4T (total), 3P (EM), 3C (AE).
+
+    Returns:
+        dict with aggregate-level GLI data, or None on total failure
+    """
+    import urllib.request
+    import csv as _csv
+    import io as _io
+
+    errors = []
+    results = {}
+
+    start_period = (datetime.now() - timedelta(days=1095)).strftime("%Y-Q1")  # 3 years
+    url = f"https://stats.bis.org/api/v2/data/dataflow/BIS/WS_GLI/1.0/?format=csv&startPeriod={start_period}"
+
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "MacroAdvisor/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read().decode("utf-8")
+
+            reader = _csv.DictReader(_io.StringIO(raw))
+            # Collect relevant rows: USD, loans+bonds (B), YoY growth (771), non-bank (N)
+            for row in reader:
+                if (row.get("CURR_DENOM") == "USD"
+                        and row.get("L_INSTR") == "B"
+                        and row.get("UNIT_MEASURE") == "771"
+                        and row.get("BORROWERS_SECTOR") == "N"):
+                    cty = row.get("BORROWERS_CTY", "")
+                    if cty not in BIS_GLI_AGGREGATES:
+                        continue
+                    period = row.get("TIME_PERIOD", "")
+                    try:
+                        val = float(row.get("OBS_VALUE", ""))
+                    except (ValueError, TypeError):
+                        continue
+                    results.setdefault(cty, []).append({"date": period, "value": round(val, 3)})
+
+            break  # Success
+
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+            else:
+                errors.append(f"BIS GLI: HTTP {e.code}")
+                break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                errors.append(f"BIS GLI: {str(e)[:150]}")
+                break
+
+    if not results:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # Process each aggregate: compute latest, prior, direction
+    processed = {}
+    for agg_code, agg_name in BIS_GLI_AGGREGATES.items():
+        history = results.get(agg_code, [])
+        if not history:
+            continue
+        history.sort(key=lambda x: x["date"])
+        if len(history) < 2:
+            continue
+
+        latest = history[-1]
+        prior = history[-2]
+        yoy = latest["value"]
+
+        signal = (
+            "rapid_expansion" if yoy > 8 else
+            "moderate_expansion" if yoy > 3 else
+            "stagnant" if yoy > 0 else
+            "contracting"
+        )
+
+        processed[agg_code] = {
+            "aggregate": agg_name,
+            "yoy_growth_pct": yoy,
+            "signal": signal,
+            "date": latest["date"],
+            "prior_yoy": prior["value"],
+            "prior_date": prior["date"],
+            "direction": "accelerating" if yoy > prior["value"] else "decelerating",
+            "observation_count": len(history),
+            "history": history[-12:],  # Last 3 years quarterly
+        }
+
+    if not processed:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # AE vs EMDE divergence
+    ae_yoy = processed.get("3C", {}).get("yoy_growth_pct")
+    emde_yoy = processed.get("3P", {}).get("yoy_growth_pct")
+    ae_emde_divergence = (ae_yoy is not None and emde_yoy is not None
+                          and abs(ae_yoy - emde_yoy) > 3)
+
+    return {
+        "data": processed,
+        "ae_emde_divergence": ae_emde_divergence,
+        "errors": errors,
+    }
+
+
+# ---------------------------------------------------------------------------
+# BIS RESIDENTIAL PROPERTY PRICES
+# ---------------------------------------------------------------------------
+
+BIS_PROPERTY_COUNTRIES = {
+    "US": "United States",
+    "DE": "Germany",
+    "CN": "China",
+    "JP": "Japan",
+    "GB": "United Kingdom",
+    "IN": "India",
+    "BR": "Brazil",
+    "KR": "Korea",
+    "MX": "Mexico",
+    "ID": "Indonesia",
+}
+
+
+def fetch_bis_property_data():
+    """Fetch BIS residential property prices (real, YoY growth) for 10 economies.
+
+    Uses the BIS SDMX REST API (stats.bis.org). Free, no auth required.
+    Fetches real (CPI-deflated) residential property price YoY growth rates.
+    Uses percentile-based signal classification vs each country's own 10-year history.
+
+    Returns:
+        dict with country-level property price data, or None on total failure
+    """
+    import urllib.request
+    import csv as _csv
+    import io as _io
+
+    errors = []
+    results = {}
+
+    # Fetch 10+ years for percentile calculation
+    start_period = (datetime.now() - timedelta(days=4380)).strftime("%Y-Q1")  # 12 years
+    url = f"https://stats.bis.org/api/v2/data/dataflow/BIS/WS_SPP/1.0/?format=csv&startPeriod={start_period}"
+
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "MacroAdvisor/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                raw = resp.read().decode("utf-8")
+
+            reader = _csv.DictReader(_io.StringIO(raw))
+            # Filter: VALUE=R (real/deflated), UNIT_MEASURE=771 (YoY growth %)
+            for row in reader:
+                if row.get("VALUE") == "R" and row.get("UNIT_MEASURE") == "771":
+                    area = row.get("REF_AREA", "")
+                    if area not in BIS_PROPERTY_COUNTRIES:
+                        continue
+                    period = row.get("TIME_PERIOD", "")
+                    try:
+                        val = float(row.get("OBS_VALUE", ""))
+                    except (ValueError, TypeError):
+                        continue
+                    results.setdefault(area, []).append({"date": period, "value": round(val, 4)})
+
+            break  # Success
+
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(2 ** (attempt + 1))
+            else:
+                errors.append(f"BIS Property: HTTP {e.code}")
+                break
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                errors.append(f"BIS Property: {str(e)[:150]}")
+                break
+
+    if not results:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # Process each country: percentile-based signal classification
+    processed = {}
+    for country_code, country_name in BIS_PROPERTY_COUNTRIES.items():
+        history = results.get(country_code, [])
+        if not history:
+            continue
+        history.sort(key=lambda x: x["date"])
+        if len(history) < 4:
+            errors.append(f"BIS Property {country_code}: insufficient data ({len(history)} points)")
+            continue
+
+        latest = history[-1]
+        yoy = latest["value"]
+
+        # Percentile-based classification vs own history
+        all_values = sorted([h["value"] for h in history])
+        rank = sum(1 for v in all_values if v <= yoy) / len(all_values) * 100
+
+        signal = (
+            "overheating" if rank > 90 else
+            "hot" if rank > 70 else
+            "moderate" if rank > 30 else
+            "cooling" if rank > 10 else
+            "declining"
+        )
+
+        processed[country_code] = {
+            "country": country_name,
+            "yoy_pct": yoy,
+            "percentile": round(rank, 1),
+            "signal": signal,
+            "date": latest["date"],
+            "observation_count": len(history),
+            "history": history[-12:],  # Last 3 years quarterly
+        }
+
+    if not processed:
+        return {"data": {}, "errors": errors} if errors else None
+
+    # Systemic risk: count overheating economies
+    overheating_count = sum(1 for v in processed.values() if v["signal"] == "overheating")
+
+    return {
+        "data": processed,
+        "systemic_overheating": overheating_count >= 3,
+        "overheating_count": overheating_count,
+        "errors": errors,
+    }
+
+
+# ---------------------------------------------------------------------------
+# WORLD BANK STRUCTURAL INDICATORS
+# ---------------------------------------------------------------------------
+
+WB_COUNTRIES = {
+    "US": "United States", "DE": "Germany", "CN": "China",
+    "JP": "Japan", "GB": "United Kingdom",
+    "IN": "India", "BR": "Brazil", "KR": "Korea, Rep.",
+    "MX": "Mexico", "ID": "Indonesia",
+}
+
+WB_INDICATORS = {
+    "SP.POP.65UP.TO.ZS": "pop_65plus_pct",
+    "SL.TLF.ACTI.ZS": "labor_participation_pct",
+    "FS.AST.PRVT.GD.ZS": "credit_private_pct_gdp",
+    "BN.CAB.XOKA.GD.ZS": "current_account_pct_gdp",
+    "NE.TRD.GNFS.ZS": "trade_openness_pct_gdp",
+    "NY.GDP.PCAP.PP.KD": "gdp_per_capita_ppp",
+    "SI.POV.GINI": "gini",
+    "DT.DOD.DECT.GN.ZS": "external_debt_pct_gni",
+}
+
+
+def fetch_worldbank_structural_data():
+    """Fetch World Bank structural indicators for 10 economies.
+
+    Uses the World Bank Indicators API v2 (api.worldbank.org). Free, no auth, no rate limits.
+    Annual data with 1-2 year lag. Designed for Skill 13 (structural scanner) and
+    Skill 14 (decade horizon), NOT for weekly regime assessment.
+
+    Returns:
+        dict with country-level structural data, or None on total failure
+    """
+    import urllib.request
+    import json as _json
+
+    errors = []
+    results = {}
+
+    country_str = ";".join(WB_COUNTRIES.keys())
+    current_year = datetime.now().year
+
+    for wb_code, field_name in WB_INDICATORS.items():
+        url = (
+            f"https://api.worldbank.org/v2/country/{country_str}/indicator/{wb_code}"
+            f"?date={current_year - 7}:{current_year}&format=json&per_page=500"
+        )
+
+        for attempt in range(3):
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "MacroAdvisor/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    raw = resp.read().decode("utf-8")
+                data = _json.loads(raw)
+
+                if not isinstance(data, list) or len(data) < 2:
+                    errors.append(f"WB {wb_code}: unexpected response format")
+                    break
+
+                meta = data[0]
+                records = data[1] or []
+
+                # Pagination check
+                if meta.get("pages", 1) > 1:
+                    errors.append(f"WB {wb_code}: truncated ({meta['pages']} pages, only fetched page 1)")
+
+                # For each country, take the most recent non-null value
+                for record in records:
+                    country_id = record.get("country", {}).get("id", "")
+                    val = record.get("value")
+                    year = record.get("date", "")
+
+                    if country_id not in WB_COUNTRIES or val is None:
+                        continue
+
+                    if country_id not in results:
+                        results[country_id] = {"country": WB_COUNTRIES[country_id]}
+
+                    # Only store if this is the most recent value for this field
+                    existing_year = results[country_id].get(f"{field_name}_year", "0")
+                    if year > existing_year:
+                        results[country_id][field_name] = round(val, 2) if isinstance(val, (int, float)) else val
+                        results[country_id][f"{field_name}_year"] = year
+
+                break  # Success
+
+            except urllib.error.HTTPError as e:
+                if e.code in (429, 500, 502, 503, 504) and attempt < 2:
+                    time.sleep(2 ** (attempt + 1))
+                else:
+                    errors.append(f"WB {wb_code}: HTTP {e.code}")
+                    break
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                else:
+                    errors.append(f"WB {wb_code}: {str(e)[:150]}")
+                    break
+
+    if not results:
+        return {"data": {}, "errors": errors} if errors else None
+
+    return {"data": results, "errors": errors}
+
+
 def compute_rolling_trend(history, windows=(4, 8)):
     """Compute rolling direction bias from periodic history (any frequency).
 
@@ -1649,7 +2562,8 @@ def compute_derived_metrics(fred_data, yahoo_data):
 
 
 def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_data=None, eurostat_data=None,
-                           eia_data=None, bis_data=None):
+                           eia_data=None, bis_data=None, oecd_data=None, weo_data=None,
+                           gli_data=None, property_data=None, wb_data=None):
     """Build a concise summary for skill consumption."""
     fd = fred_data.get("data", {}) if fred_data else {}
     yd = yahoo_data.get("data", {}) if yahoo_data else {}
@@ -1910,6 +2824,123 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
         if intl:
             snapshot["international_structural"] = intl
 
+    # OECD Composite Leading Indicators — global cycle assessment
+    if oecd_data and oecd_data.get("data"):
+        oecd = oecd_data["data"]
+        li = {}
+        for country_code, cdata in oecd.items():
+            li[f"oecd_cli_{country_code.lower()}"] = {
+                "country": cdata["country"],
+                "value": cdata["value"],
+                "direction": cdata["direction"],
+                "date": cdata["date"],
+                "mom_change": cdata["mom_change"],
+                "revised": cdata.get("revised", False),
+            }
+        # Add global divergence assessment
+        divergence = oecd_data.get("divergence", {})
+        if divergence:
+            li["global_divergence"] = divergence
+        if li:
+            snapshot["leading_indicators"] = li
+
+    # IMF WEO consensus forecasts — sanity check for Skill 6 forecasts
+    if weo_data and weo_data.get("data"):
+        weo = weo_data["data"]
+        cf = {
+            "imf_weo_vintage": weo_data.get("vintage", "unknown"),
+            "stale": weo_data.get("stale", False),
+            "months_since_vintage": weo_data.get("months_since_vintage", 0),
+        }
+        for country_code, cdata in weo.items():
+            cf[country_code.lower()] = cdata
+        snapshot["consensus_forecasts"] = cf
+
+    # BIS Global Liquidity Indicators — global dollar liquidity channel
+    try:
+        if gli_data and gli_data.get("data"):
+            gli = gli_data["data"]
+            gli_section = {}
+            for agg_code, adata in gli.items():
+                gli_section[agg_code.lower()] = {
+                    "aggregate": adata["aggregate"],
+                    "yoy_growth_pct": adata["yoy_growth_pct"],
+                    "signal": adata["signal"],
+                    "direction": adata["direction"],
+                    "date": adata["date"],
+                }
+            gli_section["ae_emde_divergence"] = gli_data.get("ae_emde_divergence", False)
+            snapshot.setdefault("international_structural", {})["global_liquidity"] = gli_section
+    except Exception as e:
+        pass  # GLI failure must not corrupt international_structural
+
+    # BIS Residential Property Prices — financial stability monitoring
+    try:
+        if property_data and property_data.get("data"):
+            prop = property_data["data"]
+            for country_code, cdata in prop.items():
+                snapshot.setdefault("international_structural", {})[f"property_{country_code.lower()}"] = {
+                    "country": cdata["country"],
+                    "yoy_pct": cdata["yoy_pct"],
+                    "percentile": cdata["percentile"],
+                    "signal": cdata["signal"],
+                    "date": cdata["date"],
+                }
+            snapshot.setdefault("international_structural", {})["property_systemic"] = {
+                "overheating_count": property_data.get("overheating_count", 0),
+                "systemic_overheating": property_data.get("systemic_overheating", False),
+            }
+    except Exception as e:
+        pass  # Property failure must not corrupt international_structural
+
+    # World Bank structural indicators — demographics + external balances
+    try:
+        if wb_data and wb_data.get("data"):
+            wb = wb_data["data"]
+            demographics = {}
+            external = {}
+            aging_hotspots = []
+            twin_deficit = []
+
+            for country_code, cdata in wb.items():
+                cc = country_code.lower()
+                demo = {"country": cdata.get("country", country_code)}
+                ext = {"country": cdata.get("country", country_code)}
+
+                for field in ["pop_65plus_pct", "labor_participation_pct"]:
+                    if field in cdata:
+                        demo[field] = cdata[field]
+                        demo[f"{field}_year"] = cdata.get(f"{field}_year", "")
+                for field in ["credit_private_pct_gdp", "current_account_pct_gdp",
+                              "trade_openness_pct_gdp", "gdp_per_capita_ppp",
+                              "gini", "external_debt_pct_gni"]:
+                    if field in cdata:
+                        ext[field] = cdata[field]
+                        ext[f"{field}_year"] = cdata.get(f"{field}_year", "")
+
+                if len(demo) > 1:
+                    demographics[cc] = demo
+                if len(ext) > 1:
+                    external[cc] = ext
+
+                # Flag aging hotspots (65+ > 25%)
+                if cdata.get("pop_65plus_pct", 0) > 25:
+                    aging_hotspots.append(country_code)
+                # Flag current account deficit (< -2% GDP). Note: true "twin deficit"
+                # also requires fiscal deficit, which isn't in WB indicators yet.
+                if (cdata.get("current_account_pct_gdp") is not None
+                        and cdata["current_account_pct_gdp"] < -2):
+                    twin_deficit.append(country_code)
+
+            if demographics:
+                demographics["aging_hotspots"] = aging_hotspots
+                snapshot["structural_demographics"] = demographics
+            if external:
+                external["twin_deficit_warning"] = twin_deficit
+                snapshot["structural_external"] = external
+    except Exception as e:
+        pass  # WB failure must not corrupt snapshot
+
     # Derived signals (the most useful section for skills)
     snapshot["derived_signals"] = derived
 
@@ -1928,6 +2959,7 @@ def main():
                        help="Comma-separated FRED series IDs for targeted pull (e.g., 'FYFSD,FGEXPND,A091RC1Q027SBEA'). "
                             "When specified, only these series are fetched (no Yahoo, no derived metrics). "
                             "Used by Skill 11 for on-demand research data.")
+    parser.add_argument("--run-log", default=None, help="Path to JSONL run log (optional)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -2090,12 +3122,96 @@ def main():
             for err in bis_data["errors"]:
                 print(f"    - {err}")
 
-    # 8. Derived metrics
+    # 8. OECD Composite Leading Indicators (free, no key — SDMX REST API)
+    print("Fetching OECD CLI data (sdmx.oecd.org)...")
+    oecd_data = fetch_oecd_cli_data()
+    if oecd_data:
+        n = len(oecd_data["data"])
+        e = len(oecd_data["errors"])
+        print(f"  OECD CLI: {n} country series fetched, {e} errors")
+        if oecd_data.get("divergence"):
+            div = oecd_data["divergence"]
+            print(f"  Global cycle: US vs world = {div['us_vs_world']}, "
+                  f"{div['economies_decelerating']} decelerating")
+        if oecd_data["errors"]:
+            for err in oecd_data["errors"]:
+                print(f"    - {err}")
+    else:
+        print("  OECD CLI: no data returned (API may be unavailable)")
+
+    # 9. IMF WEO Forecasts (free, no key — DataMapper API)
+    print("Fetching IMF WEO data (imf.org DataMapper)...")
+    weo_data = fetch_imf_weo_data()
+    if weo_data:
+        n = len(weo_data["data"])
+        e = len(weo_data["errors"])
+        stale_tag = " [STALE]" if weo_data.get("stale") else ""
+        print(f"  WEO: {n} country forecasts fetched, vintage: {weo_data.get('vintage', '?')}{stale_tag}, {e} errors")
+        if weo_data["errors"]:
+            for err in weo_data["errors"]:
+                print(f"    - {err}")
+    else:
+        print("  WEO: no data returned (API may be unavailable)")
+
+    # 10. BIS Global Liquidity Indicators (free, no key — SDMX REST API)
+    print("Fetching BIS GLI data (stats.bis.org)...")
+    gli_data = fetch_bis_gli_data()
+    if gli_data and gli_data.get("data"):
+        n = len(gli_data["data"])
+        e = len(gli_data["errors"])
+        total = gli_data["data"].get("4T", {})
+        if total:
+            print(f"  BIS GLI: {n} aggregates fetched, USD credit YoY: {total.get('yoy_growth_pct', '?')}% ({total.get('signal', '?')}), {e} errors")
+        else:
+            print(f"  BIS GLI: {n} aggregates fetched, {e} errors")
+        if gli_data.get("ae_emde_divergence"):
+            print(f"  AE/EMDE divergence detected (>3pp gap)")
+        if gli_data["errors"]:
+            for err in gli_data["errors"]:
+                print(f"    - {err}")
+    else:
+        gli_data = None
+        print("  BIS GLI: no data returned (API may be unavailable)")
+
+    # 11. BIS Residential Property Prices (free, no key — SDMX REST API)
+    print("Fetching BIS property price data (stats.bis.org)...")
+    property_data = fetch_bis_property_data()
+    if property_data and property_data.get("data"):
+        n = len(property_data["data"])
+        e = len(property_data["errors"])
+        oh = property_data.get("overheating_count", 0)
+        print(f"  BIS Property: {n} countries fetched, {oh} overheating, {e} errors")
+        if property_data.get("systemic_overheating"):
+            print(f"  WARNING: Systemic overheating ({oh} economies above 90th percentile)")
+        if property_data["errors"]:
+            for err in property_data["errors"]:
+                print(f"    - {err}")
+    else:
+        property_data = None
+        print("  BIS Property: no data returned (API may be unavailable)")
+
+    # 12. World Bank Structural Indicators (free, no key — REST API)
+    print("Fetching World Bank structural data (api.worldbank.org)...")
+    wb_data = fetch_worldbank_structural_data()
+    if wb_data and wb_data.get("data"):
+        n = len(wb_data["data"])
+        e = len(wb_data["errors"])
+        print(f"  World Bank: {n} countries fetched, {e} errors")
+        if wb_data["errors"]:
+            for err in wb_data["errors"][:5]:
+                print(f"    - {err}")
+            if e > 5:
+                print(f"    ... and {e - 5} more")
+    else:
+        wb_data = None
+        print("  World Bank: no data returned (API may be unavailable)")
+
+    # 13. Derived metrics
     print("Computing derived metrics...")
     derived = compute_derived_metrics(fred_data, yahoo_data)
     print(f"  Derived: {len(derived)} metrics computed")
 
-    # 8b. Range validation — catch garbage data before it propagates
+    # 13b. Range validation — catch garbage data before it propagates
     print("Validating data ranges...")
     data_anomalies = validate_data_ranges(fred_data, yahoo_data)
     if data_anomalies:
@@ -2107,12 +3223,50 @@ def main():
     else:
         print("  All values within plausible ranges")
 
-    # 9. Snapshot
+    # 13c. Z-score tension detection — flag statistically unusual macro readings
+    # Lets the DATA decide which domains deserve structural scanner attention,
+    # rather than relying solely on Skill 13's 7 prompt-defined detector categories.
+    # Uses dual baseline: short-term (current window) + long-term (accumulated across runs).
+    print("Computing z-score tensions...")
+    zscore_baseline = load_zscore_baseline(output_dir)
+    if zscore_baseline:
+        baseline_counts = [e["count"] for e in zscore_baseline.values()]
+        baseline_active = sum(1 for c in baseline_counts if c >= 20)
+        print(f"  Loaded running baseline ({len(baseline_counts)} series tracked, "
+              f"{baseline_active} active (20+ obs), max {max(baseline_counts)} obs)")
+    else:
+        print("  No running baseline yet (first run, long-term z-scores disabled)")
+
+    zscore_tensions, series_values = compute_zscore_tensions(
+        fred_data, yahoo_data, data_anomalies, baseline=zscore_baseline)
+
+    # Update and save baseline with this run's values
+    zscore_baseline = update_zscore_baseline(zscore_baseline, series_values)
+    save_zscore_baseline(zscore_baseline, output_dir)
+    print(f"  Baseline updated: {len(series_values)} series, {len(zscore_baseline)} total tracked")
+
+    if zscore_tensions:
+        print(f"  Tensions flagged: {len(zscore_tensions)} series above 2σ threshold")
+        for t in zscore_tensions[:5]:  # Show top 5
+            parts = [f"level={t['level_zscore']:+.1f}σ"]
+            if t.get("long_term_zscore") is not None:
+                parts.append(f"lt={t['long_term_zscore']:+.1f}σ({t['long_term_baseline_n']}obs)")
+            if t["roc_zscore"] is not None:
+                parts.append(f"roc={t['roc_zscore']:+.1f}σ")
+            print(f"    - {t['series']} ({t['description']}): {', '.join(parts)} [{t['flag_reason']}]")
+        if len(zscore_tensions) > 5:
+            print(f"    ... and {len(zscore_tensions) - 5} more")
+    else:
+        print("  No macro series outside 2σ threshold")
+
+    # 14. Snapshot
     print("Building summary snapshot...")
     snapshot = build_summary_snapshot(fred_data, yahoo_data, derived, cot_data, ecb_data, eurostat_data,
-                                     eia_data=eia_data, bis_data=bis_data)
+                                     eia_data=eia_data, bis_data=bis_data,
+                                     oecd_data=oecd_data, weo_data=weo_data,
+                                     gli_data=gli_data, property_data=property_data, wb_data=wb_data)
 
-    # 10. Save
+    # 15. Save
     full_output = {
         "collection_date": today,
         "collection_week": week,
@@ -2125,14 +3279,22 @@ def main():
         "eurostat": eurostat_data,
         "eia": eia_data,
         "bis": bis_data,
+        "oecd": oecd_data,
+        "weo": weo_data,
+        "gli": gli_data,
+        "property": property_data,
+        "wb": wb_data,
         "derived": derived,
         "data_anomalies": data_anomalies,
+        "zscore_tensions": zscore_tensions,
         "snapshot": snapshot,
     }
 
-    # Embed anomalies in the snapshot too — this is what skills read first
+    # Embed anomalies and z-score tensions in snapshot — this is what skills read first
     if data_anomalies:
         snapshot["data_anomalies"] = data_anomalies
+    if zscore_tensions:
+        snapshot["zscore_tensions"] = zscore_tensions
 
     full_path = output_dir / f"{week}-data-full.json"
     snapshot_path = output_dir / f"{week}-snapshot.json"
@@ -2160,8 +3322,33 @@ def main():
     print(f"Errors: {total_err}")
     print(f"Derived metrics: {len(derived)}")
     print(f"Range anomalies: {len(data_anomalies)}" + (" ⚠" if data_anomalies else ""))
+    print(f"Z-score tensions: {len(zscore_tensions)}" + (f" (top: {zscore_tensions[0]['series']})" if zscore_tensions else ""))
     print(f"Success rate: {total / max(total + total_err, 1) * 100:.1f}%")
     print(f"Files: {full_path.name}, {snapshot_path.name}")
+
+    # Log to run log if provided
+    run_log = Path(args.run_log) if args.run_log else None
+    all_errors_list = []
+    for src_name, src_data in [("FRED", fred_data), ("Yahoo", yahoo_data), ("COT", cot_data),
+                                ("ECB", ecb_data), ("Eurostat", eurostat_data), ("EIA", eia_data),
+                                ("BIS", bis_data), ("OECD", oecd_data), ("WEO", weo_data)]:
+        if src_data and src_data.get("errors"):
+            all_errors_list.extend(f"{src_name}: {e}" for e in src_data["errors"][:3])
+
+    msg = (f"Collection complete: {total} series fetched, {total_err} errors, "
+           f"{len(data_anomalies)} anomalies, {len(zscore_tensions)} tensions")
+    _log_event(run_log, "INFO", "data-collector", msg,
+               details={"series": total, "errors": total_err,
+                        "anomalies": len(data_anomalies),
+                        "tensions": len(zscore_tensions)})
+    if total_err > 0:
+        _log_event(run_log, "WARN", "data-collector",
+                   f"{total_err} collection error(s)",
+                   details={"error_samples": all_errors_list[:10]})
+    if data_anomalies:
+        _log_event(run_log, "WARN", "data-collector",
+                   f"{len(data_anomalies)} data range anomaly(ies) detected",
+                   details={"anomalies": [a["series"] for a in data_anomalies[:5]]})
 
     return 0 if total > 0 else 1
 

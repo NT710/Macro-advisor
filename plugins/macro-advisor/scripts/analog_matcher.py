@@ -7,8 +7,9 @@ forward risk/reward ratios per asset class. Inspired by NowcastIQ's pattern
 recognition approach.
 
 Method:
-    1. Build historical state vectors: (growth_score, inflation_score, liquidity_score)
-    2. Compute cosine similarity between current state and all historical states
+    1. Build historical state vectors: 11 individual features (growth x4, inflation x2,
+       liquidity x3, credit x1, yield curve x1), each rank-normalized to [-1, 1]
+    2. Compute 11-dimensional cosine similarity between current state and all historical states
     3. Select top-N most similar periods (analogs)
     4. Compute forward 1/4/12-week returns per asset in those analog periods
     5. Express as upside/downside risk/reward ratios
@@ -58,6 +59,9 @@ FRED_SERIES = {
     "M2SL": "M2 Money Stock",
     "NFCI": "Chicago Fed NFCI",
     "WALCL": "Fed Total Assets",
+    # Credit & yield curve (new — expand state vector dimensionality)
+    "BAMLH0A0HYM2": "ICE BofA US High Yield OAS",
+    "T10Y2Y": "10Y-2Y Treasury Spread",
 }
 
 # Yahoo tickers for forward return measurement — core ETF universe
@@ -91,6 +95,17 @@ DEFAULT_TOP_N = 20
 
 # Direction window for score computation (months)
 DIRECTION_WINDOW = 6
+
+# Named feature groups — used for composite scores and FEATURE_COLS derivation.
+# If you add/reorder features, update these groups (not FEATURE_COLS directly).
+GROWTH_FEATURES = ["f_indpro", "f_unrate", "f_retail", "f_payrolls"]
+INFLATION_FEATURES = ["f_cpi", "f_core_cpi"]
+LIQUIDITY_FEATURES = ["f_m2", "f_nfci", "f_fed_bs"]
+CREDIT_CURVE_FEATURES = ["f_hy_oas", "f_yield_curve"]
+
+# All features used for cosine similarity (11D state vector).
+# Each is independently rank-normalized to [-1, 1].
+FEATURE_COLS = GROWTH_FEATURES + INFLATION_FEATURES + LIQUIDITY_FEATURES + CREDIT_CURVE_FEATURES
 
 
 # ---------------------------------------------------------------------------
@@ -181,22 +196,29 @@ FRED_PUB_LAG = {
     "M2SL": 2,      # ~6 weeks
     "NFCI": 0,      # weekly, near real-time
     "WALCL": 0,     # weekly, near real-time
+    "BAMLH0A0HYM2": 0,  # daily, near real-time
+    "T10Y2Y": 0,         # daily, near real-time
 }
 
 
 def compute_state_vectors(fred_data, apply_pub_lag=True):
-    """Compute monthly state vectors: (growth_score, inflation_score, liquidity_score).
+    """Compute monthly state vectors with 11 individual features + 3 composites.
 
-    Uses the same methodology as regime_backtest.py for consistency:
-    - Growth: 6-month direction of INDPRO YoY, UNRATE (inv), Retail YoY, Payrolls YoY
-    - Inflation: 6-month direction of CPI YoY + Core CPI YoY blend
-    - Liquidity: majority vote of M2 YoY vs median, NFCI vs median, Fed BS YoY vs median
+    Returns 11 rank-normalized features (FEATURE_COLS) for cosine similarity,
+    plus 3 composite scores (growth/inflation/liquidity_score) for backward compat.
+
+    Features:
+    - Growth (4): INDPRO, UNRATE (inv), Retail, Payrolls — 6-month direction
+    - Inflation (2): CPI, Core CPI — 6-month direction
+    - Liquidity (3): M2, NFCI (inv), Fed BS — vs 36-month rolling median
+    - Credit (1): HY OAS (inv) — vs 36-month rolling median
+    - Yield curve (1): 10Y-2Y spread — vs 36-month rolling median
 
     Key anti-bias measures:
     - Expanding-window rank normalization (no future data in percentile computation)
     - Optional FRED publication lag shift (data dated to when it was available, not reference month)
 
-    Returns DataFrame with growth_score, inflation_score, liquidity_score columns.
+    Returns DataFrame with FEATURE_COLS + composite score columns.
     """
     monthly = pd.DataFrame()
 
@@ -237,6 +259,14 @@ def compute_state_vectors(fred_data, apply_pub_lag=True):
         s = fred_data["WALCL"].resample("ME").last().dropna()
         monthly["fed_assets_yoy"] = s.pct_change(12) * 100
 
+    if "BAMLH0A0HYM2" in fred_data:
+        s = fred_data["BAMLH0A0HYM2"].resample("ME").last().dropna()
+        monthly["hy_oas"] = s
+
+    if "T10Y2Y" in fred_data:
+        s = fred_data["T10Y2Y"].resample("ME").last().dropna()
+        monthly["yield_curve"] = s
+
     monthly = monthly.dropna(how="all")
 
     # Apply FRED publication lag: shift each indicator forward so that
@@ -246,75 +276,114 @@ def compute_state_vectors(fred_data, apply_pub_lag=True):
             "indpro_yoy": "INDPRO", "unrate": "UNRATE", "retail_yoy": "RSAFS",
             "payrolls_yoy": "PAYEMS", "cpi_yoy": "CPIAUCSL", "core_cpi_yoy": "CPILFESL",
             "m2_yoy": "M2SL", "nfci": "NFCI", "fed_assets_yoy": "WALCL",
+            "hy_oas": "BAMLH0A0HYM2", "yield_curve": "T10Y2Y",
         }
         for col, series_id in col_to_series.items():
             lag = FRED_PUB_LAG.get(series_id, 0)
             if lag > 0 and col in monthly.columns:
                 monthly[col] = monthly[col].shift(lag)
 
-    # --- Growth score: continuous [-1, 1] ---
-    growth_signals = pd.DataFrame(index=monthly.index)
-
-    if "indpro_yoy" in monthly.columns:
-        growth_signals["indpro"] = monthly["indpro_yoy"].diff(DIRECTION_WINDOW)
-    if "unrate" in monthly.columns:
-        growth_signals["unrate"] = -monthly["unrate"].diff(DIRECTION_WINDOW)
-    if "retail_yoy" in monthly.columns:
-        growth_signals["retail"] = monthly["retail_yoy"].diff(DIRECTION_WINDOW)
-    if "payrolls_yoy" in monthly.columns:
-        growth_signals["payrolls"] = monthly["payrolls_yoy"].diff(DIRECTION_WINDOW)
-
-    # Normalize each signal to [-1, 1] using EXPANDING-WINDOW rank percentile.
+    # --- Growth features: each normalized independently to [-1, 1] ---
+    # Normalize each signal using EXPANDING-WINDOW rank percentile.
     # At each month t, the rank uses only data from the start through month t.
     # This prevents future data from leaking into historical state vectors.
-    for col in growth_signals.columns:
-        ranked = _expanding_rank_pct(growth_signals[col])
-        growth_signals[col] = (ranked - 0.5) * 2  # maps [0,1] to [-1,1]
+    growth_raw = pd.DataFrame(index=monthly.index)
 
-    monthly["growth_score"] = growth_signals.mean(axis=1)
+    if "indpro_yoy" in monthly.columns:
+        growth_raw["indpro"] = monthly["indpro_yoy"].diff(DIRECTION_WINDOW)
+    if "unrate" in monthly.columns:
+        growth_raw["unrate"] = -monthly["unrate"].diff(DIRECTION_WINDOW)
+    if "retail_yoy" in monthly.columns:
+        growth_raw["retail"] = monthly["retail_yoy"].diff(DIRECTION_WINDOW)
+    if "payrolls_yoy" in monthly.columns:
+        growth_raw["payrolls"] = monthly["payrolls_yoy"].diff(DIRECTION_WINDOW)
 
-    # --- Inflation score: continuous [-1, 1] ---
-    inflation_signals = pd.DataFrame(index=monthly.index)
+    for col in growth_raw.columns:
+        ranked = _expanding_rank_pct(growth_raw[col])
+        growth_raw[col] = (ranked - 0.5) * 2  # maps [0,1] to [-1,1]
+
+    # Individual features for 11D matching
+    if "indpro" in growth_raw.columns:
+        monthly["f_indpro"] = growth_raw["indpro"]
+    if "unrate" in growth_raw.columns:
+        monthly["f_unrate"] = growth_raw["unrate"]
+    if "retail" in growth_raw.columns:
+        monthly["f_retail"] = growth_raw["retail"]
+    if "payrolls" in growth_raw.columns:
+        monthly["f_payrolls"] = growth_raw["payrolls"]
+
+    # Composite (backward compat for output JSON and regime display)
+    monthly["growth_score"] = growth_raw.mean(axis=1)
+
+    # --- Inflation features ---
+    inflation_raw = pd.DataFrame(index=monthly.index)
 
     if "cpi_yoy" in monthly.columns:
-        inflation_signals["cpi"] = monthly["cpi_yoy"].diff(DIRECTION_WINDOW)
+        inflation_raw["cpi"] = monthly["cpi_yoy"].diff(DIRECTION_WINDOW)
     if "core_cpi_yoy" in monthly.columns:
-        inflation_signals["core_cpi"] = monthly["core_cpi_yoy"].diff(DIRECTION_WINDOW)
+        inflation_raw["core_cpi"] = monthly["core_cpi_yoy"].diff(DIRECTION_WINDOW)
 
-    for col in inflation_signals.columns:
-        ranked = _expanding_rank_pct(inflation_signals[col])
-        inflation_signals[col] = (ranked - 0.5) * 2
+    for col in inflation_raw.columns:
+        ranked = _expanding_rank_pct(inflation_raw[col])
+        inflation_raw[col] = (ranked - 0.5) * 2
 
-    monthly["inflation_score"] = inflation_signals.mean(axis=1)
+    if "cpi" in inflation_raw.columns:
+        monthly["f_cpi"] = inflation_raw["cpi"]
+    if "core_cpi" in inflation_raw.columns:
+        monthly["f_core_cpi"] = inflation_raw["core_cpi"]
 
-    # --- Liquidity score: continuous [-1, 1] ---
+    monthly["inflation_score"] = inflation_raw.mean(axis=1)
+
+    # --- Liquidity features ---
     # Uses 36-month rolling median comparison (matching regime_backtest.py methodology)
-    liquidity_signals = pd.DataFrame(index=monthly.index)
+    liquidity_raw = pd.DataFrame(index=monthly.index)
     MEDIAN_WINDOW = 36
 
     if "m2_yoy" in monthly.columns:
         med = monthly["m2_yoy"].rolling(MEDIAN_WINDOW, min_periods=12).median()
-        liquidity_signals["m2"] = monthly["m2_yoy"] - med
+        liquidity_raw["m2"] = monthly["m2_yoy"] - med
 
     if "nfci" in monthly.columns:
         med = monthly["nfci"].rolling(MEDIAN_WINDOW, min_periods=12).median()
         # NFCI: lower = looser, so invert
-        liquidity_signals["nfci"] = -(monthly["nfci"] - med)
+        liquidity_raw["nfci"] = -(monthly["nfci"] - med)
 
     if "fed_assets_yoy" in monthly.columns:
         med = monthly["fed_assets_yoy"].rolling(MEDIAN_WINDOW, min_periods=12).median()
-        liquidity_signals["fed_bs"] = monthly["fed_assets_yoy"] - med
+        liquidity_raw["fed_bs"] = monthly["fed_assets_yoy"] - med
 
-    for col in liquidity_signals.columns:
-        ranked = _expanding_rank_pct(liquidity_signals[col])
-        liquidity_signals[col] = (ranked - 0.5) * 2
+    for col in liquidity_raw.columns:
+        ranked = _expanding_rank_pct(liquidity_raw[col])
+        liquidity_raw[col] = (ranked - 0.5) * 2
 
-    monthly["liquidity_score"] = liquidity_signals.mean(axis=1)
+    if "m2" in liquidity_raw.columns:
+        monthly["f_m2"] = liquidity_raw["m2"]
+    if "nfci" in liquidity_raw.columns:
+        monthly["f_nfci"] = liquidity_raw["nfci"]
+    if "fed_bs" in liquidity_raw.columns:
+        monthly["f_fed_bs"] = liquidity_raw["fed_bs"]
 
-    # Drop rows where any score is NaN
-    monthly = monthly.dropna(subset=["growth_score", "inflation_score", "liquidity_score"])
+    monthly["liquidity_score"] = liquidity_raw.mean(axis=1)
 
-    return monthly[["growth_score", "inflation_score", "liquidity_score"]]
+    # --- Credit & yield curve features (new) ---
+    # Same median-comparison normalization as liquidity signals
+    if "hy_oas" in monthly.columns:
+        med = monthly["hy_oas"].rolling(MEDIAN_WINDOW, min_periods=12).median()
+        # Invert: higher OAS = wider spreads = credit stress = negative signal
+        raw = -(monthly["hy_oas"] - med)
+        ranked = _expanding_rank_pct(raw)
+        monthly["f_hy_oas"] = (ranked - 0.5) * 2
+
+    if "yield_curve" in monthly.columns:
+        med = monthly["yield_curve"].rolling(MEDIAN_WINDOW, min_periods=12).median()
+        raw = monthly["yield_curve"] - med
+        ranked = _expanding_rank_pct(raw)
+        monthly["f_yield_curve"] = (ranked - 0.5) * 2
+
+    # Drop rows where any feature is NaN (HY OAS starts ~1997, limits history)
+    monthly = monthly.dropna(subset=FEATURE_COLS)
+
+    return monthly[FEATURE_COLS + ["growth_score", "inflation_score", "liquidity_score"]]
 
 
 # ---------------------------------------------------------------------------
@@ -334,9 +403,12 @@ def cosine_similarity(v1, v2):
 def find_analogs(state_vectors, current_state, top_n=DEFAULT_TOP_N, exclude_recent_months=12):
     """Find top-N most similar historical periods to the current state.
 
+    Uses 11-dimensional cosine similarity over FEATURE_COLS (individual
+    rank-normalized macro features) instead of 3 composite scores.
+
     Args:
-        state_vectors: DataFrame with growth_score, inflation_score, liquidity_score
-        current_state: dict with growth_score, inflation_score, liquidity_score
+        state_vectors: DataFrame with FEATURE_COLS columns
+        current_state: dict with FEATURE_COLS keys
         top_n: number of analogs to return
         exclude_recent_months: exclude the most recent N months (12 default —
             macro regimes persist 12-18 months, so shorter exclusions risk
@@ -345,11 +417,7 @@ def find_analogs(state_vectors, current_state, top_n=DEFAULT_TOP_N, exclude_rece
     Returns:
         List of (date, similarity_score) tuples, sorted by similarity descending.
     """
-    current_vec = np.array([
-        current_state["growth_score"],
-        current_state["inflation_score"],
-        current_state["liquidity_score"],
-    ])
+    current_vec = np.array([current_state[col] for col in FEATURE_COLS])
 
     # Exclude recent months
     if exclude_recent_months > 0:
@@ -360,7 +428,7 @@ def find_analogs(state_vectors, current_state, top_n=DEFAULT_TOP_N, exclude_rece
 
     similarities = []
     for date, row in candidates.iterrows():
-        hist_vec = np.array([row["growth_score"], row["inflation_score"], row["liquidity_score"]])
+        hist_vec = np.array([row[col] for col in FEATURE_COLS])
         sim = cosine_similarity(current_vec, hist_vec)
         similarities.append((date, sim))
 
@@ -512,21 +580,26 @@ def interpret_ratio(ratio):
 # ---------------------------------------------------------------------------
 
 def run_analog_matching(fred_data, yahoo_weekly, current_state, top_n=DEFAULT_TOP_N,
-                        train_end=None):
+                        train_end=None, composite_override=None,
+                        state_vectors=None):
     """Run the full analog matching pipeline.
 
     Args:
         fred_data: dict of FRED series
         yahoo_weekly: dict of weekly price Series
-        current_state: dict with growth_score, inflation_score, liquidity_score
+        current_state: dict with FEATURE_COLS keys (11D features)
         top_n: number of analogs
         train_end: if set, only use data up to this date for training (out-of-sample test)
+        composite_override: optional dict with growth/inflation/liquidity_score overrides
+            for the output JSON (from --state-file or --growth-score CLI)
+        state_vectors: pre-computed state vectors (avoids recomputation if caller already has them)
 
     Returns:
         dict with per-asset risk/reward ratios and analog metadata
     """
-    # Step 1: Compute historical state vectors
-    state_vectors = compute_state_vectors(fred_data)
+    # Step 1: Compute historical state vectors (or use pre-computed)
+    if state_vectors is None:
+        state_vectors = compute_state_vectors(fred_data)
 
     if train_end:
         state_vectors = state_vectors.loc[state_vectors.index <= pd.Timestamp(train_end)]
@@ -534,7 +607,7 @@ def run_analog_matching(fred_data, yahoo_weekly, current_state, top_n=DEFAULT_TO
     if len(state_vectors) < MIN_ANALOGS * 2:
         return {"error": f"Insufficient historical data: {len(state_vectors)} months (need ≥{MIN_ANALOGS * 2})"}
 
-    # Step 2: Find analogs
+    # Step 2: Find analogs (11D cosine similarity)
     analogs = find_analogs(state_vectors, current_state, top_n=top_n,
                            exclude_recent_months=0 if train_end else 12)
 
@@ -568,27 +641,50 @@ def run_analog_matching(fred_data, yahoo_weekly, current_state, top_n=DEFAULT_TO
         for d, sim in analogs
     ]
 
+    # Derive composite scores for surprise detection and output.
+    # Use composite_override if provided (from --state-file), otherwise compute
+    # from the individual features (average of growth/inflation/liquidity groups).
+    if composite_override:
+        composites = composite_override
+    else:
+        composites = {
+            "growth_score": round(np.mean([current_state[c] for c in GROWTH_FEATURES]), 3),
+            "inflation_score": round(np.mean([current_state[c] for c in INFLATION_FEATURES]), 3),
+            "liquidity_score": round(np.mean([current_state[c] for c in LIQUIDITY_FEATURES]), 3),
+        }
+
     # Identify surprising findings (textbook-contradicting signals)
     surprises = []
-    growth_dir = "rising" if current_state["growth_score"] > 0 else "falling"
-    inflation_dir = "rising" if current_state["inflation_score"] > 0 else "falling"
+    growth_dir = "rising" if composites["growth_score"] > 0 else "falling"
+    inflation_dir = "rising" if composites["inflation_score"] > 0 else "falling"
+    liquidity_dir = "ample" if composites["liquidity_score"] > 0 else "tight"
 
     for ticker, data in signals.items():
         for window_key, rr in data["windows"].items():
             signal = rr.get("signal", "neutral")
-            # Flag counter-intuitive signals
+            # Flag counter-intuitive signals — use independent `if` (not elif)
+            # so a ticker can be surprising on multiple axes simultaneously
+            # Growth surprises
             if growth_dir == "falling" and ticker in ("SPY", "QQQ", "IWM") and "bullish" in signal:
                 surprises.append(f"{data['name']} ({ticker}) shows {signal} at {window_key} despite falling growth")
-            elif growth_dir == "rising" and ticker in ("TLT", "GLD") and "bullish" in signal:
+            if growth_dir == "rising" and ticker in ("TLT", "GLD") and "bullish" in signal:
                 surprises.append(f"{data['name']} ({ticker}) shows {signal} at {window_key} despite rising growth")
-            elif inflation_dir == "falling" and ticker == "GSG" and "bullish" in signal:
+            # Inflation surprises
+            if inflation_dir == "falling" and ticker == "GSG" and "bullish" in signal:
                 surprises.append(f"Commodities ({ticker}) show {signal} at {window_key} despite falling inflation")
+            # Liquidity surprises
+            if liquidity_dir == "tight" and ticker in ("HYG", "SPY", "QQQ", "IWM") and "bullish" in signal:
+                surprises.append(f"{data['name']} ({ticker}) shows {signal} at {window_key} despite tight liquidity")
+            if liquidity_dir == "ample" and ticker in ("GLD", "SHV") and "bullish" in signal:
+                surprises.append(f"{data['name']} ({ticker}) shows {signal} at {window_key} despite ample liquidity")
 
     return {
         "current_state": {
-            "growth_score": round(current_state["growth_score"], 3),
-            "inflation_score": round(current_state["inflation_score"], 3),
-            "liquidity_score": round(current_state["liquidity_score"], 3),
+            "growth_score": composites["growth_score"],
+            "inflation_score": composites["inflation_score"],
+            "liquidity_score": composites["liquidity_score"],
+            "features": {col: round(current_state[col], 3) for col in FEATURE_COLS},
+            "dimensionality": len(FEATURE_COLS),
         },
         "analog_count": len(analogs),
         "analog_periods": analog_periods,
@@ -598,7 +694,7 @@ def run_analog_matching(fred_data, yahoo_weekly, current_state, top_n=DEFAULT_TO
         "forward_windows_weeks": FORWARD_WINDOWS_WEEKS,
         "methodology": {
             "method": "cosine_similarity",
-            "dimensions": ["growth_score", "inflation_score", "liquidity_score"],
+            "dimensions": FEATURE_COLS,
             "top_n": top_n,
             "min_analogs": MIN_ANALOGS,
             "history_months": len(state_vectors),
@@ -639,11 +735,7 @@ def run_backtest(fred_data, yahoo_weekly, state_vectors, train_end, test_start=N
 
     results = []
     for date, row in test_months.iterrows():
-        current = {
-            "growth_score": row["growth_score"],
-            "inflation_score": row["inflation_score"],
-            "liquidity_score": row["liquidity_score"],
-        }
+        current = {col: row[col] for col in FEATURE_COLS}
 
         # Only use history up to this date
         train_vectors = state_vectors.loc[state_vectors.index < date]
@@ -823,6 +915,8 @@ def run_backtest(fred_data, yahoo_weekly, state_vectors, train_end, test_start=N
         "naive_baseline_hit_rate": overall_naive,
         "excess_accuracy_vs_naive": round(hit_rate - overall_naive, 1) if overall_naive else None,
         "per_ticker_baselines": baseline_stats,
+        "state_vector_dimensions": len(FEATURE_COLS),
+        "feature_columns": FEATURE_COLS,
         "results_sample": results[:50],  # first 50 for inspection
     }
 
@@ -849,37 +943,43 @@ def main():
     parser.add_argument("--backtest", action="store_true", help="Run out-of-sample backtest")
     parser.add_argument("--train-end", help="Training cutoff date (YYYY-MM-DD) for backtest")
 
+    # Auto-validation: run backtest if results are stale (default: 90 days)
+    parser.add_argument("--validate-staleness-days", type=int, default=90,
+                        help="Auto-run backtest if results older than N days (0=skip, default: 90)")
+
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Resolve current state
-    current_state = None
+    # In 11D mode, current state is always computed from FRED data (latest row).
+    # --state-file and --growth/inflation/liquidity-score are kept for backward
+    # compat but only used for the composite scores in the output JSON.
+    current_state_override = None
     if args.state_file:
         state_path = Path(args.state_file)
         if state_path.exists():
             sdata = json.loads(state_path.read_text(encoding="utf-8"))
             regime = sdata.get("regime", {})
-            current_state = {
+            current_state_override = {
                 "growth_score": float(regime.get("growth_score", 0)),
                 "inflation_score": float(regime.get("inflation_score", 0)),
                 "liquidity_score": float(regime.get("liquidity_score", 0)),
             }
-            print(f"State from {args.state_file}: {current_state}", file=sys.stderr)
+            print(f"Composite scores from {args.state_file}: {current_state_override}",
+                  file=sys.stderr)
+            print("  (11D features will be computed from FRED data)", file=sys.stderr)
         else:
             print(f"Error: state file not found: {args.state_file}", file=sys.stderr)
             sys.exit(1)
     elif args.growth_score is not None and args.inflation_score is not None and args.liquidity_score is not None:
-        current_state = {
+        current_state_override = {
             "growth_score": args.growth_score,
             "inflation_score": args.inflation_score,
             "liquidity_score": args.liquidity_score,
         }
-    elif not args.backtest:
-        print("Error: Provide --state-file or all three score flags, or use --backtest mode",
+        print("Composite score overrides noted (11D features computed from FRED data)",
               file=sys.stderr)
-        sys.exit(1)
 
     # Fetch data
     print("Fetching FRED data...", file=sys.stderr)
@@ -923,10 +1023,24 @@ def main():
         print(json.dumps(result, indent=2))
 
     else:
-        # Normal analog matching mode
+        # Normal analog matching mode — compute 11D current state from FRED data
+        state_vectors = compute_state_vectors(fred_data)
+        if len(state_vectors) == 0:
+            print("Error: No valid state vectors computed from FRED data", file=sys.stderr)
+            sys.exit(1)
+
+        latest_row = state_vectors.iloc[-1]
+        current_state = {col: latest_row[col] for col in FEATURE_COLS}
+        print(f"Current 11D state from FRED (latest: {state_vectors.index[-1].strftime('%Y-%m')}):",
+              file=sys.stderr)
+        for col in FEATURE_COLS:
+            print(f"  {col}: {current_state[col]:.3f}", file=sys.stderr)
+
         print(f"Finding top {args.top_n} analogs...", file=sys.stderr)
         result = run_analog_matching(fred_data, yahoo_weekly, current_state,
-                                     top_n=args.top_n)
+                                     top_n=args.top_n,
+                                     composite_override=current_state_override,
+                                     state_vectors=state_vectors)
 
         if "error" in result:
             print(f"Error: {result['error']}", file=sys.stderr)
@@ -945,6 +1059,51 @@ def main():
 
         # Print summary to stdout
         print(json.dumps(result, indent=2))
+
+        # --- Auto-validation: run backtest if results are stale ---
+        if args.validate_staleness_days > 0:
+            backtest_path = output_dir / "analog-backtest-results.json"
+            run_validation = False
+
+            if not backtest_path.exists():
+                print("\nAuto-validation: no backtest results found, running...",
+                      file=sys.stderr)
+                run_validation = True
+            else:
+                age_days = (datetime.now() - datetime.fromtimestamp(
+                    backtest_path.stat().st_mtime)).days
+                if age_days >= args.validate_staleness_days:
+                    print(f"\nAuto-validation: backtest results are {age_days} days old "
+                          f"(threshold: {args.validate_staleness_days}), re-running...",
+                          file=sys.stderr)
+                    run_validation = True
+
+            if run_validation:
+                # Use 12 months ago as train_end so test period has enough months.
+                # The backtest requires ≥6 test months (line 730); 12 months gives margin.
+                train_end = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                print(f"  Backtest train_end: {train_end}", file=sys.stderr)
+
+                bt_result = run_backtest(fred_data, yahoo_weekly, state_vectors,
+                                         train_end=train_end, top_n=args.top_n)
+
+                backtest_path.write_text(json.dumps(bt_result, indent=2), encoding="utf-8")
+                print(f"  Backtest results saved to {backtest_path}", file=sys.stderr)
+
+                if "directional_hit_rate" in bt_result:
+                    hit = bt_result["directional_hit_rate"]
+                    naive = bt_result.get("naive_baseline_hit_rate", 0)
+                    excess = bt_result.get("excess_accuracy_vs_naive", 0)
+                    ci = bt_result.get("hit_rate_95ci", [0, 0])
+                    dims = bt_result.get("state_vector_dimensions", "?")
+                    print(f"  Hit rate: {hit}% (naive: {naive}%, excess: {excess}pp, "
+                          f"95% CI: [{ci[0]}%, {ci[1]}%], dims: {dims})",
+                          file=sys.stderr)
+                    if excess is not None and excess < 0:
+                        print(f"  ⚠ WARNING: Analog matcher does NOT beat naive baseline "
+                              f"({excess}pp). Signal is informational only.", file=sys.stderr)
+                elif "error" in bt_result:
+                    print(f"  Backtest error: {bt_result['error']}", file=sys.stderr)
 
 
 if __name__ == "__main__":
