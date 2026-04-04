@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.8.1 (2026-04-04)
+
+### Maintenance
+- Documentation audit: verified all docs (READMEs, CLAUDE.md, SKILL.md, CONNECTORS.md, marketplace README) are current with v0.8.0 features
+- Version bump across plugin manifest, marketplace, and skill metadata
+
 ## v0.8.0 (2026-04-03)
 
 ### New
