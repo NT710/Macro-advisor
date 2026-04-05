@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regime Backtest — Macro Advisor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #0f172a; color: #e2e8f0; line-height: 1.6;
+        padding: 20px; max-width: 1400px; margin: 0 auto;
+    }
+    h1 { font-size: 1.8em; margin-bottom: 4px; color: #f8fafc; }
+    h2 { font-size: 1.3em; margin-bottom: 8px; color: #f1f5f9; }
+    .subtitle { color: #94a3b8; font-size: 0.9em; margin-bottom: 16px; }
+    .header { margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid #1e293b; }
+    .header .meta { color: #64748b; font-size: 0.9em; }
+    .section { background: #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+    .data-table th { background: #334155; padding: 10px 12px; text-align: left; font-weight: 600;
+        border-bottom: 2px solid #475569; white-space: nowrap; }
+    .data-table td { padding: 10px 12px; border-bottom: 1px solid #334155; }
+    .data-table tbody tr:hover { background: #334155; }
+    .stat-card { background: #334155; border-radius: 8px; padding: 16px; text-align: center; }
+    .stat-card .number { font-size: 2em; font-weight: 700; color: #f8fafc; }
+    .stat-card .label { color: #94a3b8; font-size: 0.85em; }
+    .chart-container { position: relative; height: 300px; margin: 16px 0; }
+    .verdict { padding: 16px; border-radius: 8px; margin-top: 16px; }
+    .verdict.positive { background: #052e16; border: 1px solid #22c55e; }
+    .verdict.negative { background: #450a0a; border: 1px solid #ef4444; }
+    .verdict.neutral { background: #1c1917; border: 1px solid #a8a29e; }
+    .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer; background: #334155;
+        color: #94a3b8; font-size: 0.9em; border: none; }
+    .tab.active { background: #1e293b; color: #f8fafc; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    .regime-dot {
+        display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px;
+        vertical-align: middle;
+    }
+    @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Regime Backtest Report</h1>
+    <p class="meta">Generated 2026-04-05 08:39 · 33 years of data ·
+    389 monthly observations · Alpine Macro four-quadrant model</p>
+</div>
+
+<!-- Summary cards -->
+<div class="grid-2" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+    <div class="stat-card">
+        <div class="number" style="color: #22c55e;">63</div>
+        <div class="label">Goldilocks months</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color: #f97316;">118</div>
+        <div class="label">Overheating months</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color: #3b82f6;">134</div>
+        <div class="label">Disinfl. Slowdown months</div>
+    </div>
+    <div class="stat-card">
+        <div class="number" style="color: #ef4444;">74</div>
+        <div class="label">Stagflation months</div>
+    </div>
+</div>
+
+<!-- Regime Distribution Chart -->
+<div class="section">
+    <h2>Regime Distribution</h2>
+    <div class="grid-2">
+        <div class="chart-container">
+            <canvas id="regimePie"></canvas>
+        </div>
+        <div>
+            <h3 style="margin-bottom: 12px; font-size: 1.1em;">Classification Logic</h3>
+            <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
+                <strong>Growth axis:</strong> 6-month direction of Industrial Production YoY, Unemployment Rate (inverted),
+                Retail Sales YoY, Nonfarm Payrolls YoY. Majority vote. 2-month confirmation filter.
+            </p>
+            <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
+                <strong>Inflation axis:</strong> 6-month direction of CPI YoY, with Core CPI as confirmation/tiebreaker.
+            </p>
+            <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 8px;">
+                <strong>Liquidity overlay:</strong> M2 YoY, NFCI (inverted), Fed balance sheet YoY —
+                each compared to its own 36-month rolling median. Majority vote determines loose/tight.
+            </p>
+            <table class="data-table" style="margin-top: 12px;">
+                <thead><tr><th></th><th>Inflation Falling</th><th>Inflation Rising</th></tr></thead>
+                <tbody>
+                    <tr><td style="font-weight:600;">Growth Rising</td>
+                        <td><span class="regime-dot" style="background:#22c55e;"></span>Goldilocks</td>
+                        <td><span class="regime-dot" style="background:#f97316;"></span>Overheating</td></tr>
+                    <tr><td style="font-weight:600;">Growth Falling</td>
+                        <td><span class="regime-dot" style="background:#3b82f6;"></span>Disinfl. Slowdown</td>
+                        <td><span class="regime-dot" style="background:#ef4444;"></span>Stagflation</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Layer 1: Regime Returns -->
+<div class="section">
+    <h2>Layer 1: Regime → Forward Asset Returns</h2>
+    <p class="subtitle">Average forward total return from each regime. Green = positive, red = negative. Win rate = % of months with positive return.</p>
+
+    <div class="tabs">
+        <button class="tab active" onclick="showTab('l1', '1m', event)">1-Month</button>
+        <button class="tab" onclick="showTab('l1', '3m', event)">3-Month</button>
+        <button class="tab" onclick="showTab('l1', '6m', event)">6-Month</button>
+    </div>
+    <div id="l1-1m" class="tab-content active">
+        <table class="data-table">
+            <thead><tr><th>Regime</th><th>N</th><th style="text-align:center; font-size:0.85em;">Crude Oil WTI</th><th style="text-align:center; font-size:0.85em;">Emerging Markets</th><th style="text-align:center; font-size:0.85em;">Euro Stoxx 50</th><th style="text-align:center; font-size:0.85em;">Gold</th><th style="text-align:center; font-size:0.85em;">High Yield Credit</th><th style="text-align:center; font-size:0.85em;">Russell 2000</th><th style="text-align:center; font-size:0.85em;">SandP 500</th><th style="text-align:center; font-size:0.85em;">US 20Y Treasuries</th><th style="text-align:center; font-size:0.85em;">US Dollar (DXY)</th></tr></thead>
+            <tbody><tr><td style="border-left: 4px solid #22c55e; padding-left: 8px; font-weight: 600;">Goldilocks</td><td>63</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">60.5% win (-0.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">57.9% win (-0.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.9%<br><small style="color:#6b7280;">62.1% win (+0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.5%<br><small style="color:#6b7280;">57.9% win (-0.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">72.4% win (+0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.1%<br><small style="color:#6b7280;">61.9% win (+0.3pp)</small></td><td style="background:#dcfce7; text-align:center; ">+1.6%<br><small style="color:#6b7280;">74.6% win (+0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.9%<br><small style="color:#6b7280;">57.9% win (+0.5pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.1%<br><small style="color:#6b7280;">50.8% win (-0.1pp)</small></td></tr><tr><td style="border-left: 4px solid #f97316; padding-left: 8px; font-weight: 600;">Overheating</td><td>118</td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.2%<br><small style="color:#6b7280;">53.8% win (-1.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.5%<br><small style="color:#6b7280;">57.3% win (-0.4pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.6%<br><small style="color:#6b7280;">44.9% win (-0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.0%<br><small style="color:#6b7280;">54.8% win (+0.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.1%<br><small style="color:#6b7280;">62.3% win (-0.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.3%<br><small style="color:#6b7280;">55.1% win (-0.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.4%<br><small style="color:#6b7280;">56.8% win (-0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">58.1% win (+0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.2%<br><small style="color:#6b7280;">50.8% win (+0.2pp)</small></td></tr><tr><td style="border-left: 4px solid #3b82f6; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown</td><td>134</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.1%<br><small style="color:#6b7280;">57.9% win (+1.1pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.2%<br><small style="color:#6b7280;">62.1% win (+1.3pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+1.6% ✓<br><small style="color:#6b7280;">65.5% win (+1.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.4%<br><small style="color:#6b7280;">57.9% win (+0.3pp)</small></td><td style="background:#dcfce7; text-align:center; ">+1.2%<br><small style="color:#6b7280;">72.3% win (+0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.3%<br><small style="color:#6b7280;">64.9% win (+0.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.1%<br><small style="color:#6b7280;">68.7% win (+0.3pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.1%<br><small style="color:#6b7280;">52.5% win (-0.4pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.3%<br><small style="color:#6b7280;">43.3% win (-0.3pp)</small></td></tr><tr><td style="border-left: 4px solid #ef4444; padding-left: 8px; font-weight: 600;">Stagflation</td><td>74</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">50.8% win (-0.1pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.7%<br><small style="color:#6b7280;">46.2% win (-1.6pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.4%<br><small style="color:#6b7280;">46.7% win (-1.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.7%<br><small style="color:#6b7280;">54.1% win (-0.3pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-0.8% ✓<br><small style="color:#6b7280;">44.4% win (-1.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.3%<br><small style="color:#6b7280;">59.5% win (-0.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.1%<br><small style="color:#6b7280;">58.1% win (-0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.1%<br><small style="color:#6b7280;">41.5% win (-0.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.5%<br><small style="color:#6b7280;">59.5% win (+0.5pp)</small></td></tr></tbody>
+        </table></div>
+    <div id="l1-3m" class="tab-content">
+        <table class="data-table">
+            <thead><tr><th>Regime</th><th>N</th><th style="text-align:center; font-size:0.85em;">Crude Oil WTI</th><th style="text-align:center; font-size:0.85em;">Emerging Markets</th><th style="text-align:center; font-size:0.85em;">Euro Stoxx 50</th><th style="text-align:center; font-size:0.85em;">Gold</th><th style="text-align:center; font-size:0.85em;">High Yield Credit</th><th style="text-align:center; font-size:0.85em;">Russell 2000</th><th style="text-align:center; font-size:0.85em;">SandP 500</th><th style="text-align:center; font-size:0.85em;">US 20Y Treasuries</th><th style="text-align:center; font-size:0.85em;">US Dollar (DXY)</th></tr></thead>
+            <tbody><tr><td style="border-left: 4px solid #22c55e; padding-left: 8px; font-weight: 600;">Goldilocks</td><td>63</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.0%<br><small style="color:#6b7280;">68.4% win (+0.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.9%<br><small style="color:#6b7280;">68.4% win (+0.1pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.1%<br><small style="color:#6b7280;">79.3% win (+3.4pp)</small></td><td style="background:#dcfce7; text-align:center; ">+1.0%<br><small style="color:#6b7280;">55.3% win (-2.1pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+2.6% ✓<br><small style="color:#6b7280;">86.2% win (+1.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.8%<br><small style="color:#6b7280;">66.7% win (+1.5pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.6%<br><small style="color:#6b7280;">82.5% win (+2.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.4%<br><small style="color:#6b7280;">63.2% win (+0.3pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.1%<br><small style="color:#6b7280;">50.8% win (-0.2pp)</small></td></tr><tr><td style="border-left: 4px solid #f97316; padding-left: 8px; font-weight: 600;">Overheating</td><td>118</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.0%<br><small style="color:#6b7280;">55.9% win (-2.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.0%<br><small style="color:#6b7280;">56.2% win (-0.8pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.7%<br><small style="color:#6b7280;">47.8% win (-1.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.5%<br><small style="color:#6b7280;">60.2% win (-0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">68.1% win (-0.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.9%<br><small style="color:#6b7280;">60.2% win (-0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.2%<br><small style="color:#6b7280;">66.9% win (-0.1pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.5%<br><small style="color:#6b7280;">71.0% win (+1.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">56.8% win (+0.6pp)</small></td></tr><tr><td style="border-left: 4px solid #3b82f6; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown</td><td>134</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+5.2%<br><small style="color:#6b7280;">54.4% win (+2.2pp)</small></td><td style="background:#dcfce7; text-align:center; ">+6.0%<br><small style="color:#6b7280;">73.7% win (+3.2pp)</small></td><td style="background:#dcfce7; text-align:center; ">+3.4%<br><small style="color:#6b7280;">66.7% win (+2.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.6%<br><small style="color:#6b7280;">71.1% win (+1.5pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.8%<br><small style="color:#6b7280;">79.5% win (+1.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.0%<br><small style="color:#6b7280;">70.1% win (+0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.0%<br><small style="color:#6b7280;">71.6% win (+0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.0%<br><small style="color:#6b7280;">44.4% win (-1.1pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-1.0% ✓<br><small style="color:#6b7280;">40.3% win (-1.1pp)</small></td></tr><tr><td style="border-left: 4px solid #ef4444; padding-left: 8px; font-weight: 600;">Stagflation</td><td>74</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.9%<br><small style="color:#6b7280;">48.3% win (-1.1pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.9%<br><small style="color:#6b7280;">51.0% win (-4.7pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-4.3% ✓<br><small style="color:#6b7280;">29.5% win (-5.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.6%<br><small style="color:#6b7280;">56.7% win (-0.5pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.5%<br><small style="color:#6b7280;">43.2% win (-2.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.2%<br><small style="color:#6b7280;">53.4% win (-2.0pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.7%<br><small style="color:#6b7280;">53.4% win (-3.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.5%<br><small style="color:#6b7280;">51.9% win (-0.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.2%<br><small style="color:#6b7280;">61.6% win (+1.1pp)</small></td></tr></tbody>
+        </table></div>
+    <div id="l1-6m" class="tab-content">
+        <table class="data-table">
+            <thead><tr><th>Regime</th><th>N</th><th style="text-align:center; font-size:0.85em;">Crude Oil WTI</th><th style="text-align:center; font-size:0.85em;">Emerging Markets</th><th style="text-align:center; font-size:0.85em;">Euro Stoxx 50</th><th style="text-align:center; font-size:0.85em;">Gold</th><th style="text-align:center; font-size:0.85em;">High Yield Credit</th><th style="text-align:center; font-size:0.85em;">Russell 2000</th><th style="text-align:center; font-size:0.85em;">SandP 500</th><th style="text-align:center; font-size:0.85em;">US 20Y Treasuries</th><th style="text-align:center; font-size:0.85em;">US Dollar (DXY)</th></tr></thead>
+            <tbody><tr><td style="border-left: 4px solid #22c55e; padding-left: 8px; font-weight: 600;">Goldilocks</td><td>63</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+9.4%<br><small style="color:#6b7280;">65.8% win (+4.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+6.2%<br><small style="color:#6b7280;">73.7% win (+0.5pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+6.1% ✓<br><small style="color:#6b7280;">82.8% win (+4.5pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.7%<br><small style="color:#6b7280;">60.5% win (-3.7pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.4%<br><small style="color:#6b7280;">93.1% win (+1.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.9%<br><small style="color:#6b7280;">71.4% win (+0.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+7.1%<br><small style="color:#6b7280;">82.5% win (+2.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.3%<br><small style="color:#6b7280;">65.8% win (+0.1pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.5%<br><small style="color:#6b7280;">41.3% win (-0.7pp)</small></td></tr><tr><td style="border-left: 4px solid #f97316; padding-left: 8px; font-weight: 600;">Overheating</td><td>118</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.3%<br><small style="color:#6b7280;">55.9% win (-1.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.7%<br><small style="color:#6b7280;">59.6% win (-1.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.1%<br><small style="color:#6b7280;">50.7% win (-1.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+5.8%<br><small style="color:#6b7280;">66.7% win (-0.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.2%<br><small style="color:#6b7280;">78.3% win (-0.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+5.4%<br><small style="color:#6b7280;">68.6% win (+0.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+5.7%<br><small style="color:#6b7280;">78.8% win (+0.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.4%<br><small style="color:#6b7280;">64.5% win (+2.2pp)</small></td><td style="background:#dcfce7; text-align:center; ">+1.6%<br><small style="color:#6b7280;">65.3% win (+1.4pp)</small></td></tr><tr><td style="border-left: 4px solid #3b82f6; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown</td><td>134</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+8.7%<br><small style="color:#6b7280;">64.9% win (+3.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+10.8%<br><small style="color:#6b7280;">74.7% win (+5.2pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+6.2% ✓<br><small style="color:#6b7280;">75.0% win (+4.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+8.4%<br><small style="color:#6b7280;">79.8% win (+2.1pp)</small></td><td style="background:#dcfce7; text-align:center; ">+5.2%<br><small style="color:#6b7280;">84.3% win (+2.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+6.5%<br><small style="color:#6b7280;">66.4% win (+1.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+6.8%<br><small style="color:#6b7280;">76.9% win (+1.9pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.2%<br><small style="color:#6b7280;">48.5% win (-2.4pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-1.7% ✓<br><small style="color:#6b7280;">38.8% win (-1.9pp)</small></td></tr><tr><td style="border-left: 4px solid #ef4444; padding-left: 8px; font-weight: 600;">Stagflation</td><td>74</td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-3.2%<br><small style="color:#6b7280;">42.1% win (-8.1pp)</small></td><td style="background:#fee2e2; text-align:center; ">-3.2%<br><small style="color:#6b7280;">43.8% win (-8.8pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-8.6% ✓<br><small style="color:#6b7280;">26.8% win (-10.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+5.5%<br><small style="color:#6b7280;">66.7% win (-0.8pp)</small></td><td style="background:#fee2e2; text-align:center; ">-2.5%<br><small style="color:#6b7280;">51.2% win (-5.2pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.0%<br><small style="color:#6b7280;">52.9% win (-5.5pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-2.3% ✓<br><small style="color:#6b7280;">47.1% win (-7.2pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.9%<br><small style="color:#6b7280;">65.3% win (+0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.0%<br><small style="color:#6b7280;">55.7% win (+1.8pp)</small></td></tr></tbody>
+        </table></div>
+</div>
+
+
+        <div class="section">
+            <h2>Layer 2: Regime × Liquidity (Legacy Overlay) — 3-Month Forward Returns</h2>
+            <p class="subtitle">Does conditioning on liquidity (M2 growth + NFCI) improve the signal?</p>
+            
+        <table class="data-table">
+            <thead><tr><th>Regime</th><th>N</th><th style="text-align:center; font-size:0.85em;">Crude Oil WTI</th><th style="text-align:center; font-size:0.85em;">Emerging Markets</th><th style="text-align:center; font-size:0.85em;">Euro Stoxx 50</th><th style="text-align:center; font-size:0.85em;">Gold</th><th style="text-align:center; font-size:0.85em;">High Yield Credit</th><th style="text-align:center; font-size:0.85em;">Russell 2000</th><th style="text-align:center; font-size:0.85em;">SandP 500</th><th style="text-align:center; font-size:0.85em;">US 20Y Treasuries</th><th style="text-align:center; font-size:0.85em;">US Dollar (DXY)</th></tr></thead>
+            <tbody><tr><td style="border-left: 4px solid #22c55e; padding-left: 8px; font-weight: 600;">Goldilocks + loose liquidity *</td><td>22</td><td style="background:#fee2e2; text-align:center; ">-1.4%<br><small style="color:#6b7280;">52.6% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.4%<br><small style="color:#6b7280;">68.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.4%<br><small style="color:#6b7280;">72.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.6%<br><small style="color:#6b7280;">52.6% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.3%<br><small style="color:#6b7280;">83.3% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.1%<br><small style="color:#6b7280;">68.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+5.1%<br><small style="color:#6b7280;">86.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.6%<br><small style="color:#6b7280;">73.7% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.2%<br><small style="color:#6b7280;">50.0% win</small></td></tr><tr><td style="border-left: 4px solid #22c55e; padding-left: 8px; font-weight: 600;">Goldilocks + tight liquidity *</td><td>36</td><td style="background:#dcfce7; text-align:center; ">+7.5%<br><small style="color:#6b7280;">84.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.4%<br><small style="color:#6b7280;">68.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+6.9%<br><small style="color:#6b7280;">90.9% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.3%<br><small style="color:#6b7280;">57.9% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.0%<br><small style="color:#6b7280;">90.9% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.7%<br><small style="color:#6b7280;">66.7% win</small></td><td style="background:#dcfce7; text-align:center; ">+5.1%<br><small style="color:#6b7280;">83.3% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.7%<br><small style="color:#6b7280;">52.6% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.1%<br><small style="color:#6b7280;">52.8% win</small></td></tr><tr><td style="border-left: 4px solid #f97316; padding-left: 8px; font-weight: 600;">Overheating + loose liquidity</td><td>46</td><td style="background:#dcfce7; text-align:center; ">+0.5%<br><small style="color:#6b7280;">54.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.7%<br><small style="color:#6b7280;">45.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.1%<br><small style="color:#6b7280;">50.0% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.1%<br><small style="color:#6b7280;">61.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.7%<br><small style="color:#6b7280;">62.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.2%<br><small style="color:#6b7280;">50.0% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.1%<br><small style="color:#6b7280;">63.0% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.1%<br><small style="color:#6b7280;">72.7% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.6%<br><small style="color:#6b7280;">67.4% win</small></td></tr><tr><td style="border-left: 4px solid #f97316; padding-left: 8px; font-weight: 600;">Overheating + tight liquidity</td><td>72</td><td style="background:#dcfce7; text-align:center; ">+1.4%<br><small style="color:#6b7280;">57.1% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.7%<br><small style="color:#6b7280;">66.7% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.1%<br><small style="color:#6b7280;">44.8% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.8%<br><small style="color:#6b7280;">59.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.9%<br><small style="color:#6b7280;">75.9% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.2%<br><small style="color:#6b7280;">66.7% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.4%<br><small style="color:#6b7280;">69.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.1%<br><small style="color:#6b7280;">69.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.2%<br><small style="color:#6b7280;">50.0% win</small></td></tr><tr><td style="border-left: 4px solid #3b82f6; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown + loose liquidity</td><td>72</td><td style="background:#dcfce7; text-align:center; ">+6.7%<br><small style="color:#6b7280;">61.8% win</small></td><td style="background:#dcfce7; text-align:center; ">+8.8%<br><small style="color:#6b7280;">80.8% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.1%<br><small style="color:#6b7280;">71.1% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.7%<br><small style="color:#6b7280;">73.5% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.8%<br><small style="color:#6b7280;">82.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.9%<br><small style="color:#6b7280;">76.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.9%<br><small style="color:#6b7280;">72.2% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.1%<br><small style="color:#6b7280;">38.9% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.0%<br><small style="color:#6b7280;">38.9% win</small></td></tr><tr><td style="border-left: 4px solid #3b82f6; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown + tight liquidity</td><td>62</td><td style="background:#dcfce7; text-align:center; ">+3.1%<br><small style="color:#6b7280;">43.5% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.5%<br><small style="color:#6b7280;">65.1% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.4%<br><small style="color:#6b7280;">61.5% win</small></td><td style="background:#dcfce7; text-align:center; ">+4.6%<br><small style="color:#6b7280;">67.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.7%<br><small style="color:#6b7280;">76.3% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.8%<br><small style="color:#6b7280;">62.9% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.2%<br><small style="color:#6b7280;">71.0% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.3%<br><small style="color:#6b7280;">51.1% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.9%<br><small style="color:#6b7280;">41.9% win</small></td></tr><tr><td style="border-left: 4px solid #ef4444; padding-left: 8px; font-weight: 600;">Stagflation + loose liquidity *</td><td>14</td><td style="background:#dcfce7; text-align:center; ">+1.3%<br><small style="color:#6b7280;">38.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-4.7%<br><small style="color:#6b7280;">36.4% win</small></td><td style="background:#fee2e2; text-align:center; ">-5.7%<br><small style="color:#6b7280;">30.0% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.5%<br><small style="color:#6b7280;">61.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.8%<br><small style="color:#6b7280;">50.0% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.9%<br><small style="color:#6b7280;">61.5% win</small></td><td style="background:#fee2e2; text-align:center; ">-3.8%<br><small style="color:#6b7280;">53.8% win</small></td><td style="background:#dcfce7; text-align:center; ">+3.8%<br><small style="color:#6b7280;">63.6% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.5%<br><small style="color:#6b7280;">76.9% win</small></td></tr><tr><td style="border-left: 4px solid #ef4444; padding-left: 8px; font-weight: 600;">Stagflation + tight liquidity</td><td>60</td><td style="background:#dcfce7; text-align:center; ">+2.1%<br><small style="color:#6b7280;">51.1% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.1%<br><small style="color:#6b7280;">55.0% win</small></td><td style="background:#fee2e2; text-align:center; ">-3.8%<br><small style="color:#6b7280;">29.4% win</small></td><td style="background:#dcfce7; text-align:center; ">+2.6%<br><small style="color:#6b7280;">55.3% win</small></td><td style="background:#fee2e2; text-align:center; ">-1.4%<br><small style="color:#6b7280;">41.2% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.7%<br><small style="color:#6b7280;">51.7% win</small></td><td style="background:#dcfce7; text-align:center; ">+0.0%<br><small style="color:#6b7280;">53.3% win</small></td><td style="background:#fee2e2; text-align:center; ">-0.4%<br><small style="color:#6b7280;">48.8% win</small></td><td style="background:#dcfce7; text-align:center; ">+1.0%<br><small style="color:#6b7280;">58.3% win</small></td></tr></tbody>
+        </table>
+        </div>
+
+        <div class="section">
+            <h2>Layer 2: Full 8-Regime Model — 3-Month Forward Returns</h2>
+            <p class="subtitle">Growth × Inflation × Liquidity: each of the 8 regimes independently. (* = low N warning, ⚠ = insufficient data)</p>
+            
+        <table class="data-table">
+            <thead><tr><th>Regime</th><th>N</th><th style="text-align:center; font-size:0.85em;">Crude Oil WTI</th><th style="text-align:center; font-size:0.85em;">Emerging Markets</th><th style="text-align:center; font-size:0.85em;">Euro Stoxx 50</th><th style="text-align:center; font-size:0.85em;">Gold</th><th style="text-align:center; font-size:0.85em;">High Yield Credit</th><th style="text-align:center; font-size:0.85em;">Russell 2000</th><th style="text-align:center; font-size:0.85em;">SandP 500</th><th style="text-align:center; font-size:0.85em;">US 20Y Treasuries</th><th style="text-align:center; font-size:0.85em;">US Dollar (DXY)</th></tr></thead>
+            <tbody><tr><td style="border-left: 4px solid #2563eb; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown — Ample Liquidity</td><td>72</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+6.7%<br><small style="color:#6b7280;">61.8% win (+3.7pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+8.8% ✓<br><small style="color:#6b7280;">80.8% win (+6.0pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.1%<br><small style="color:#6b7280;">71.1% win (+3.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.7%<br><small style="color:#6b7280;">73.5% win (+1.6pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+3.8% ✓<br><small style="color:#6b7280;">82.2% win (+2.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.9%<br><small style="color:#6b7280;">76.4% win (+2.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.9%<br><small style="color:#6b7280;">72.2% win (+0.5pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-1.1% ✓<br><small style="color:#6b7280;">38.9% win (-2.2pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.0%<br><small style="color:#6b7280;">38.9% win (-1.1pp)</small></td></tr><tr><td style="border-left: 4px solid #93c5fd; padding-left: 8px; font-weight: 600;">Disinflationary Slowdown — Tight Liquidity</td><td>62</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.1%<br><small style="color:#6b7280;">43.5% win (+0.1pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.5%<br><small style="color:#6b7280;">65.1% win (-0.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.4%<br><small style="color:#6b7280;">61.5% win (+1.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.6%<br><small style="color:#6b7280;">67.4% win (+1.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.7%<br><small style="color:#6b7280;">76.3% win (+0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.8%<br><small style="color:#6b7280;">62.9% win (-1.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.2%<br><small style="color:#6b7280;">71.0% win (+0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.3%<br><small style="color:#6b7280;">51.1% win (+0.2pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.9%<br><small style="color:#6b7280;">41.9% win (-1.0pp)</small></td></tr><tr><td style="border-left: 4px solid #16a34a; padding-left: 8px; font-weight: 600;">Goldilocks — Ample Liquidity *</td><td>22</td><td style="background:#fee2e2; text-align:center; ">-1.4%<br><small style="color:#6b7280;">52.6% win (-4.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.4%<br><small style="color:#6b7280;">68.4% win (+0.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.4%<br><small style="color:#6b7280;">72.2% win (+1.7pp)</small></td><td style="background:#dcfce7; text-align:center; ">+0.6%<br><small style="color:#6b7280;">52.6% win (-2.5pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.3%<br><small style="color:#6b7280;">83.3% win (+1.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.1%<br><small style="color:#6b7280;">68.2% win (+0.8pp)</small></td><td style="background:#dcfce7; text-align:center; ">+5.1%<br><small style="color:#6b7280;">86.4% win (+2.7pp)</small></td><td style="background:#dcfce7; text-align:center; ">+3.6%<br><small style="color:#6b7280;">73.7% win (+2.5pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.2%<br><small style="color:#6b7280;">50.0% win (-0.3pp)</small></td></tr><tr><td style="border-left: 4px solid #86efac; padding-left: 8px; font-weight: 600;">Goldilocks — Tight Liquidity *</td><td>36</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+7.5%<br><small style="color:#6b7280;">84.2% win (+4.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.4%<br><small style="color:#6b7280;">68.4% win (-0.4pp)</small></td><td style="background:#dcfce7; text-align:center; ">+6.9%<br><small style="color:#6b7280;">90.9% win (+6.1pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.3%<br><small style="color:#6b7280;">57.9% win (-1.8pp)</small></td><td style="background:#dcfce7; text-align:center; ">+3.0%<br><small style="color:#6b7280;">90.9% win (+1.7pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.7%<br><small style="color:#6b7280;">66.7% win (+2.4pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+5.1% ✓<br><small style="color:#6b7280;">83.3% win (+2.8pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.7%<br><small style="color:#6b7280;">52.6% win (-1.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.1%<br><small style="color:#6b7280;">52.8% win (+0.0pp)</small></td></tr><tr><td style="border-left: 4px solid #ea580c; padding-left: 8px; font-weight: 600;">Overheating — Ample Liquidity</td><td>46</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.5%<br><small style="color:#6b7280;">54.5% win (-2.5pp)</small></td><td style="background:#fee2e2; text-align:center; ">-0.7%<br><small style="color:#6b7280;">45.5% win (-3.4pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-1.1%<br><small style="color:#6b7280;">50.0% win (-1.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.1%<br><small style="color:#6b7280;">61.4% win (-1.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.7%<br><small style="color:#6b7280;">62.5% win (-0.7pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.2%<br><small style="color:#6b7280;">50.0% win (-2.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.1%<br><small style="color:#6b7280;">63.0% win (-0.3pp)</small></td><td style="background:#dcfce7; text-align:center; ">+4.1%<br><small style="color:#6b7280;">72.7% win (+3.0pp)</small></td><td style="background:#dcfce7; text-align:center; border: 2px solid #22c55e;">+1.6% ✓<br><small style="color:#6b7280;">67.4% win (+1.5pp)</small></td></tr><tr><td style="border-left: 4px solid #fdba74; padding-left: 8px; font-weight: 600;">Overheating — Tight Liquidity</td><td>72</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.4%<br><small style="color:#6b7280;">57.1% win (-1.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+4.7%<br><small style="color:#6b7280;">66.7% win (+1.9pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.1%<br><small style="color:#6b7280;">44.8% win (-0.8pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.8%<br><small style="color:#6b7280;">59.2% win (-0.3pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.9%<br><small style="color:#6b7280;">75.9% win (-0.4pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+3.2%<br><small style="color:#6b7280;">66.7% win (+0.9pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.4%<br><small style="color:#6b7280;">69.4% win (-0.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.1%<br><small style="color:#6b7280;">69.4% win (-0.0pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.2%<br><small style="color:#6b7280;">50.0% win (+0.1pp)</small></td></tr><tr><td style="border-left: 4px solid #dc2626; padding-left: 8px; font-weight: 600;">Stagflation — Ample Liquidity *</td><td>14</td><td style="background:#dcfce7; text-align:center; ">+1.3%<br><small style="color:#6b7280;">38.5% win (-1.7pp)</small></td><td style="background:#fee2e2; text-align:center; ">-4.7%<br><small style="color:#6b7280;">36.4% win (-7.5pp)</small></td><td style="background:#fee2e2; text-align:center; ">-5.7%<br><small style="color:#6b7280;">30.0% win (-6.4pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.5%<br><small style="color:#6b7280;">61.5% win (-0.6pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.8%<br><small style="color:#6b7280;">50.0% win (-3.2pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.9%<br><small style="color:#6b7280;">61.5% win (-4.2pp)</small></td><td style="background:#fee2e2; text-align:center; ">-3.8%<br><small style="color:#6b7280;">53.8% win (-6.1pp)</small></td><td style="background:#dcfce7; text-align:center; ">+3.8%<br><small style="color:#6b7280;">63.6% win (+2.6pp)</small></td><td style="background:#dcfce7; text-align:center; ">+2.5%<br><small style="color:#6b7280;">76.9% win (+2.4pp)</small></td></tr><tr><td style="border-left: 4px solid #fca5a5; padding-left: 8px; font-weight: 600;">Stagflation — Tight Liquidity</td><td>60</td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.1%<br><small style="color:#6b7280;">51.1% win (-0.9pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-1.1%<br><small style="color:#6b7280;">55.0% win (-3.9pp)</small></td><td style="background:#fee2e2; text-align:center; border: 2px solid #22c55e;">-3.8% ✓<br><small style="color:#6b7280;">29.4% win (-4.6pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+2.6%<br><small style="color:#6b7280;">55.3% win (-0.5pp)</small></td><td style="background:#fee2e2; text-align:center; ">-1.4%<br><small style="color:#6b7280;">41.2% win (-2.7pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+0.7%<br><small style="color:#6b7280;">51.7% win (-1.6pp)</small></td><td style="background:#dcfce7; text-align:center; ">+0.0%<br><small style="color:#6b7280;">53.3% win (-2.4pp)</small></td><td style="background:#fee2e2; text-align:center; opacity: 0.6;">-0.4%<br><small style="color:#6b7280;">48.8% win (-1.5pp)</small></td><td style="background:#dcfce7; text-align:center; opacity: 0.6;">+1.0%<br><small style="color:#6b7280;">58.3% win (+0.8pp)</small></td></tr></tbody>
+        </table>
+        </div>
+
+        <div class="section">
+            <h2>Liquidity Value-Added Analysis</h2>
+            <p class="subtitle">For each regime × asset, does the loose/tight spread exceed half the base standard deviation?
+            Information ratio = spread / base_std. Higher = liquidity conditioning adds more signal.</p>
+            <table class="data-table">
+                <thead><tr>
+                    <th>Regime</th><th>Asset (3M)</th><th>Base Mean</th>
+                    <th>Loose Mean</th><th>Tight Mean</th><th>Spread</th>
+                    <th>Info Ratio</th><th>Matters?</th>
+                </tr></thead>
+                <tbody><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+4.6%</td>
+                    <td style="text-align:center;">+5.1%</td>
+                    <td style="text-align:center;">+5.1%</td>
+                    <td style="text-align:center;">0.0pp</td>
+                    <td style="text-align:center;">0.01</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+3.8%</td>
+                    <td style="text-align:center;">+3.1%</td>
+                    <td style="text-align:center;">+4.7%</td>
+                    <td style="text-align:center;">1.5pp</td>
+                    <td style="text-align:center;">0.24</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+1.4%</td>
+                    <td style="text-align:center;">+3.6%</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">4.3pp</td>
+                    <td style="text-align:center;">0.80</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">+0.6%</td>
+                    <td style="text-align:center;">+1.3%</td>
+                    <td style="text-align:center;">0.7pp</td>
+                    <td style="text-align:center;">0.11</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">-1.4%</td>
+                    <td style="text-align:center;">+7.5%</td>
+                    <td style="text-align:center;">8.9pp</td>
+                    <td style="text-align:center;">0.76</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">-0.1%</td>
+                    <td style="text-align:center;">-0.2%</td>
+                    <td style="text-align:center;">+0.1%</td>
+                    <td style="text-align:center;">0.4pp</td>
+                    <td style="text-align:center;">0.11</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">+3.4%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">1.0pp</td>
+                    <td style="text-align:center;">0.13</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">+2.3%</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">0.7pp</td>
+                    <td style="text-align:center;">0.31</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">+4.1%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">+6.9%</td>
+                    <td style="text-align:center;">4.4pp</td>
+                    <td style="text-align:center;">0.63</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+2.2%</td>
+                    <td style="text-align:center;">+2.1%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">0.3pp</td>
+                    <td style="text-align:center;">0.04</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">-0.2%</td>
+                    <td style="text-align:center;">+3.2%</td>
+                    <td style="text-align:center;">3.4pp</td>
+                    <td style="text-align:center;">0.35</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+4.1%</td>
+                    <td style="text-align:center;">+1.1%</td>
+                    <td style="text-align:center;">3.0pp</td>
+                    <td style="text-align:center;">0.42</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+2.1%</td>
+                    <td style="text-align:center;">+2.8%</td>
+                    <td style="text-align:center;">0.7pp</td>
+                    <td style="text-align:center;">0.09</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">+0.5%</td>
+                    <td style="text-align:center;">+1.4%</td>
+                    <td style="text-align:center;">0.9pp</td>
+                    <td style="text-align:center;">0.04</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+1.6%</td>
+                    <td style="text-align:center;">+0.2%</td>
+                    <td style="text-align:center;">1.4pp</td>
+                    <td style="text-align:center;">0.35</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+2.0%</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">+4.7%</td>
+                    <td style="text-align:center;">5.3pp</td>
+                    <td style="text-align:center;">0.55</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+0.7%</td>
+                    <td style="text-align:center;">+0.9%</td>
+                    <td style="text-align:center;">0.3pp</td>
+                    <td style="text-align:center;">0.08</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">-1.1%</td>
+                    <td style="text-align:center;">-0.1%</td>
+                    <td style="text-align:center;">1.0pp</td>
+                    <td style="text-align:center;">0.13</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">+3.2%</td>
+                    <td style="text-align:center;">0.3pp</td>
+                    <td style="text-align:center;">0.04</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+4.9%</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">4.1pp</td>
+                    <td style="text-align:center;">0.38</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+0.0%</td>
+                    <td style="text-align:center;">-1.1%</td>
+                    <td style="text-align:center;">+1.3%</td>
+                    <td style="text-align:center;">2.4pp</td>
+                    <td style="text-align:center;">0.39</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+4.6%</td>
+                    <td style="text-align:center;">+4.7%</td>
+                    <td style="text-align:center;">+4.6%</td>
+                    <td style="text-align:center;">0.1pp</td>
+                    <td style="text-align:center;">0.01</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+5.2%</td>
+                    <td style="text-align:center;">+6.7%</td>
+                    <td style="text-align:center;">+3.1%</td>
+                    <td style="text-align:center;">3.6pp</td>
+                    <td style="text-align:center;">0.20</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">-1.0%</td>
+                    <td style="text-align:center;">-1.0%</td>
+                    <td style="text-align:center;">-0.9%</td>
+                    <td style="text-align:center;">0.1pp</td>
+                    <td style="text-align:center;">0.03</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+6.0%</td>
+                    <td style="text-align:center;">+8.8%</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">6.3pp</td>
+                    <td style="text-align:center;">0.57</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+2.8%</td>
+                    <td style="text-align:center;">+3.8%</td>
+                    <td style="text-align:center;">+1.7%</td>
+                    <td style="text-align:center;">2.1pp</td>
+                    <td style="text-align:center;">0.48</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">+3.4%</td>
+                    <td style="text-align:center;">+4.1%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">1.7pp</td>
+                    <td style="text-align:center;">0.22</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">-3.8%</td>
+                    <td style="text-align:center;">+0.0%</td>
+                    <td style="text-align:center;">3.8pp</td>
+                    <td style="text-align:center;">0.44</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+0.2%</td>
+                    <td style="text-align:center;">-1.9%</td>
+                    <td style="text-align:center;">+0.7%</td>
+                    <td style="text-align:center;">2.6pp</td>
+                    <td style="text-align:center;">0.25</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+0.5%</td>
+                    <td style="text-align:center;">+3.8%</td>
+                    <td style="text-align:center;">-0.4%</td>
+                    <td style="text-align:center;">4.1pp</td>
+                    <td style="text-align:center;">0.52</td>
+                    <td style="text-align:center; color:#22c55e; font-weight:700;">✓</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">0.0pp</td>
+                    <td style="text-align:center;">0.00</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">+1.3%</td>
+                    <td style="text-align:center;">+2.1%</td>
+                    <td style="text-align:center;">0.8pp</td>
+                    <td style="text-align:center;">0.03</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+1.2%</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">1.6pp</td>
+                    <td style="text-align:center;">0.34</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">-1.9%</td>
+                    <td style="text-align:center;">-4.7%</td>
+                    <td style="text-align:center;">-1.1%</td>
+                    <td style="text-align:center;">3.6pp</td>
+                    <td style="text-align:center;">0.27</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">-1.5%</td>
+                    <td style="text-align:center;">-1.8%</td>
+                    <td style="text-align:center;">-1.4%</td>
+                    <td style="text-align:center;">0.4pp</td>
+                    <td style="text-align:center;">0.07</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-4.3%</td>
+                    <td style="text-align:center;">-5.7%</td>
+                    <td style="text-align:center;">-3.8%</td>
+                    <td style="text-align:center;">1.9pp</td>
+                    <td style="text-align:center;">0.20</td>
+                    <td style="text-align:center; color:#ef4444; font-weight:700;">✗</td>
+                </tr></tbody>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Regime Transitions — 3-Month Forward Returns</h2>
+            <p class="subtitle">What happens to asset returns in the 3 months after a regime change?
+            Total transitions: 59</p>
+            <table class="data-table">
+                <thead><tr><th>Transition</th><th>Count</th><th>3M Forward Returns (avg)</th></tr></thead>
+                <tbody><tr>
+                <td style="font-weight:600;">Stagflation → Disinflationary Slowdown</td>
+                <td style="text-align:center;">9</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +0.7%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +10.8%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +0.6%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +7.6%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +4.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +4.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +1.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: -1.7%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): -0.4%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Overheating → Stagflation</td>
+                <td style="text-align:center;">7</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +6.5%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: -1.7%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: -5.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +4.3%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: -3.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +7.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +3.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: -2.9%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): +1.9%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Disinflationary Slowdown → Stagflation</td>
+                <td style="text-align:center;">7</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +1.8%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +1.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +1.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +2.3%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: -1.7%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +2.8%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +3.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: -1.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): +0.6%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Goldilocks → Overheating</td>
+                <td style="text-align:center;">6</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +7.5%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +4.8%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: -1.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +6.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +0.8%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +1.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +1.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: +3.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): +0.3%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Disinflationary Slowdown → Goldilocks</td>
+                <td style="text-align:center;">5</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +9.9%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +12.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +4.5%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +2.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +1.0%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +3.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +6.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: +1.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): -1.0%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Overheating → Goldilocks</td>
+                <td style="text-align:center;">5</td>
+                <td><span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: -6.5%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +3.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +1.6%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +0.7%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +2.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +7.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +6.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: +5.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): +0.9%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Goldilocks → Disinflationary Slowdown</td>
+                <td style="text-align:center;">5</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +12.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +6.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +5.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: -3.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +1.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +1.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +1.8%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: -4.0%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): -0.7%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Disinflationary Slowdown → Overheating</td>
+                <td style="text-align:center;">5</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +16.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +6.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +0.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +6.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +1.4%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +2.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +0.1%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: -2.1%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): -2.7%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Stagflation → Overheating</td>
+                <td style="text-align:center;">4</td>
+                <td><span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: -20.4%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: -8.5%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: -10.8%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: -1.2%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: -5.6%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: -3.1%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: -8.7%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: +3.0%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): +3.1%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">Overheating → Disinflationary Slowdown</td>
+                <td style="text-align:center;">3</td>
+                <td><span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Crude Oil WTI: +55.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Emerging Markets: +13.6%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Euro Stoxx 50: +7.9%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Gold: +5.8%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">High Yield Credit: +6.3%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">Russell 2000: +13.2%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">SandP 500: +13.1%</span> <span style="background:#dcfce7; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US 20Y Treasuries: +1.9%</span> <span style="background:#fee2e2; padding: 2px 6px; border-radius: 4px; margin: 0 2px; font-size: 0.85em;">US Dollar (DXY): -1.3%</span> </td>
+            </tr><tr>
+                <td style="font-weight:600;">None → Goldilocks</td>
+                <td style="text-align:center;">1</td>
+                <td>—</td>
+            </tr><tr>
+                <td style="font-weight:600;">Stagflation → Goldilocks</td>
+                <td style="text-align:center;">1</td>
+                <td>—</td>
+            </tr><tr>
+                <td style="font-weight:600;">Goldilocks → Stagflation</td>
+                <td style="text-align:center;">1</td>
+                <td>—</td>
+            </tr></tbody>
+            </table>
+        </div>
+
+<!-- Statistical Significance Legend -->
+<div class="section">
+    <h2>Statistical Significance</h2>
+    <p class="subtitle">Return cells show excess return vs buy-and-hold in parentheses.
+    ✓ = significant after Benjamini-Hochberg FDR correction (alpha=0.10).
+    Green border = BH-significant. Dimmed = tested but not significant.
+    Bootstrap uses block resampling for 3M/6M windows to handle overlapping returns.</p>
+</div>
+
+
+<div class="section" style="background: #422006; border: 1px solid #f97316;">
+    <h2 style="color: #f97316;">⚠ 8-Regime Significance Warning</h2>
+    <p>Only 9% of testable 8-regime cells show statistically significant signal after FDR correction.
+    Consider using the 4-regime model for higher-confidence signals. The 8-regime granularity may exceed
+    what the available data can support.</p>
+</div>
+
+<div class="section">
+    <h2>Power Analysis — Minimum Detectable Effect (3-Month Window)</h2>
+    <p class="subtitle">MDE at 80% power, 10% significance. If the actual regime effect is smaller
+    than the MDE, this backtest cannot reliably detect it. Larger MDE = less statistical power.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>N</th><th>Std</th><th>MDE</th></tr></thead>
+        <tbody><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>SandP 500</td>
+                        <td style="text-align:center;">63</td>
+                        <td style="text-align:center;">5.2%</td>
+                        <td style="text-align:center; font-weight:700;">1.9pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>Russell 2000</td>
+                        <td style="text-align:center;">63</td>
+                        <td style="text-align:center;">6.5%</td>
+                        <td style="text-align:center; font-weight:700;">2.3pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>US 20Y Treasuries</td>
+                        <td style="text-align:center;">38</td>
+                        <td style="text-align:center;">5.4%</td>
+                        <td style="text-align:center; font-weight:700;">2.5pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>Gold</td>
+                        <td style="text-align:center;">38</td>
+                        <td style="text-align:center;">5.9%</td>
+                        <td style="text-align:center; font-weight:700;">2.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>Crude Oil WTI</td>
+                        <td style="text-align:center;">38</td>
+                        <td style="text-align:center;">11.7%</td>
+                        <td style="text-align:center; font-weight:700;">5.3pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>US Dollar (DXY)</td>
+                        <td style="text-align:center;">63</td>
+                        <td style="text-align:center;">3.4%</td>
+                        <td style="text-align:center; font-weight:700;">1.2pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>Emerging Markets</td>
+                        <td style="text-align:center;">38</td>
+                        <td style="text-align:center;">7.8%</td>
+                        <td style="text-align:center; font-weight:700;">3.5pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>High Yield Credit</td>
+                        <td style="text-align:center;">29</td>
+                        <td style="text-align:center;">2.2%</td>
+                        <td style="text-align:center; font-weight:700;">1.1pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                        <td>Euro Stoxx 50</td>
+                        <td style="text-align:center;">29</td>
+                        <td style="text-align:center;">7.1%</td>
+                        <td style="text-align:center; font-weight:700;">3.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>SandP 500</td>
+                        <td style="text-align:center;">118</td>
+                        <td style="text-align:center;">6.5%</td>
+                        <td style="text-align:center; font-weight:700;">1.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>Russell 2000</td>
+                        <td style="text-align:center;">118</td>
+                        <td style="text-align:center;">9.7%</td>
+                        <td style="text-align:center; font-weight:700;">2.5pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>US 20Y Treasuries</td>
+                        <td style="text-align:center;">93</td>
+                        <td style="text-align:center;">7.2%</td>
+                        <td style="text-align:center; font-weight:700;">2.1pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>Gold</td>
+                        <td style="text-align:center;">93</td>
+                        <td style="text-align:center;">7.2%</td>
+                        <td style="text-align:center; font-weight:700;">2.1pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>Crude Oil WTI</td>
+                        <td style="text-align:center;">93</td>
+                        <td style="text-align:center;">20.9%</td>
+                        <td style="text-align:center; font-weight:700;">6.1pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>US Dollar (DXY)</td>
+                        <td style="text-align:center;">118</td>
+                        <td style="text-align:center;">3.9%</td>
+                        <td style="text-align:center; font-weight:700;">1.0pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>Emerging Markets</td>
+                        <td style="text-align:center;">89</td>
+                        <td style="text-align:center;">9.7%</td>
+                        <td style="text-align:center; font-weight:700;">2.9pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>High Yield Credit</td>
+                        <td style="text-align:center;">69</td>
+                        <td style="text-align:center;">3.5%</td>
+                        <td style="text-align:center; font-weight:700;">1.2pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                        <td>Euro Stoxx 50</td>
+                        <td style="text-align:center;">69</td>
+                        <td style="text-align:center;">8.0%</td>
+                        <td style="text-align:center; font-weight:700;">2.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>SandP 500</td>
+                        <td style="text-align:center;">134</td>
+                        <td style="text-align:center;">7.8%</td>
+                        <td style="text-align:center; font-weight:700;">1.9pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>Russell 2000</td>
+                        <td style="text-align:center;">134</td>
+                        <td style="text-align:center;">10.7%</td>
+                        <td style="text-align:center; font-weight:700;">2.6pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>US 20Y Treasuries</td>
+                        <td style="text-align:center;">99</td>
+                        <td style="text-align:center;">6.0%</td>
+                        <td style="text-align:center; font-weight:700;">1.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>Gold</td>
+                        <td style="text-align:center;">114</td>
+                        <td style="text-align:center;">7.5%</td>
+                        <td style="text-align:center; font-weight:700;">2.0pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>Crude Oil WTI</td>
+                        <td style="text-align:center;">114</td>
+                        <td style="text-align:center;">18.2%</td>
+                        <td style="text-align:center; font-weight:700;">4.8pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>US Dollar (DXY)</td>
+                        <td style="text-align:center;">134</td>
+                        <td style="text-align:center;">3.5%</td>
+                        <td style="text-align:center; font-weight:700;">0.8pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>Emerging Markets</td>
+                        <td style="text-align:center;">95</td>
+                        <td style="text-align:center;">11.0%</td>
+                        <td style="text-align:center; font-weight:700;">3.2pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>High Yield Credit</td>
+                        <td style="text-align:center;">83</td>
+                        <td style="text-align:center;">4.3%</td>
+                        <td style="text-align:center; font-weight:700;">1.3pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                        <td>Euro Stoxx 50</td>
+                        <td style="text-align:center;">84</td>
+                        <td style="text-align:center;">7.7%</td>
+                        <td style="text-align:center; font-weight:700;">2.3pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>SandP 500</td>
+                        <td style="text-align:center;">73</td>
+                        <td style="text-align:center;">8.6%</td>
+                        <td style="text-align:center; font-weight:700;">2.8pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>Russell 2000</td>
+                        <td style="text-align:center;">73</td>
+                        <td style="text-align:center;">10.3%</td>
+                        <td style="text-align:center; font-weight:700;">3.4pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>US 20Y Treasuries</td>
+                        <td style="text-align:center;">52</td>
+                        <td style="text-align:center;">8.0%</td>
+                        <td style="text-align:center; font-weight:700;">3.1pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>Gold</td>
+                        <td style="text-align:center;">60</td>
+                        <td style="text-align:center;">9.7%</td>
+                        <td style="text-align:center; font-weight:700;">3.5pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>Crude Oil WTI</td>
+                        <td style="text-align:center;">60</td>
+                        <td style="text-align:center;">25.7%</td>
+                        <td style="text-align:center; font-weight:700;">9.3pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>US Dollar (DXY)</td>
+                        <td style="text-align:center;">73</td>
+                        <td style="text-align:center;">4.5%</td>
+                        <td style="text-align:center; font-weight:700;">1.5pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>Emerging Markets</td>
+                        <td style="text-align:center;">51</td>
+                        <td style="text-align:center;">13.4%</td>
+                        <td style="text-align:center; font-weight:700;">5.2pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>High Yield Credit</td>
+                        <td style="text-align:center;">44</td>
+                        <td style="text-align:center;">6.4%</td>
+                        <td style="text-align:center; font-weight:700;">2.7pp</td>
+                    </tr><tr>
+                        <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                        <td>Euro Stoxx 50</td>
+                        <td style="text-align:center;">44</td>
+                        <td style="text-align:center;">9.2%</td>
+                        <td style="text-align:center; font-weight:700;">3.9pp</td>
+                    </tr></tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Out-of-Sample Validation — 3-Month Returns</h2>
+    <p class="subtitle">Split at 2019-12-31. In-sample: 316 months.
+    Out-of-sample: 73 months. Green = stable (same sign, diff < 1 std).
+    Red = sign flip. Yellow = same sign but drifted.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>In-Sample</th><th>Out-of-Sample</th><th>Diff</th><th>Stability</th></tr></thead>
+        <tbody><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-1.5%</td>
+                    <td style="text-align:center;">+1.5%</td>
+                    <td style="text-align:center;">+3.0pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">+4.0%</td>
+                    <td style="text-align:center;">+2.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">-0.5%</td>
+                    <td style="text-align:center;">+7.0%</td>
+                    <td style="text-align:center;">+7.6pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+2.0%</td>
+                    <td style="text-align:center;">+1.1%</td>
+                    <td style="text-align:center;">-0.8pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+3.3%</td>
+                    <td style="text-align:center;">-0.6%</td>
+                    <td style="text-align:center;">-3.9pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">+0.1%</td>
+                    <td style="text-align:center;">-0.9pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">+1.7%</td>
+                    <td style="text-align:center;">-1.0pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+0.6%</td>
+                    <td style="text-align:center;">-0.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+2.7%</td>
+                    <td style="text-align:center;">-0.4%</td>
+                    <td style="text-align:center;">-3.1pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+4.3%</td>
+                    <td style="text-align:center;">+1.8pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">+5.7%</td>
+                    <td style="text-align:center;">+3.8pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+6.1%</td>
+                    <td style="text-align:center;">+3.7%</td>
+                    <td style="text-align:center;">-2.3pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+2.0%</td>
+                    <td style="text-align:center;">+5.4%</td>
+                    <td style="text-align:center;">+3.4pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">-0.1%</td>
+                    <td style="text-align:center;">+0.2%</td>
+                    <td style="text-align:center;">+0.3pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">-0.5pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+3.5%</td>
+                    <td style="text-align:center;">+6.7%</td>
+                    <td style="text-align:center;">+3.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">-1.1%</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">+0.3pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+6.1%</td>
+                    <td style="text-align:center;">+5.7%</td>
+                    <td style="text-align:center;">-0.5pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-5.8%</td>
+                    <td style="text-align:center;">-0.5%</td>
+                    <td style="text-align:center;">+5.3pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">-0.2%</td>
+                    <td style="text-align:center;">-2.8%</td>
+                    <td style="text-align:center;">-2.5pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">-1.9%</td>
+                    <td style="text-align:center;">+15.6%</td>
+                    <td style="text-align:center;">+17.5pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+0.7%</td>
+                    <td style="text-align:center;">-1.9%</td>
+                    <td style="text-align:center;">-2.6pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">-6.9%</td>
+                    <td style="text-align:center;">-9.8pp</td>
+                    <td style="background:#fee2e2; text-align:center; color:#1e293b;">Sign flip!</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">-1.5%</td>
+                    <td style="text-align:center;">-1.4%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.2%</td>
+                    <td style="text-align:center;">+3.9%</td>
+                    <td style="text-align:center;">+1.6pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+1.1%</td>
+                    <td style="text-align:center;">+2.1%</td>
+                    <td style="text-align:center;">+1.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">-1.6%</td>
+                    <td style="text-align:center;">-2.8%</td>
+                    <td style="text-align:center;">-1.1pp</td>
+                    <td style="background:#dcfce7; text-align:center; color:#1e293b;">Stable</td>
+                </tr></tbody>
+    </table>
+</div>
+
+<div class="section">
+    <h2>Execution Lag Cost — 3-Month Returns</h2>
+    <p class="subtitle">Concurrent (lag=0) vs honest timing (lag=1 month). The lag cost is the return
+    you lose by waiting one month to act on the regime signal.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>Lag=0</th><th>Lag=1</th><th>Cost</th></tr></thead>
+        <tbody><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+4.6%</td>
+                    <td style="text-align:center;">+4.0%</td>
+                    <td style="text-align:center;">+0.6pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+3.8%</td>
+                    <td style="text-align:center;">+3.4%</td>
+                    <td style="text-align:center;">+0.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+1.4%</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+0.6pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">+1.1%</td>
+                    <td style="text-align:center;">-0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+4.1%</td>
+                    <td style="text-align:center;">-1.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">-0.1%</td>
+                    <td style="text-align:center;">-0.1%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">-0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #22c55e; padding-left: 8px;">Goldilocks</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">+4.1%</td>
+                    <td style="text-align:center;">+4.0%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+2.2%</td>
+                    <td style="text-align:center;">+3.3%</td>
+                    <td style="text-align:center;">-1.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">-1.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">-0.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.5%</td>
+                    <td style="text-align:center;">+2.3%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+1.0%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">-1.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+0.9%</td>
+                    <td style="text-align:center;">-0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+2.0%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">-0.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+0.8%</td>
+                    <td style="text-align:center;">+1.2%</td>
+                    <td style="text-align:center;">-0.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #f97316; padding-left: 8px;">Overheating</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">+0.1%</td>
+                    <td style="text-align:center;">-0.8pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+0.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+2.8%</td>
+                    <td style="text-align:center;">+0.3pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+0.0%</td>
+                    <td style="text-align:center;">+0.0%</td>
+                    <td style="text-align:center;">-0.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+4.6%</td>
+                    <td style="text-align:center;">+4.5%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+5.2%</td>
+                    <td style="text-align:center;">+4.3%</td>
+                    <td style="text-align:center;">+0.9pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">-1.0%</td>
+                    <td style="text-align:center;">-1.0%</td>
+                    <td style="text-align:center;">+0.0pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">+6.0%</td>
+                    <td style="text-align:center;">+5.3%</td>
+                    <td style="text-align:center;">+0.7pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">+2.8%</td>
+                    <td style="text-align:center;">+2.4%</td>
+                    <td style="text-align:center;">+0.5pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #3b82f6; padding-left: 8px;">Disinflationary Slowdown</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">+3.4%</td>
+                    <td style="text-align:center;">+3.0%</td>
+                    <td style="text-align:center;">+0.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>SandP 500</td>
+                    <td style="text-align:center;">-0.7%</td>
+                    <td style="text-align:center;">-1.8%</td>
+                    <td style="text-align:center;">+1.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Russell 2000</td>
+                    <td style="text-align:center;">+0.2%</td>
+                    <td style="text-align:center;">-0.6%</td>
+                    <td style="text-align:center;">+0.9pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US 20Y Treasuries</td>
+                    <td style="text-align:center;">+0.5%</td>
+                    <td style="text-align:center;">+0.7%</td>
+                    <td style="text-align:center;">-0.2pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Gold</td>
+                    <td style="text-align:center;">+2.6%</td>
+                    <td style="text-align:center;">+2.9%</td>
+                    <td style="text-align:center;">-0.3pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Crude Oil WTI</td>
+                    <td style="text-align:center;">+1.9%</td>
+                    <td style="text-align:center;">+0.6%</td>
+                    <td style="text-align:center;">+1.3pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>US Dollar (DXY)</td>
+                    <td style="text-align:center;">+1.2%</td>
+                    <td style="text-align:center;">+1.1%</td>
+                    <td style="text-align:center;">+0.1pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Emerging Markets</td>
+                    <td style="text-align:center;">-1.9%</td>
+                    <td style="text-align:center;">-2.1%</td>
+                    <td style="text-align:center;">+0.2pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>High Yield Credit</td>
+                    <td style="text-align:center;">-1.5%</td>
+                    <td style="text-align:center;">-1.1%</td>
+                    <td style="text-align:center;">-0.4pp</td>
+                </tr><tr>
+                    <td style="border-left: 4px solid #ef4444; padding-left: 8px;">Stagflation</td>
+                    <td>Euro Stoxx 50</td>
+                    <td style="text-align:center;">-4.3%</td>
+                    <td style="text-align:center;">-5.1%</td>
+                    <td style="text-align:center;">+0.8pp</td>
+                </tr></tbody>
+    </table>
+</div>
+
+<!-- Regime Timeline -->
+<div class="section">
+    <h2>Regime Timeline</h2>
+    <p class="subtitle">Historical regime classification month by month.</p>
+    <div style="height: 120px; position: relative; overflow-x: auto;">
+        <canvas id="timelineChart"></canvas>
+    </div>
+</div>
+
+<script>
+// Regime pie chart
+new Chart(document.getElementById('regimePie'), {
+    type: 'doughnut',
+    data: {
+        labels: ["Disinflationary Slowdown", "Overheating", "Stagflation", "Goldilocks"],
+        datasets: [{ data: [134, 118, 74, 63], backgroundColor: ["#3b82f6", "#f97316", "#ef4444", "#22c55e"], borderWidth: 0 }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 16 } }
+        }
+    }
+});
+
+// Timeline chart
+const timelineDates = ["1993-09", "1993-10", "1993-11", "1993-12", "1994-01", "1994-02", "1994-03", "1994-04", "1994-05", "1994-06", "1994-07", "1994-08", "1994-09", "1994-10", "1994-11", "1994-12", "1995-01", "1995-02", "1995-03", "1995-04", "1995-05", "1995-06", "1995-07", "1995-08", "1995-09", "1995-10", "1995-11", "1995-12", "1996-01", "1996-02", "1996-03", "1996-04", "1996-05", "1996-06", "1996-07", "1996-08", "1996-09", "1996-10", "1996-11", "1996-12", "1997-01", "1997-02", "1997-03", "1997-04", "1997-05", "1997-06", "1997-07", "1997-08", "1997-09", "1997-10", "1997-11", "1997-12", "1998-01", "1998-02", "1998-03", "1998-04", "1998-05", "1998-06", "1998-07", "1998-08", "1998-09", "1998-10", "1998-11", "1998-12", "1999-01", "1999-02", "1999-03", "1999-04", "1999-05", "1999-06", "1999-07", "1999-08", "1999-09", "1999-10", "1999-11", "1999-12", "2000-01", "2000-02", "2000-03", "2000-04", "2000-05", "2000-06", "2000-07", "2000-08", "2000-09", "2000-10", "2000-11", "2000-12", "2001-01", "2001-02", "2001-03", "2001-04", "2001-05", "2001-06", "2001-07", "2001-08", "2001-09", "2001-10", "2001-11", "2001-12", "2002-01", "2002-02", "2002-03", "2002-04", "2002-05", "2002-06", "2002-07", "2002-08", "2002-09", "2002-10", "2002-11", "2002-12", "2003-01", "2003-02", "2003-03", "2003-04", "2003-05", "2003-06", "2003-07", "2003-08", "2003-09", "2003-10", "2003-11", "2003-12", "2004-01", "2004-02", "2004-03", "2004-04", "2004-05", "2004-06", "2004-07", "2004-08", "2004-09", "2004-10", "2004-11", "2004-12", "2005-01", "2005-02", "2005-03", "2005-04", "2005-05", "2005-06", "2005-07", "2005-08", "2005-09", "2005-10", "2005-11", "2005-12", "2006-01", "2006-02", "2006-03", "2006-04", "2006-05", "2006-06", "2006-07", "2006-08", "2006-09", "2006-10", "2006-11", "2006-12", "2007-01", "2007-02", "2007-03", "2007-04", "2007-05", "2007-06", "2007-07", "2007-08", "2007-09", "2007-10", "2007-11", "2007-12", "2008-01", "2008-02", "2008-03", "2008-04", "2008-05", "2008-06", "2008-07", "2008-08", "2008-09", "2008-10", "2008-11", "2008-12", "2009-01", "2009-02", "2009-03", "2009-04", "2009-05", "2009-06", "2009-07", "2009-08", "2009-09", "2009-10", "2009-11", "2009-12", "2010-01", "2010-02", "2010-03", "2010-04", "2010-05", "2010-06", "2010-07", "2010-08", "2010-09", "2010-10", "2010-11", "2010-12", "2011-01", "2011-02", "2011-03", "2011-04", "2011-05", "2011-06", "2011-07", "2011-08", "2011-09", "2011-10", "2011-11", "2011-12", "2012-01", "2012-02", "2012-03", "2012-04", "2012-05", "2012-06", "2012-07", "2012-08", "2012-09", "2012-10", "2012-11", "2012-12", "2013-01", "2013-02", "2013-03", "2013-04", "2013-05", "2013-06", "2013-07", "2013-08", "2013-09", "2013-10", "2013-11", "2013-12", "2014-01", "2014-02", "2014-03", "2014-04", "2014-05", "2014-06", "2014-07", "2014-08", "2014-09", "2014-10", "2014-11", "2014-12", "2015-01", "2015-02", "2015-03", "2015-04", "2015-05", "2015-06", "2015-07", "2015-08", "2015-09", "2015-10", "2015-11", "2015-12", "2016-01", "2016-02", "2016-03", "2016-04", "2016-05", "2016-06", "2016-07", "2016-08", "2016-09", "2016-10", "2016-11", "2016-12", "2017-01", "2017-02", "2017-03", "2017-04", "2017-05", "2017-06", "2017-07", "2017-08", "2017-09", "2017-10", "2017-11", "2017-12", "2018-01", "2018-02", "2018-03", "2018-04", "2018-05", "2018-06", "2018-07", "2018-08", "2018-09", "2018-10", "2018-11", "2018-12", "2019-01", "2019-02", "2019-03", "2019-04", "2019-05", "2019-06", "2019-07", "2019-08", "2019-09", "2019-10", "2019-11", "2019-12", "2020-01", "2020-02", "2020-03", "2020-04", "2020-05", "2020-06", "2020-07", "2020-08", "2020-09", "2020-10", "2020-11", "2020-12", "2021-01", "2021-02", "2021-03", "2021-04", "2021-05", "2021-06", "2021-07", "2021-08", "2021-09", "2021-10", "2021-11", "2021-12", "2022-01", "2022-02", "2022-03", "2022-04", "2022-05", "2022-06", "2022-07", "2022-08", "2022-09", "2022-10", "2022-11", "2022-12", "2023-01", "2023-02", "2023-03", "2023-04", "2023-05", "2023-06", "2023-07", "2023-08", "2023-09", "2023-10", "2023-11", "2023-12", "2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2024-12", "2025-01", "2025-02", "2025-03", "2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-11", "2025-12", "2026-01", "2026-02"];
+const timelineRegimes = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 2, 2, 1, 1, 1, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 3, 3, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 0, 0, 0, 3, 3, 3, 2, 2, 2, 2, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 3, 3, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 2, 2, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 3, 3, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3];
+const regimeNames = ['Goldilocks', 'Overheating', 'Disinfl. Slowdown', 'Stagflation'];
+const regimeColors = ['#22c55e', '#f97316', '#3b82f6', '#ef4444'];
+
+new Chart(document.getElementById('timelineChart'), {
+    type: 'bar',
+    data: {
+        labels: timelineDates,
+        datasets: [{
+            data: timelineRegimes.map(() => 1),
+            backgroundColor: timelineRegimes.map(r => regimeColors[r] || '#666'),
+            borderWidth: 0,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
+        }]
+    },
+    options: {
+        responsive: true, maintainAspectRatio: false,
+        indexAxis: 'x',
+        scales: {
+            x: {
+                display: true,
+                ticks: { color: '#64748b', maxTicksLimit: 20, font: { size: 10 } },
+                grid: { display: false }
+            },
+            y: { display: false, max: 1.2 }
+        },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                callbacks: {
+                    label: function(ctx) {
+                        return regimeNames[timelineRegimes[ctx.dataIndex]] || 'Unknown';
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Tab switching
+function showTab(group, tab, evt) {
+    document.querySelectorAll(`#${group}-1m, #${group}-3m, #${group}-6m`).forEach(el => el.classList.remove('active'));
+    document.getElementById(`${group}-${tab}`).classList.add('active');
+    // Update tab buttons
+    const section = document.getElementById(`${group}-${tab}`).closest('.section');
+    section.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    if (evt && evt.target) evt.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>

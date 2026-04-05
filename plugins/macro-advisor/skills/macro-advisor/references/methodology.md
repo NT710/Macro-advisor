@@ -97,7 +97,7 @@ Order: 0→1→2→3→4→5→10→14(quarterly)→13(bi-weekly)→streak→6�
 Two modes: `weekly` (26-week trailing history) for regular Sunday runs, `historical` (5 years) for regime comparison and first-ever run. A third mode — targeted pulls via `--series` flag — fetches specific FRED series on demand for Skill 11 research investigations. All API fetches (FRED, CFTC) use retry with exponential backoff on rate limit (429) errors.
 
 #### Source 1: FRED (Federal Reserve Economic Data)
-Free API (key required). 52+ series covering:
+Free API (key required). 60+ series covering:
 
 **Money Supply:**
 - US M2 Money Stock (weekly: WM2NS, monthly: M2SL)
@@ -112,11 +112,13 @@ Free API (key required). 52+ series covering:
 - Fed Funds Effective Rate (DFF)
 - Treasury Yields: 2Y (DGS2), 5Y (DGS5), 10Y (DGS10), 30Y (DGS30)
 - Yield Curve Spreads: 10Y-2Y (T10Y2Y), 10Y-3M (T10Y3M)
+- SOFR (SOFR), SOFR 30-Day Average (SOFR30DAYAVG), Fed Funds Target Upper Bound (DFEDTARU)
 
 **Credit Spreads:**
 - ICE BofA US High Yield OAS (BAMLH0A0HYM2) — the primary credit stress indicator
 - ICE BofA US Investment Grade OAS (BAMLC0A0CM)
 - ICE BofA US HY Effective Yield (BAMLH0A0HYM2EY)
+- ICE BofA Euro HY OAS (BAMLHE00EHYIOAS) — cross-Atlantic credit stress comparison
 
 **Financial Conditions:**
 - Chicago Fed NFCI (NFCI) — negative = loose, positive = tight
@@ -142,6 +144,9 @@ Free API (key required). 52+ series covering:
 
 **Growth & Activity:**
 - Real GDP (GDP, GDPC1)
+- Atlanta Fed GDPNow (GDPNOW) — real-time GDP nowcast, updated several times per quarter. Signal: contracting/stalling/moderate/strong.
+- St. Louis Fed Economic News Index (STLENI) — weekly growth signal
+- Smoothed U.S. Recession Probability (RECPROUSM156N) — Chauvet model. Signal: elevated (>30%), moderate (>10%), low (≤10%).
 - Industrial Production Index (INDPRO)
 - Retail Sales (RSAFS)
 - U of Michigan Consumer Sentiment (UMCSENT)
@@ -164,8 +169,11 @@ Free API (key required). 52+ series covering:
 **Leading Indicators:**
 - Conference Board LEI — removed from FRED config (USSLIND discontinued 2020). Skill 3 falls back to web search for the current TCB LEI release.
 
+**Monetary Base:**
+- US Monetary Base (BOGMBASE) — monthly, billions USD. Track alongside M2 for base money vs. broad money divergences.
+
 **Money Markets:**
-- Retail Money Market Funds (WRMFNS) — weekly, billions USD, cash on sidelines indicator
+- Retail Money Market Funds (WRMFNS) — weekly, billions USD, cash on sidelines indicator. Now flows to `snapshot.liquidity.money_market_funds`.
 
 **Credit Conditions (Private Credit Proxies):**
 - Senior Loan Officer Survey — Tightening C&I Loans, Large/Mid firms (DRTSCILM) — quarterly. The strongest leading indicator for bank lending appetite. When banks tighten, private credit borrowers face equivalent or worse conditions.
@@ -181,7 +189,7 @@ Free API (key required). 52+ series covering:
 *Falling I/S = inventory drawdown (supply tightness). Rising I/S = demand weakening or overproduction. The collector computes 4w/8w rolling trend for each.*
 
 #### Source 2: Yahoo Finance
-Free, no API key required. 25 tickers covering:
+Free, no API key required. 27 tickers covering:
 
 **Equity Indices:** S&P 500 (^GSPC), Nasdaq 100 (^NDX), Russell 2000 (^RUT), Euro Stoxx 50 (^STOXX50E)
 **Volatility & Sentiment:** VIX (^VIX), CBOE Skew Index (^SKEW)
@@ -190,7 +198,8 @@ Free, no API key required. 25 tickers covering:
 **Currencies:** EUR/USD, USD/JPY, USD/CHF, GBP/USD, USD/CNY, DXY (DX-Y.NYB)
 **Regional ETFs:** EEM (Emerging Markets), EFA (EAFE)
 **Money Markets:** SHV (Short Treasury)
-**Leveraged Loans:** BKLN (Invesco Senior Loan ETF) — price proxy for leveraged loan market, which shares borrower universe with private credit
+**Leveraged Loans / Private Credit:** BKLN (Invesco Senior Loan ETF), BIZD (VanEck BDC Income ETF) — price proxies for leveraged loan and private credit markets
+**Physical Economy:** BDRY (Breakwave Dry Bulk Shipping ETF) — trade activity proxy, in markets snapshot (NOT in commodity_momentum loop, which is for futures)
 
 #### Source 3: CFTC SODA API (COT Positioning Data)
 Free, no API key required. Pulls directly from `publicreporting.cftc.gov`. Two datasets, 9 contracts:

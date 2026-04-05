@@ -19,8 +19,8 @@ Read these from the snapshot first. No web search needed.
 - Unemployment rate (`snapshot.growth.unemployment`)
 - Initial claims (`snapshot.growth.initial_claims`)
 - Continuing claims (`snapshot.growth.continuing_claims`)
-- JOLTS Job Openings (`snapshot.growth.jolts_openings`) — if present
-- JOLTS Quits Rate (`snapshot.growth.jolts_quits`) — if present
+- JOLTS Job Openings (`snapshot.growth.jolts_openings`) — monthly, value + date + YoY
+- JOLTS Quits (`snapshot.growth.jolts_quits`) — monthly, value + date + YoY
 
 **Inflation (snapshot.inflation.*):**
 - CPI headline (`snapshot.inflation.cpi`) — value, date, YoY, MoM
@@ -41,14 +41,22 @@ Read these from the snapshot first. No web search needed.
 - Dallas Fed (`snapshot.regional_fed_mfg.dallas_fed`) — same interpretation.
 - Composite signal (`snapshot.regional_fed_mfg.composite`) — `expanding_count`, `contracting_count`, `total_count`, `average` (mean of diffusion indices), `consensus` (expansion/contraction/mixed), `conviction` (strong/moderate/marginal). The conviction field matters: "expansion with marginal conviction" means surveys are near zero and the signal is weak — do not treat it as a confident PMI proxy. Use this as a structured PMI proxy for regime identification when ISM headline is not yet available or web search fails.
 
+**GDP & Growth Nowcasts (snapshot.growth.*):**
+- Real GDP (`snapshot.growth.real_gdp`) — quarterly, value + date + YoY. May be stale between releases.
+- Real GDP Chained (`snapshot.growth.real_gdp_chained`) — quarterly, value + date + YoY.
+- Atlanta Fed GDPNow (`snapshot.growth.gdpnow`) — real-time nowcast, daily updates. Signal: contracting/stalling/moderate/strong. This is the best real-time growth signal between GDP releases.
+- St. Louis Economic News Index (`snapshot.growth.stleni`) — weekly, value + date.
+- Recession Probability (`snapshot.growth.recession_probability`) — Smoothed US Recession Probability (Chauvet). Signal: elevated (>30%), moderate (>10%), low (≤10%).
+
 **Leading Indicators (snapshot.growth.*):**
 - Conference Board LEI — **NOT in snapshot** (FRED series USSLIND discontinued 2020, removed from data collector). Always use web search: "Conference Board leading economic index [month] [YEAR]".
 - Chicago Fed National Activity Index (`snapshot.growth.cfnai_3mo`) — 3-month moving average. >0 = above-trend growth, <0 = below-trend. Broad composite of 85 indicators.
 
 **Housing (snapshot.growth.*):**
-- Housing Starts (`snapshot.growth.housing_starts`) — if present
-- Building Permits (`snapshot.growth.building_permits`) — if present
-- Existing Home Sales (`snapshot.growth.existing_home_sales`) — if present
+- Housing Starts (`snapshot.growth.housing_starts`) — monthly, value + date + YoY + MoM
+- Building Permits (`snapshot.growth.building_permits`) — monthly, value + date + YoY + MoM
+- Existing Home Sales (`snapshot.growth.existing_home_sales`) — monthly, value + date + YoY + MoM
+- Case-Shiller Home Price Index (`snapshot.growth.case_shiller_hpi`) — monthly, value + date + YoY
 
 **Eurozone (snapshot.eurozone.* — if present):**
 - HICP headline (`snapshot.eurozone.hicp_headline`) — from Eurostat API, annual rate of change
@@ -58,7 +66,7 @@ Read these from the snapshot first. No web search needed.
 ### Web Search Only — not available in structured APIs
 
 - **PMIs:** US ISM Manufacturing, US ISM Services, Eurozone Composite PMI, China Caixin Manufacturing & Services. ISM PMIs are NOT on FRED (proprietary data). Web search is the only source for the headline numbers. NOTE: Regional Fed surveys (Empire State, Philly Fed, Dallas Fed) are available in snapshot as structured PMI proxies. Use those for regime identification; use ISM web search for the market-moving headline number and surprise direction.
-- **GDP:** Latest prints and revisions for US, EU, China
+- **GDP:** EU, China latest prints (US GDP now in snapshot: `snapshot.growth.real_gdp`)
 - **ADP private payrolls**
 - **Eurozone unemployment rate**
 - **China CPI, PPI**
@@ -74,9 +82,11 @@ Read these from the snapshot first. No web search needed.
 ## Execution Steps
 
 1. **Read the data snapshot first.** Extract all structured data from `outputs/data/latest-snapshot.json`:
-   - Employment: unemployment, claims, payrolls, JOLTS — from `snapshot.growth.*`
+   - Employment: unemployment, claims, payrolls, JOLTS (openings, quits) — from `snapshot.growth.*`
    - Inflation: CPI, Core CPI, PCE, Core PCE, Michigan expectations — from `snapshot.inflation.*`
    - Consumer: Michigan Sentiment, retail sales — from `snapshot.growth.*`
+   - GDP & Nowcasts: `snapshot.growth.real_gdp`, `snapshot.growth.gdpnow` (real-time), `snapshot.growth.recession_probability`
+   - Housing: starts, permits, existing sales, Case-Shiller HPI — from `snapshot.growth.*`
    - Leading: CFNAI 3mo (`snapshot.growth.cfnai_3mo`), industrial production — from `snapshot.growth.*`
    - Regional Fed Mfg: Empire State, Philly Fed, Dallas Fed, composite — from `snapshot.regional_fed_mfg.*`. Use the composite consensus as the structured PMI proxy for regime identification.
    - Eurozone: HICP headline + core — from `snapshot.eurozone.*` if present
@@ -89,14 +99,14 @@ Read these from the snapshot first. No web search needed.
 
 ## Search Strategy
 
-Only search for data NOT available in the snapshot. The snapshot covers: NFP, unemployment, claims, JOLTS, CPI, Core CPI, PCE, Core PCE, Michigan Sentiment, Michigan Inflation Expectations, retail sales, industrial production, regional Fed mfg surveys, CFNAI, housing data, and (if Eurostat integration is active) HICP.
+Only search for data NOT available in the snapshot. The snapshot covers: NFP, unemployment, claims, JOLTS (openings, quits), CPI, Core CPI, PCE, Core PCE, Michigan Sentiment, Michigan Inflation Expectations, retail sales, industrial production, regional Fed mfg surveys, CFNAI, housing (starts, permits, existing sales, Case-Shiller), GDP, GDPNow, recession probability, and (if Eurostat integration is active) HICP.
 
 **Search for these (not in snapshot):**
 - "ISM manufacturing PMI [month] [YEAR]"
 - "ISM services PMI [month] [YEAR]"
 - "eurozone PMI [month] [YEAR]"
 - "China Caixin PMI [month] [YEAR]"
-- "US GDP [quarter] [YEAR]"
+- "EU GDP [quarter] [YEAR]" (US GDP now in snapshot)
 - "ADP private payrolls [month] [YEAR]"
 - "Conference Board leading economic index [month] [YEAR]" (no longer in snapshot — FRED series discontinued)
 - "economic surprise index [YEAR]"
@@ -111,7 +121,9 @@ Only search for data NOT available in the snapshot. The snapshot covers: NFP, un
 - US CPI, PCE, inflation expectations → `snapshot.inflation.*`
 - Michigan Consumer Sentiment → `snapshot.growth.consumer_sentiment`
 - Retail sales, industrial production → `snapshot.growth.*`
-- Housing starts, building permits → `snapshot.growth.*`
+- Housing starts, building permits, existing home sales, Case-Shiller → `snapshot.growth.*`
+- US GDP, GDPNow, recession probability → `snapshot.growth.*`
+- JOLTS openings, quits → `snapshot.growth.*`
 - Regional Fed mfg surveys (Empire State, Philly, Dallas) → `snapshot.regional_fed_mfg.*`
 - Chicago Fed National Activity Index → `snapshot.growth.cfnai_3mo`
 

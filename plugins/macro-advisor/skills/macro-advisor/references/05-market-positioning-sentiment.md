@@ -24,13 +24,13 @@ Net speculative positions with 52-week percentile rankings for 9 key contracts. 
 - **ETF flows:** major equity ETFs (SPY, QQQ, IWM), bond ETFs (TLT, HYG, LQD), international (EEM, EFA)
 - **ICI mutual fund flows** — weekly (equity, bond, money market)
 - **EPFR global flows** — if available via search (regional allocation shifts)
-- **Money market fund balances** — **available in snapshot** (`snapshot.money_markets.WRMFNS`). Retail money market funds (billions USD), direction (cash on sidelines? rising = risk-off, falling = deployment into risk assets). Read from snapshot first.
+- **Money market fund balances** — **available in snapshot** (`snapshot.liquidity.money_market_funds`). Retail money market funds (billions USD), direction (cash on sidelines? rising = risk-off, falling = deployment into risk assets). Read from snapshot first.
 
 ### Volatility & Options
-- **VIX:** level, term structure (contango = complacent, backwardation = fear) — **available in snapshot** (`snapshot.volatility.^VIX`)
+- **VIX:** level, term structure (contango = complacent, backwardation = fear) — **available in snapshot** (`snapshot.markets.vix`)
 - **VVIX:** volatility of volatility (cheap options protection = complacency)
 - **Put/call ratios:** CBOE Equity Put/Call Ratio — **no longer in snapshot** (^CPCE delisted on Yahoo). Web search for current put/call ratio if needed for sentiment context. VIX and CBOE Skew are the primary structured sentiment indicators.
-- **Skew:** CBOE Skew Index — **available in snapshot** (`snapshot.volatility.^SKEW`). Readings above 150 = high tail risk demand, below 120 = low. Read from snapshot first.
+- **Skew:** CBOE Skew Index — **available in snapshot** (`snapshot.markets.cboe_skew`). Readings above 150 = high tail risk demand, below 120 = low. Read from snapshot first.
 
 ### Sentiment Surveys
 - **AAII Investor Sentiment Survey:** bullish/bearish/neutral percentages, bull-bear spread
@@ -69,9 +69,9 @@ Private credit ($1.7T+ market) has no public mark-to-market. These are **adjacen
    - **COT positioning** (`snapshot.positioning.*`): net speculative positions, percentiles, extremes for all 9 contracts. This is the primary positioning data source. Build the Positioning Extremes table directly from this.
    - **Credit stress cluster** (`snapshot.credit.private_credit_proxy`): SLOOS, C&I loans, BKLN, BIZD, HY OAS — 5 proxies. Check `composite_signal` first, then raw votes (`stress_count`, `easing_count`, `neutral_count`). If "inconclusive," report the divergence honestly. If `private_credit_override` is present (from Skill 2), report both the composite and the override.
    - **VIX** (`snapshot.markets.vix`): level + changes
-   - **CBOE Skew** (`snapshot.volatility.^SKEW` or via Yahoo data): tail risk demand
+   - **CBOE Skew** (`snapshot.markets.cboe_skew`): tail risk demand. Readings above 150 = high tail risk demand, below 120 = low.
    - **Put/Call ratio**: no longer in snapshot (^CPCE delisted). Web search if needed for sentiment context.
-   - **Money market fund assets** (`snapshot.money_markets.WRMFNS` or via FRED data): cash on sidelines
+   - **Money market fund assets** (`snapshot.liquidity.money_market_funds`): cash on sidelines (value_B in billions, with change and percentile)
 2. If `snapshot.positioning` is empty (CFTC API unreachable), fall back to web search for COT data: "CFTC commitments of traders [YEAR]"
 3. Search for ETF flow data for the past week
 4. Use snapshot VIX for level; search for VIX term structure context (contango/backwardation)

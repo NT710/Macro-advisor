@@ -41,13 +41,20 @@ Historical mode pulls 5 years of data. Use it when:
 ## What the Snapshot Contains
 
 ```
-snapshot.rates         → fed_funds, us_2y, us_5y, us_10y, us_30y (with percentile ranks)
-snapshot.credit        → hy_oas, ig_oas, spread differential, signal, private_credit_proxy
-snapshot.liquidity     → m2_growth, plumbing (TGA/RRP), nfci, fed_assets
-snapshot.growth        → unemployment, claims, consumer sentiment, lei, payrolls, retail sales
+snapshot.rates         → fed_funds, us_2y, us_5y, us_10y, us_30y, sofr, sofr_30d_avg,
+                         fed_funds_target_upper (with percentile ranks)
+snapshot.credit        → hy_oas, ig_oas, spread differential, hy_effective_yield, euro_hy_oas,
+                         signal, private_credit_proxy
+snapshot.liquidity     → m2_growth, plumbing (TGA/RRP), nfci, fed_assets, money_market_funds,
+                         stl_financial_stress, adjusted_nfci, monetary_base_B
+snapshot.growth        → unemployment, claims, consumer sentiment, payrolls, retail sales,
+                         housing_starts, building_permits, existing_home_sales, case_shiller_hpi,
+                         jolts_openings, jolts_quits, real_gdp, real_gdp_chained,
+                         gdpnow, stleni, recession_probability
 snapshot.inflation     → cpi yoy/mom, core_cpi, pce, core_pce, michigan expectations, breakevens
 snapshot.markets       → sp500, nasdaq, russell, vix, gold, oil, copper, silver, natgas, brent,
-                         eurusd, dxy, tlt, hyg, etc.
+                         eurusd, dxy, tlt, hyg, cboe_skew, euro_stoxx50, gbpusd,
+                         shv_short_treasury, bdry_dry_bulk, etc.
 snapshot.positioning   → CFTC COT data (9 contracts: equities, rates, FX, commodities)
 snapshot.eurozone      → m3, m3_yoy, ecb_balance_sheet, hicp_headline, hicp_core
 snapshot.energy        → crude_inventory, spr_inventory, refinery_utilization, days_of_supply
@@ -55,9 +62,11 @@ snapshot.energy        → crude_inventory, spr_inventory, refinery_utilization,
 snapshot.commodities   → term_structure (WTI-Brent spread), momentum (5 commodities vs MAs),
                          inventory_to_sales (retail, manufacturing, wholesale with trend)
 snapshot.international_structural → BIS credit-to-GDP gap for US, Euro area, China, Japan, UK
-snapshot.derived_signals → yield_curve, real_rate, credit_stress, vix_regime, liquidity_plumbing,
-                           financial_conditions, equity_regime, inflation_expectations,
-                           crude_term_structure, commodity_momentum, inventory_to_sales
+snapshot.derived_signals → yield_curve_10y2y, yield_curve_10y3m, real_rate, credit_stress
+                           (incl. hy_effective_yield, euro_hy_oas), vix_regime,
+                           liquidity_plumbing, financial_conditions, equity_regime,
+                           inflation_expectations, crude_term_structure, commodity_momentum,
+                           inventory_to_sales
 ```
 
 Each derived signal includes a `signal` field with a human-readable classification (e.g., "loose", "expanding", "elevated", "strong_uptrend", "drawing").
@@ -66,8 +75,8 @@ Each derived signal includes a `signal` field with a human-readable classificati
 
 The collector pulls from seven institutional-quality free sources:
 
-1. **FRED** (requires API key): 52+ series — rates, credit, liquidity, inflation, employment, growth, housing, regional Feds, money markets, credit conditions, inventory-to-sales ratios
-2. **Yahoo Finance** (no key): 25 tickers — equities, volatility, bond ETFs, commodities (gold, crude WTI, copper, silver, natural gas, Brent), currencies, regional ETFs
+1. **FRED** (requires API key): 60+ series — rates (incl. SOFR, fed funds target), credit (incl. Euro HY OAS), liquidity (incl. monetary base), inflation, employment, growth (incl. GDPNow, recession probability), housing, regional Feds, money markets, credit conditions, inventory-to-sales ratios
+2. **Yahoo Finance** (no key): 27 tickers — equities, volatility, bond ETFs, commodities (gold, crude WTI, copper, silver, natural gas, Brent), currencies, regional ETFs, dry bulk shipping (BDRY)
 3. **CFTC SODA API** (no key): COT positioning for 9 contracts — equities, rates, FX, commodities
 4. **ECB SDW** (no key): Eurozone M3 and ECB balance sheet
 5. **Eurostat** (no key): HICP headline and core inflation

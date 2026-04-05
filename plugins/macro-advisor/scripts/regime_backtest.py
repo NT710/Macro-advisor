@@ -198,10 +198,14 @@ def classify_regimes(fred_data):
 # FORWARD RETURN COMPUTATION
 # ---------------------------------------------------------------------------
 
-def compute_forward_returns(asset_prices, regime_df):
+def compute_forward_returns(asset_prices, regime_df, execution_lag=0):
     """
     For each month in regime_df, compute forward 1/3/6M returns for each asset.
     Returns a DataFrame aligned to regime_df index.
+
+    Args:
+        execution_lag: months to delay return measurement (0 = concurrent, 1 = honest timing).
+            With lag=1 and window=3: measures 3-month returns starting 1 month after classification.
     """
     returns = pd.DataFrame(index=regime_df.index)
 
@@ -213,8 +217,7 @@ def compute_forward_returns(asset_prices, regime_df):
 
         for window in FORWARD_WINDOWS:
             col = f"{safe_name}_{window}M"
-            fwd = prices.pct_change(window).shift(-window) * 100
-            # Align to regime_df index
+            fwd = prices.pct_change(window).shift(-(window + execution_lag)) * 100
             aligned = fwd.reindex(regime_df.index, method="nearest", tolerance=pd.Timedelta("5D"))
             returns[col] = aligned
 
@@ -222,15 +225,157 @@ def compute_forward_returns(asset_prices, regime_df):
 
 
 # ---------------------------------------------------------------------------
+# STATISTICAL ANALYSIS
+# ---------------------------------------------------------------------------
+
+def compute_unconditional_benchmarks(returns_df):
+    """
+    Compute full-sample (unconditional) mean, std, SE for each asset/window column.
+    Returns dict: {col: {"mean": float, "std": float, "se": float, "n": int}}
+    """
+    benchmarks = {}
+    for col in returns_df.columns:
+        vals = returns_df[col].dropna()
+        n = len(vals)
+        if n < 2:
+            continue
+        benchmarks[col] = {
+            "mean": round(float(vals.mean()), 4),
+            "std": round(float(vals.std()), 4),
+            "se": round(float(vals.std() / np.sqrt(n)), 4),
+            "n": int(n),
+        }
+    return benchmarks
+
+
+def bootstrap_regime_significance(vals, unconditional_mean, n_boot=1000, ci=0.90,
+                                  block_length=1, seed=42):
+    """
+    Bootstrap test: is the regime-conditioned mean significantly different from unconditional?
+
+    Uses block bootstrap for overlapping returns (block_length > 1) to preserve
+    autocorrelation structure. Standard i.i.d. bootstrap for 1M returns.
+
+    Returns dict with CI bounds, approximate p-value, and significance flag,
+    or None if data is insufficient.
+    """
+    vals = np.asarray(vals, dtype=float)
+    vals = vals[~np.isnan(vals)]
+
+    if len(vals) < 15 or np.std(vals) < 1e-6:
+        return None
+
+    rng = np.random.RandomState(seed)
+    n = len(vals)
+    boot_means = np.empty(n_boot)
+
+    if block_length <= 1:
+        # Standard i.i.d. bootstrap
+        for i in range(n_boot):
+            sample = rng.choice(vals, size=n, replace=True)
+            boot_means[i] = sample.mean()
+    else:
+        # Block bootstrap for overlapping returns
+        n_blocks = max(1, int(np.ceil(n / block_length)))
+        for i in range(n_boot):
+            blocks = []
+            for _ in range(n_blocks):
+                start = rng.randint(0, max(1, n - block_length + 1))
+                blocks.append(vals[start:start + block_length])
+            sample = np.concatenate(blocks)[:n]
+            boot_means[i] = sample.mean()
+
+    alpha = 1 - ci
+    ci_low = float(np.percentile(boot_means, alpha / 2 * 100))
+    ci_high = float(np.percentile(boot_means, (1 - alpha / 2) * 100))
+
+    # Approximate two-sided p-value: fraction of bootstrap means on the other
+    # side of unconditional_mean relative to the observed mean
+    observed_mean = float(vals.mean())
+    if observed_mean >= unconditional_mean:
+        p_value = float(np.mean(boot_means <= unconditional_mean)) * 2
+    else:
+        p_value = float(np.mean(boot_means >= unconditional_mean)) * 2
+    p_value = min(p_value, 1.0)
+
+    significant = unconditional_mean < ci_low or unconditional_mean > ci_high
+
+    return {
+        "ci_low": round(ci_low, 2),
+        "ci_high": round(ci_high, 2),
+        "p_value_approx": round(p_value, 4),
+        "significant": significant,
+    }
+
+
+def benjamini_hochberg(p_values, alpha=0.10):
+    """
+    Benjamini-Hochberg FDR correction.
+    Returns list of booleans: True if significant after correction.
+    """
+    if not p_values:
+        return []
+    m = len(p_values)
+    indexed = sorted(enumerate(p_values), key=lambda x: x[1])
+    significant = [False] * m
+    # Find largest k where p_(k) <= (k/m) * alpha
+    max_k = -1
+    for rank, (orig_idx, pval) in enumerate(indexed, start=1):
+        threshold = (rank / m) * alpha
+        if pval <= threshold:
+            max_k = rank
+    # All items with rank <= max_k are significant
+    if max_k > 0:
+        for rank, (orig_idx, pval) in enumerate(indexed, start=1):
+            if rank <= max_k:
+                significant[orig_idx] = True
+    return significant
+
+
+def compute_power_analysis(returns_df, regime_df, regime_col="regime"):
+    """
+    Compute minimum detectable effect (MDE) for each regime x asset x window cell.
+    MDE at 80% power, 10% significance (one-sided) = 2.8 * (std / sqrt(n)).
+    """
+    combined = regime_df.join(returns_df, how="inner")
+    regimes = combined[regime_col].unique()
+    results = {}
+
+    for regime in regimes:
+        mask = combined[regime_col] == regime
+        subset = combined[mask]
+        regime_power = {}
+        for col in returns_df.columns:
+            vals = subset[col].dropna()
+            n = len(vals)
+            if n < 5:
+                continue
+            std = float(vals.std())
+            mde = 2.8 * (std / np.sqrt(n)) if n > 0 else float("inf")
+            regime_power[col] = {
+                "mde": round(mde, 2),
+                "n": int(n),
+                "std": round(std, 2),
+            }
+        if regime_power:
+            results[regime] = regime_power
+
+    return results
+
+
+# ---------------------------------------------------------------------------
 # ANALYSIS
 # ---------------------------------------------------------------------------
 
-def analyze_regime_returns(regime_df, returns_df):
+def analyze_regime_returns(regime_df, returns_df, unconditional=None):
     """
     Layer 1: Average/median/win-rate of forward returns by regime.
+    If unconditional benchmarks provided, adds excess return and bootstrap significance.
     """
     combined = regime_df.join(returns_df, how="inner")
     results = {}
+    all_p_values = []  # (regime, col, p_value) for BH correction
+    all_p_refs = []    # parallel list of (regime, col) for indexing back
 
     for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
         mask = combined["regime"] == regime
@@ -243,34 +388,75 @@ def analyze_regime_returns(regime_df, returns_df):
             vals = subset[col].dropna()
             if len(vals) < 10:
                 continue
-            regime_stats["assets"][col] = {
-                "mean": round(float(vals.mean()), 2),
+            cell_mean = float(vals.mean())
+            cell_std = float(vals.std())
+            cell_n = len(vals)
+            cell_se = cell_std / np.sqrt(cell_n) if cell_n > 0 else 0
+
+            cell_stats = {
+                "mean": round(cell_mean, 2),
                 "median": round(float(vals.median()), 2),
-                "std": round(float(vals.std()), 2),
+                "std": round(cell_std, 2),
                 "win_rate": round(float((vals > 0).mean()) * 100, 1),
                 "p25": round(float(vals.quantile(0.25)), 2),
                 "p75": round(float(vals.quantile(0.75)), 2),
-                "n": int(len(vals)),
-                "low_n_warning": len(vals) < 20,
+                "n": int(cell_n),
+                "low_n_warning": cell_n < 20,
             }
 
+            if unconditional and col in unconditional:
+                uc = unconditional[col]
+                excess = cell_mean - uc["mean"]
+                excess_vs_se = excess / cell_se if cell_se > 0 else 0
+                cell_stats["unconditional_mean"] = uc["mean"]
+                cell_stats["excess_return"] = round(excess, 2)
+                cell_stats["excess_vs_se"] = round(excess_vs_se, 2)
+                cell_stats["signal_flag"] = bool(abs(excess_vs_se) > 1.0)
+
+                # Extract window from column name for block bootstrap
+                window = 1
+                for w in FORWARD_WINDOWS:
+                    if f"_{w}M" in col:
+                        window = w
+                        break
+                boot = bootstrap_regime_significance(
+                    vals.values, uc["mean"], block_length=window
+                )
+                if boot:
+                    cell_stats["bootstrap_ci_90"] = [boot["ci_low"], boot["ci_high"]]
+                    cell_stats["bootstrap_p"] = boot["p_value_approx"]
+                    cell_stats["bootstrap_significant"] = boot["significant"]
+                    all_p_values.append(boot["p_value_approx"])
+                    all_p_refs.append((regime, col))
+
+            regime_stats["assets"][col] = cell_stats
+
         results[regime] = regime_stats
+
+    # Apply BH-FDR correction across all tested cells
+    if all_p_values:
+        bh_flags = benjamini_hochberg(all_p_values, alpha=0.10)
+        for (regime, col), bh_sig in zip(all_p_refs, bh_flags):
+            if col in results[regime]["assets"]:
+                results[regime]["assets"][col]["bh_significant"] = bh_sig
 
     return results
 
 
-def analyze_eight_regimes(regime_df, returns_df):
+def analyze_eight_regimes(regime_df, returns_df, unconditional=None):
     """
-    Layer 2: Eight-regime model (Growth × Inflation × Liquidity).
+    Layer 2: Eight-regime model (Growth x Inflation x Liquidity).
     Returns stats keyed by the full 8-regime label.
+    If unconditional provided, adds excess return and bootstrap significance with BH-FDR.
     """
     if "regime_8" not in regime_df.columns:
         return None
 
     combined = regime_df.join(returns_df, how="inner")
     results = {}
+    all_p_values = []
+    all_p_refs = []
 
-    # All 8 regime labels
     eight_regimes = [
         "Goldilocks — Ample Liquidity", "Goldilocks — Tight Liquidity",
         "Overheating — Ample Liquidity", "Overheating — Tight Liquidity",
@@ -292,19 +478,133 @@ def analyze_eight_regimes(regime_df, returns_df):
             vals = subset[col].dropna()
             if len(vals) < 10:
                 continue
-            stats["assets"][col] = {
-                "mean": round(float(vals.mean()), 2),
+            cell_mean = float(vals.mean())
+            cell_std = float(vals.std())
+            cell_n = len(vals)
+            cell_se = cell_std / np.sqrt(cell_n) if cell_n > 0 else 0
+
+            cell_stats = {
+                "mean": round(cell_mean, 2),
                 "median": round(float(vals.median()), 2),
-                "std": round(float(vals.std()), 2),
+                "std": round(cell_std, 2),
                 "win_rate": round(float((vals > 0).mean()) * 100, 1),
                 "p25": round(float(vals.quantile(0.25)), 2),
                 "p75": round(float(vals.quantile(0.75)), 2),
-                "n": int(len(vals)),
-                "low_n_warning": len(vals) < 20,
+                "n": int(cell_n),
+                "low_n_warning": cell_n < 20,
             }
+
+            if unconditional and col in unconditional:
+                uc = unconditional[col]
+                excess = cell_mean - uc["mean"]
+                excess_vs_se = excess / cell_se if cell_se > 0 else 0
+                cell_stats["unconditional_mean"] = uc["mean"]
+                cell_stats["excess_return"] = round(excess, 2)
+                cell_stats["excess_vs_se"] = round(excess_vs_se, 2)
+                cell_stats["signal_flag"] = bool(abs(excess_vs_se) > 1.0)
+
+                window = 1
+                for w in FORWARD_WINDOWS:
+                    if f"_{w}M" in col:
+                        window = w
+                        break
+                boot = bootstrap_regime_significance(
+                    vals.values, uc["mean"], block_length=window
+                )
+                if boot:
+                    cell_stats["bootstrap_ci_90"] = [boot["ci_low"], boot["ci_high"]]
+                    cell_stats["bootstrap_p"] = boot["p_value_approx"]
+                    cell_stats["bootstrap_significant"] = boot["significant"]
+                    all_p_values.append(boot["p_value_approx"])
+                    all_p_refs.append((regime_8, col))
+
+            stats["assets"][col] = cell_stats
         results[regime_8] = stats
 
+    # BH-FDR correction across all 8-regime cells
+    if all_p_values:
+        bh_flags = benjamini_hochberg(all_p_values, alpha=0.10)
+        for (regime_8, col), bh_sig in zip(all_p_refs, bh_flags):
+            if col in results[regime_8]["assets"]:
+                results[regime_8]["assets"][col]["bh_significant"] = bh_sig
+
+    # Decision rule: if <25% of testable 8-regime cells pass BH, flag underpowered
+    n_testable = len(all_p_values)
+    n_significant = sum(1 for (r8, c), bh in zip(all_p_refs, benjamini_hochberg(all_p_values, 0.10))
+                        if bh) if all_p_values else 0
+    if n_testable > 0:
+        pct_significant = n_significant / n_testable * 100
+        results["_significance_summary"] = {
+            "n_testable_cells": n_testable,
+            "n_bh_significant": n_significant,
+            "pct_significant": round(pct_significant, 1),
+            "underpowered_warning": pct_significant < 25,
+        }
+
     return results
+
+
+def run_out_of_sample_test(regime_df, returns_df, asset_prices, split_date, unconditional):
+    """
+    Split data at split_date. Measure regime-conditioned returns on both halves.
+    Returns dict with in-sample, out-of-sample analysis, and stability comparison.
+    """
+    split_ts = pd.Timestamp(split_date)
+    train_mask = regime_df.index <= split_ts
+    test_mask = regime_df.index > split_ts
+
+    train_regime = regime_df[train_mask]
+    test_regime = regime_df[test_mask]
+
+    if len(train_regime) < 20 or len(test_regime) < 20:
+        return {"error": "Insufficient data for OOS split", "train_n": len(train_regime), "test_n": len(test_regime)}
+
+    # Compute forward returns for each half
+    train_returns = returns_df[train_mask]
+    test_returns = returns_df[test_mask]
+
+    # Unconditional benchmarks for each half
+    train_uc = compute_unconditional_benchmarks(train_returns)
+    test_uc = compute_unconditional_benchmarks(test_returns)
+
+    # Analyze each half
+    is_results = analyze_regime_returns(train_regime, train_returns, unconditional=train_uc)
+    oos_results = analyze_regime_returns(test_regime, test_returns, unconditional=test_uc)
+
+    # Stability comparison: for each regime-asset cell, compare IS vs OOS
+    stability = {}
+    for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+        is_assets = is_results.get(regime, {}).get("assets", {})
+        oos_assets = oos_results.get(regime, {}).get("assets", {})
+        regime_stab = {}
+        for col in set(list(is_assets.keys()) + list(oos_assets.keys())):
+            is_data = is_assets.get(col)
+            oos_data = oos_assets.get(col)
+            if is_data is None or oos_data is None:
+                regime_stab[col] = {"status": "missing_in_half"}
+                continue
+            is_mean = is_data["mean"]
+            oos_mean = oos_data["mean"]
+            diff = oos_mean - is_mean
+            same_sign = (is_mean > 0 and oos_mean > 0) or (is_mean < 0 and oos_mean < 0) or (is_mean == 0 or oos_mean == 0)
+            regime_stab[col] = {
+                "is_mean": is_mean,
+                "oos_mean": oos_mean,
+                "diff": round(diff, 2),
+                "same_sign": same_sign,
+                "stable": same_sign and abs(diff) < is_data.get("std", 999),
+            }
+        if regime_stab:
+            stability[regime] = regime_stab
+
+    return {
+        "split_date": split_date,
+        "train_months": len(train_regime),
+        "test_months": len(test_regime),
+        "in_sample": is_results,
+        "out_of_sample": oos_results,
+        "stability": stability,
+    }
 
 
 def analyze_liquidity_overlay(regime_df, returns_df):
@@ -465,7 +765,9 @@ def compute_liquidity_value_added(layer1, layer2):
 # ---------------------------------------------------------------------------
 
 def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
-                         regime_df, returns_df, years, layer2_eight=None):
+                         regime_df, returns_df, years, layer2_eight=None,
+                         unconditional=None, power_analysis=None, oos_results=None,
+                         lagged_layer1=None):
     """Generate a self-contained HTML report with tables and charts."""
 
     regime_colors = {
@@ -538,8 +840,15 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
                 mean = ad.get("mean", "—")
                 win = ad.get("win_rate", "—")
                 if isinstance(mean, (int, float)):
+                    bh_sig = ad.get("bh_significant")
+                    boot_sig = ad.get("bootstrap_significant")
+                    # Bold border if BH-significant; dim if tested but not significant
+                    border = "border: 2px solid #22c55e;" if bh_sig else ("opacity: 0.6;" if boot_sig is not None and not boot_sig else "")
                     bg = "#dcfce7" if mean > 0 else "#fee2e2" if mean < 0 else "#f3f4f6"
-                    row += f'<td style="background:{bg}; text-align:center;">{mean:+.1f}%<br><small style="color:#6b7280;">{win}% win</small></td>'
+                    excess = ad.get("excess_return")
+                    excess_str = f" ({excess:+.1f}pp)" if excess is not None else ""
+                    sig_marker = " ✓" if bh_sig else ""
+                    row += f'<td style="background:{bg}; text-align:center; {border}">{mean:+.1f}%{sig_marker}<br><small style="color:#6b7280;">{win}% win{excess_str}</small></td>'
                 else:
                     row += f'<td style="text-align:center;">—</td>'
             row += "</tr>"
@@ -789,6 +1098,129 @@ def generate_html_report(layer1, layer2, transitions, timeline, liquidity_va,
 {lva_html}
 {trans_html}
 
+<!-- Statistical Significance Legend -->
+<div class="section">
+    <h2>Statistical Significance</h2>
+    <p class="subtitle">Return cells show excess return vs buy-and-hold in parentheses.
+    ✓ = significant after Benjamini-Hochberg FDR correction (alpha=0.10).
+    Green border = BH-significant. Dimmed = tested but not significant.
+    Bootstrap uses block resampling for 3M/6M windows to handle overlapping returns.</p>
+</div>
+
+"""
+
+    # Underpowered warning banner
+    if layer2_eight:
+        sig_summary = layer2_eight.get("_significance_summary", {})
+        if sig_summary.get("underpowered_warning"):
+            pct = sig_summary.get("pct_significant", 0)
+            html += f"""
+<div class="section" style="background: #422006; border: 1px solid #f97316;">
+    <h2 style="color: #f97316;">⚠ 8-Regime Significance Warning</h2>
+    <p>Only {pct:.0f}% of testable 8-regime cells show statistically significant signal after FDR correction.
+    Consider using the 4-regime model for higher-confidence signals. The 8-regime granularity may exceed
+    what the available data can support.</p>
+</div>
+"""
+
+    # Power analysis section
+    if power_analysis:
+        pa_rows = ""
+        for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+            rp = power_analysis.get(regime, {})
+            color = regime_colors.get(regime, "#888")
+            for col, pa in rp.items():
+                if "_3M" in col:
+                    asset_name = col.replace("_3M", "").replace("_", " ")
+                    pa_rows += f"""<tr>
+                        <td style="border-left: 4px solid {color}; padding-left: 8px;">{regime}</td>
+                        <td>{asset_name}</td>
+                        <td style="text-align:center;">{pa['n']}</td>
+                        <td style="text-align:center;">{pa['std']:.1f}%</td>
+                        <td style="text-align:center; font-weight:700;">{pa['mde']:.1f}pp</td>
+                    </tr>"""
+        if pa_rows:
+            html += f"""
+<div class="section">
+    <h2>Power Analysis — Minimum Detectable Effect (3-Month Window)</h2>
+    <p class="subtitle">MDE at 80% power, 10% significance. If the actual regime effect is smaller
+    than the MDE, this backtest cannot reliably detect it. Larger MDE = less statistical power.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>N</th><th>Std</th><th>MDE</th></tr></thead>
+        <tbody>{pa_rows}</tbody>
+    </table>
+</div>
+"""
+
+    # OOS results section
+    if oos_results and "error" not in oos_results:
+        oos_rows = ""
+        for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+            stab = oos_results.get("stability", {}).get(regime, {})
+            color = regime_colors.get(regime, "#888")
+            for col, s in stab.items():
+                if "_3M" not in col or s.get("status") == "missing_in_half":
+                    continue
+                asset_name = col.replace("_3M", "").replace("_", " ")
+                stab_color = "#dcfce7" if s.get("stable") else ("#fee2e2" if not s.get("same_sign") else "#fef9c3")
+                stab_label = "Stable" if s.get("stable") else ("Sign flip!" if not s.get("same_sign") else "Drift")
+                oos_rows += f"""<tr>
+                    <td style="border-left: 4px solid {color}; padding-left: 8px;">{regime}</td>
+                    <td>{asset_name}</td>
+                    <td style="text-align:center;">{s['is_mean']:+.1f}%</td>
+                    <td style="text-align:center;">{s['oos_mean']:+.1f}%</td>
+                    <td style="text-align:center;">{s['diff']:+.1f}pp</td>
+                    <td style="background:{stab_color}; text-align:center; color:#1e293b;">{stab_label}</td>
+                </tr>"""
+        if oos_rows:
+            html += f"""
+<div class="section">
+    <h2>Out-of-Sample Validation — 3-Month Returns</h2>
+    <p class="subtitle">Split at {oos_results['split_date']}. In-sample: {oos_results['train_months']} months.
+    Out-of-sample: {oos_results['test_months']} months. Green = stable (same sign, diff < 1 std).
+    Red = sign flip. Yellow = same sign but drifted.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>In-Sample</th><th>Out-of-Sample</th><th>Diff</th><th>Stability</th></tr></thead>
+        <tbody>{oos_rows}</tbody>
+    </table>
+</div>
+"""
+
+    # Lag comparison section
+    if lagged_layer1:
+        lag_rows = ""
+        for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+            l0 = layer1.get(regime, {}).get("assets", {})
+            l1 = lagged_layer1.get(regime, {}).get("assets", {})
+            color = regime_colors.get(regime, "#888")
+            for col in l0:
+                if "_3M" not in col:
+                    continue
+                asset_name = col.replace("_3M", "").replace("_", " ")
+                m0 = l0[col].get("mean", 0)
+                m1 = l1.get(col, {}).get("mean", 0) if l1 else 0
+                cost = m0 - m1
+                lag_rows += f"""<tr>
+                    <td style="border-left: 4px solid {color}; padding-left: 8px;">{regime}</td>
+                    <td>{asset_name}</td>
+                    <td style="text-align:center;">{m0:+.1f}%</td>
+                    <td style="text-align:center;">{m1:+.1f}%</td>
+                    <td style="text-align:center;">{cost:+.1f}pp</td>
+                </tr>"""
+        if lag_rows:
+            html += f"""
+<div class="section">
+    <h2>Execution Lag Cost — 3-Month Returns</h2>
+    <p class="subtitle">Concurrent (lag=0) vs honest timing (lag=1 month). The lag cost is the return
+    you lose by waiting one month to act on the regime signal.</p>
+    <table class="data-table">
+        <thead><tr><th>Regime</th><th>Asset</th><th>Lag=0</th><th>Lag=1</th><th>Cost</th></tr></thead>
+        <tbody>{lag_rows}</tbody>
+    </table>
+</div>
+"""
+
+    html += f"""
 <!-- Regime Timeline -->
 <div class="section">
     <h2>Regime Timeline</h2>
@@ -957,6 +1389,10 @@ def main():
                         help="Backfill regime-history.json with 8-regime labels")
     parser.add_argument("--history", type=str, default=None,
                         help="Path to regime-history.json (required with --backfill)")
+    parser.add_argument("--lag", type=int, default=0,
+                        help="Execution lag in months (0=concurrent, 1=honest timing)")
+    parser.add_argument("--oos", type=str, default=None,
+                        help="Out-of-sample split date (e.g. 2019-12-31)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -1006,35 +1442,67 @@ def main():
         return 0
 
     # 3. Compute forward returns
-    print("\n[4/6] Computing forward returns...")
-    returns_df = compute_forward_returns(yahoo_data, regime_df)
+    print("\n[4/8] Computing forward returns...")
+    returns_df = compute_forward_returns(yahoo_data, regime_df, execution_lag=args.lag)
     print(f"  Return columns: {len(returns_df.columns)}")
+    if args.lag > 0:
+        print(f"  Execution lag: {args.lag} month(s)")
 
-    # 4. Analyze
-    print("\n[5/6] Analyzing...")
-    layer1 = analyze_regime_returns(regime_df, returns_df)
-    layer2_eight = analyze_eight_regimes(regime_df, returns_df)
+    # 3b. Unconditional benchmarks
+    print("\n[5/8] Computing unconditional benchmarks...")
+    unconditional = compute_unconditional_benchmarks(returns_df)
+    print(f"  Benchmarks for {len(unconditional)} asset/window combos")
+
+    # 4. Analyze (with unconditional benchmarks for significance testing)
+    print("\n[6/8] Analyzing (with bootstrap significance + BH-FDR)...")
+    layer1 = analyze_regime_returns(regime_df, returns_df, unconditional=unconditional)
+    layer2_eight = analyze_eight_regimes(regime_df, returns_df, unconditional=unconditional)
     layer2_legacy = analyze_liquidity_overlay(regime_df, returns_df)
     transitions = analyze_transitions(regime_df, returns_df)
     timeline = compute_regime_timeline(regime_df)
     liquidity_va = compute_liquidity_value_added(layer1, layer2_legacy)
 
+    # 4b. Power analysis
+    power_analysis = compute_power_analysis(returns_df, regime_df, regime_col="regime")
+
+    # 4c. Lagged returns comparison (always compute lag=1 for comparison)
+    lagged_layer1 = None
+    if args.lag == 0:
+        lagged_returns = compute_forward_returns(yahoo_data, regime_df, execution_lag=1)
+        lagged_uc = compute_unconditional_benchmarks(lagged_returns)
+        lagged_layer1 = analyze_regime_returns(regime_df, lagged_returns, unconditional=lagged_uc)
+
+    # 4d. Out-of-sample test
+    oos_results = None
+    if args.oos:
+        print(f"\n[6b/8] Running out-of-sample test (split: {args.oos})...")
+        oos_results = run_out_of_sample_test(regime_df, returns_df, yahoo_data, args.oos, unconditional)
+        if "error" in oos_results:
+            print(f"  OOS error: {oos_results['error']}")
+        else:
+            print(f"  Train: {oos_results['train_months']}mo, Test: {oos_results['test_months']}mo")
+
     # 5. Save results
-    print("\n[6/6] Generating report...")
+    print("\n[7/8] Generating report...")
     regime_8_dist = regime_df["regime_8"].value_counts().to_dict() if "regime_8" in regime_df.columns else {}
     results = {
         "generated": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "years": args.years,
         "total_months": len(regime_df),
+        "execution_lag": args.lag,
         "regime_distribution": regime_df["regime"].value_counts().to_dict(),
         "regime_8_distribution": regime_8_dist,
+        "unconditional_benchmarks": unconditional,
         "layer1_regime_family_returns": layer1,
         "layer2_eight_regime_returns": layer2_eight,
         "layer2_liquidity_overlay_legacy": layer2_legacy,
         "transitions": transitions,
         "timeline": timeline,
         "liquidity_value_added": liquidity_va,
+        "power_analysis": power_analysis,
     }
+    if oos_results:
+        results["out_of_sample"] = oos_results
 
     json_path = output_dir / "regime-backtest-results.json"
     with open(json_path, "w") as f:
@@ -1042,36 +1510,65 @@ def main():
     print(f"  Results JSON: {json_path}")
 
     html = generate_html_report(layer1, layer2_legacy, transitions, timeline, liquidity_va,
-                                regime_df, returns_df, args.years, layer2_eight=layer2_eight)
+                                regime_df, returns_df, args.years, layer2_eight=layer2_eight,
+                                unconditional=unconditional, power_analysis=power_analysis,
+                                oos_results=oos_results, lagged_layer1=lagged_layer1)
     html_path = output_dir / "regime-backtest-report.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"  HTML report: {html_path}")
 
     # Print key findings
+    print("\n[8/8] Key findings...")
     print("\n=== Key Findings (Layer 1: Regime Only) ===")
     for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
         rd = layer1.get(regime, {})
         n = rd.get("n_months", 0)
         sp = rd.get("assets", {})
-        # Find S&P 500 3M (column name uses SandP or similar)
         sp_3m = None
         for col, vals in sp.items():
             if ("SandP" in col or "S_P" in col or "S&P" in col or "500" in col) and "3M" in col:
                 sp_3m = vals
                 break
         if sp_3m:
-            print(f"  {regime} ({n}mo): S&P 500 3M avg {sp_3m['mean']:+.1f}%, win rate {sp_3m['win_rate']:.0f}%")
+            excess = sp_3m.get("excess_return")
+            bh = sp_3m.get("bh_significant")
+            sig_str = ""
+            if excess is not None:
+                sig_str = f" ({excess:+.1f}pp vs buy-and-hold"
+                if bh is not None:
+                    sig_str += ", BH-significant" if bh else ", not significant"
+                sig_str += ")"
+            print(f"  {regime} ({n}mo): S&P 500 3M avg {sp_3m['mean']:+.1f}%, win rate {sp_3m['win_rate']:.0f}%{sig_str}")
         else:
-            # Fallback: show first 3M asset
             for col, vals in sp.items():
                 if "3M" in col:
                     print(f"  {regime} ({n}mo): {col} avg {vals['mean']:+.1f}%, win rate {vals['win_rate']:.0f}%")
                     break
 
+    # Power analysis summary
+    print("\n=== Power Analysis (4-Regime, S&P 500 3M) ===")
+    for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+        rp = power_analysis.get(regime, {})
+        for col, pa in rp.items():
+            if ("SandP" in col or "S_P" in col or "500" in col) and "3M" in col:
+                print(f"  {regime}: MDE = {pa['mde']:.1f}pp (n={pa['n']}, std={pa['std']:.1f}%)")
+                break
+
+    # 8-regime significance summary
     if layer2_eight:
+        sig_summary = layer2_eight.get("_significance_summary", {})
+        if sig_summary:
+            print(f"\n=== 8-Regime Significance Summary ===")
+            print(f"  Testable cells: {sig_summary['n_testable_cells']}")
+            print(f"  BH-significant: {sig_summary['n_bh_significant']} ({sig_summary['pct_significant']:.0f}%)")
+            if sig_summary.get("underpowered_warning"):
+                print(f"  ⚠ WARNING: <25% of cells significant — 8-regime model may exceed data capacity")
+
         print("\n=== Key Findings (Layer 2: Eight-Regime Model, 3M) ===")
         for regime_8, rd in sorted(layer2_eight.items()):
+            if regime_8.startswith("_"):
+                continue
             n = rd.get("n_months", 0)
             if rd.get("insufficient_data"):
                 print(f"  {regime_8} ({n}mo): insufficient data")
@@ -1082,7 +1579,9 @@ def main():
                     sp_3m = vals
                     break
             if sp_3m:
-                print(f"  {regime_8} ({n}mo): S&P 500 3M avg {sp_3m['mean']:+.1f}%, win rate {sp_3m['win_rate']:.0f}%")
+                bh = sp_3m.get("bh_significant")
+                sig_marker = " ✓" if bh else " ✗" if bh is not None else ""
+                print(f"  {regime_8} ({n}mo): S&P 500 3M avg {sp_3m['mean']:+.1f}%, win rate {sp_3m['win_rate']:.0f}%{sig_marker}")
 
     if liquidity_va:
         print("\n=== Key Findings (Liquidity Value-Added, 3M) ===")
@@ -1092,6 +1591,19 @@ def main():
                     verdict = "YES ✓" if va["liquidity_matters"] else "no ✗"
                     print(f"  {regime}: loose {va['loose_mean']:+.1f}% vs tight {va['tight_mean']:+.1f}% "
                           f"(spread {va['spread']:.1f}pp, IR {va['information_ratio']:.2f}) → {verdict}")
+
+    # OOS summary
+    if oos_results and "error" not in oos_results:
+        print(f"\n=== Out-of-Sample Validation (split: {args.oos}) ===")
+        stab = oos_results.get("stability", {})
+        for regime in ["Goldilocks", "Overheating", "Disinflationary Slowdown", "Stagflation"]:
+            rs = stab.get(regime, {})
+            for col, s in rs.items():
+                if "_3M" not in col or s.get("status") == "missing_in_half":
+                    continue
+                if ("SandP" in col or "S_P" in col or "500" in col):
+                    label = "STABLE" if s.get("stable") else ("SIGN FLIP" if not s.get("same_sign") else "DRIFT")
+                    print(f"  {regime}: IS {s['is_mean']:+.1f}% → OOS {s['oos_mean']:+.1f}% ({label})")
 
     print("\n=== Done ===")
     return 0

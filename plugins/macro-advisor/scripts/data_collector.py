@@ -127,6 +127,22 @@ FRED_SERIES = {
     "RETAILIRSA": ("Retail Inventories/Sales Ratio", "inventories", "monthly"),
     "MNFCTRIRSA": ("Manufacturing Inventories/Sales Ratio", "inventories", "monthly"),
     "WHLSLRIRSA": ("Wholesale Inventories/Sales Ratio", "inventories", "monthly"),
+
+    # Growth Nowcasts & Recession
+    "GDPNOW": ("Atlanta Fed GDPNow", "growth", "daily"),
+    "STLENI": ("St. Louis Fed Economic News Index", "growth", "weekly"),
+    "RECPROUSM156N": ("Smoothed U.S. Recession Probability (Chauvet)", "growth", "monthly"),
+
+    # Money Market Rates
+    "SOFR": ("Secured Overnight Financing Rate", "rates", "daily"),
+    "SOFR30DAYAVG": ("SOFR 30-Day Average", "rates", "daily"),
+    "DFEDTARU": ("Fed Funds Target Rate (Upper Bound)", "rates", "daily"),
+
+    # Monetary Base
+    "BOGMBASE": ("US Monetary Base", "money_supply", "monthly"),
+
+    # European Credit
+    "BAMLHE00EHYIOAS": ("ICE BofA Euro HY OAS", "credit", "daily"),
 }
 
 # ---------------------------------------------------------------------------
@@ -176,6 +192,9 @@ YAHOO_TICKERS = {
     # Leveraged Loan / Private Credit Proxy
     "BKLN": ("Invesco Senior Loan ETF", "leveraged_loans"),
     "BIZD": ("VanEck BDC Income ETF", "private_credit_bdc"),
+
+    # Physical Economy / Trade Proxy
+    "BDRY": ("Breakwave Dry Bulk Shipping ETF", "commodities"),
 }
 
 # ---------------------------------------------------------------------------
@@ -255,12 +274,16 @@ PLAUSIBLE_RANGES = {
     "DGS30":  (-1.0, 20.0, "30Y Treasury yield"),
     "T10Y2Y": (-5.0, 5.0,  "10Y-2Y spread"),
     "T10Y3M": (-5.0, 5.0,  "10Y-3M spread"),
+    "SOFR":           (-0.5, 25.0,   "SOFR rate"),
+    "SOFR30DAYAVG":   (-0.5, 25.0,   "SOFR 30-day average"),
+    "DFEDTARU":       (0.0, 25.0,    "Fed funds target upper bound"),
 
     # --- FRED: Credit spreads (percentage points, not bps) ---
     # HY OAS peaked ~20% in 2008. IG peaked ~6%.
     "BAMLH0A0HYM2":   (0.0, 25.0, "HY OAS"),
     "BAMLC0A0CM":      (0.0, 10.0, "IG OAS"),
     "BAMLH0A0HYM2EY":  (0.0, 30.0, "HY effective yield"),
+    "BAMLHE00EHYIOAS": (0.0, 25.0,   "Euro HY OAS"),
 
     # --- FRED: Financial conditions (index values) ---
     # NFCI centered at 0, historically -1 to +4 (GFC peak)
@@ -281,6 +304,9 @@ PLAUSIBLE_RANGES = {
     # --- FRED: Growth indicators ---
     "UMCSENT": (0.0, 120.0, "Michigan consumer sentiment"),  # historical range ~50-112
     "RSAFS":   (100000.0, 1000000.0, "Retail sales (millions)"),  # ~$500B-700B/mo range
+    "GDPNOW":         (-15.0, 15.0,  "Atlanta Fed GDPNow (annualized %)"),
+    "STLENI":         (-5.0, 5.0,    "St. Louis Economic News Index"),
+    "RECPROUSM156N":  (0.0, 100.0,   "Recession probability (%)"),
 
     # --- FRED: Fed balance sheet (millions USD) ---
     "WALCL":    (500000.0, 15000000.0, "Fed total assets"),     # $0.5T to $15T
@@ -291,6 +317,7 @@ PLAUSIBLE_RANGES = {
     # --- FRED: Money supply (billions USD) ---
     "M2SL":    (1000.0, 30000.0, "M2 money stock (monthly, billions)"),
     "WM2NS":   (1000.0, 30000.0, "M2 money stock (weekly, billions)"),
+    "BOGMBASE":       (500.0, 10000.0, "Monetary base (billions USD)"),
 
     # --- FRED: Regional Fed manufacturing surveys (diffusion indices) ---
     # These are diffusion indices, historically about -50 to +50
@@ -334,6 +361,7 @@ PLAUSIBLE_RANGES = {
     "BKLN": (10.0, 30.0,  "BKLN Leveraged Loan ETF"),
     "BIZD": (8.0, 25.0,   "BIZD BDC Income ETF"),
     "SHV":  (90.0, 120.0, "SHV Short Treasury ETF"),
+    "BDRY":           (1.0, 100.0,   "BDRY dry bulk shipping ETF"),
 
     # --- Yahoo: Regional/EM ETFs ---
     "EEM": (15.0, 70.0,  "EEM Emerging Markets ETF"),
@@ -2184,6 +2212,16 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "percentile": fd["T10Y2Y"].get("percentile_rank")
         }
 
+    # 10Y-3M spread (stronger recession predictor than 10Y-2Y per NY Fed research)
+    if "T10Y3M" in fd:
+        val = fd["T10Y3M"]["latest_value"]
+        derived["yield_curve_10y3m"] = {
+            "value": val,
+            "signal": "inverted (recession warning)" if val < 0 else "steepening (expansion)" if val > 0.5 else "flat (transition)",
+            "date": fd["T10Y3M"]["latest_date"],
+            "percentile": fd["T10Y3M"].get("percentile_rank"),
+        }
+
     # Real rates
     if "DGS10" in fd and "T10YIE" in fd:
         real_rate = round(fd["DGS10"]["latest_value"] - fd["T10YIE"]["latest_value"], 4)
@@ -2206,6 +2244,18 @@ def compute_derived_metrics(fred_data, yahoo_data):
             "hy_percentile": fd["BAMLH0A0HYM2"].get("percentile_rank"),
             "date": fd["BAMLH0A0HYM2"]["latest_date"]
         }
+        if "BAMLH0A0HYM2EY" in fd:
+            derived["credit_spreads"]["hy_effective_yield"] = fd["BAMLH0A0HYM2EY"]["latest_value"]
+        # Euro HY OAS (cross-Atlantic credit stress)
+        # Euro HY typically trades ~50-100bp wider than US HY; thresholds shifted accordingly
+        if "BAMLHE00EHYIOAS" in fd:
+            derived["credit_spreads"]["euro_hy_oas"] = fd["BAMLHE00EHYIOAS"]["latest_value"]
+            derived["credit_spreads"]["euro_hy_oas_signal"] = (
+                "distress" if fd["BAMLHE00EHYIOAS"]["latest_value"] > 7.0 else
+                "stress" if fd["BAMLHE00EHYIOAS"]["latest_value"] > 5.5 else
+                "elevated" if fd["BAMLHE00EHYIOAS"]["latest_value"] > 4.5 else
+                "normal" if fd["BAMLHE00EHYIOAS"]["latest_value"] > 3.5 else "compressed"
+            )
 
     # VIX regime
     if "^VIX" in yd:
@@ -2588,7 +2638,8 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
     }
 
     # Rates
-    for sid, key in [("DFF", "fed_funds"), ("DGS2", "us_2y"), ("DGS5", "us_5y"), ("DGS10", "us_10y"), ("DGS30", "us_30y")]:
+    for sid, key in [("DFF", "fed_funds"), ("DGS2", "us_2y"), ("DGS5", "us_5y"), ("DGS10", "us_10y"), ("DGS30", "us_30y"),
+                     ("SOFR", "sofr"), ("SOFR30DAYAVG", "sofr_30d_avg"), ("DFEDTARU", "fed_funds_target_upper")]:
         if sid in fd:
             snapshot["rates"][key] = {"value": fd[sid]["latest_value"], "date": fd[sid]["latest_date"],
                                        "change": fd[sid].get("change_absolute"), "percentile": fd[sid].get("percentile_rank")}
@@ -2609,18 +2660,74 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
         snapshot["liquidity"]["fed_assets_change"] = fd["WALCL"].get("change_absolute")
     if "liquidity_trends" in derived:
         snapshot["liquidity"]["trends"] = derived["liquidity_trends"]
+    # Money market funds (cash on sidelines — Skill 5 positioning signal)
+    if "WRMFNS" in fd:
+        snapshot["liquidity"]["money_market_funds"] = {
+            "value_B": round(fd["WRMFNS"]["latest_value"], 1),
+            "date": fd["WRMFNS"]["latest_date"],
+            "change": fd["WRMFNS"].get("change_absolute"),
+            "percentile": fd["WRMFNS"].get("percentile_rank"),
+        }
+    # Secondary financial conditions (cross-check NFCI)
+    if "STLFSI4" in fd:
+        snapshot["liquidity"]["stl_financial_stress"] = {
+            "value": fd["STLFSI4"]["latest_value"], "date": fd["STLFSI4"]["latest_date"],
+            "signal": "stress" if fd["STLFSI4"]["latest_value"] > 0 else "below_average",
+            "percentile": fd["STLFSI4"].get("percentile_rank"),
+        }
+    if "ANFCI" in fd:
+        snapshot["liquidity"]["adjusted_nfci"] = {
+            "value": fd["ANFCI"]["latest_value"], "date": fd["ANFCI"]["latest_date"],
+            "signal": "tight" if fd["ANFCI"]["latest_value"] > 0 else "loose",
+        }
+    if "BOGMBASE" in fd:
+        snapshot["liquidity"]["monetary_base_B"] = {
+            "value": fd["BOGMBASE"]["latest_value"],
+            "date": fd["BOGMBASE"]["latest_date"],
+            "yoy": fd["BOGMBASE"].get("yoy_change_percent"),
+        }
 
     # Growth
     for sid, key in [("UNRATE", "unemployment"), ("ICSA", "initial_claims"), ("CCSA", "continuing_claims"),
                      ("UMCSENT", "consumer_sentiment"), ("PAYEMS", "nonfarm_payrolls"),
                      ("MANEMP", "manufacturing_employment"),
-                     ("INDPRO", "industrial_production"), ("RSAFS", "retail_sales")]:
+                     ("INDPRO", "industrial_production"), ("RSAFS", "retail_sales"),
+                     # Housing (leading indicators — rate-sensitive sector)
+                     ("HOUST", "housing_starts"), ("PERMIT", "building_permits"),
+                     ("EXHOSLUSM495S", "existing_home_sales"), ("CSUSHPISA", "case_shiller_hpi"),
+                     # JOLTS (labor demand)
+                     ("JTSJOL", "jolts_openings"), ("JTSQUR", "jolts_quits")]:
         if sid in fd:
             snapshot["growth"][key] = {
                 "value": fd[sid]["latest_value"], "date": fd[sid]["latest_date"],
                 "change": fd[sid].get("change_absolute"), "yoy": fd[sid].get("yoy_change_percent"),
                 "mom": fd[sid].get("mom_change_percent"), "percentile": fd[sid].get("percentile_rank")
             }
+
+    # GDP (quarterly — may be stale between releases)
+    for sid, key in [("GDP", "real_gdp"), ("GDPC1", "real_gdp_chained")]:
+        if sid in fd:
+            snapshot["growth"][key] = {
+                "value": fd[sid]["latest_value"], "date": fd[sid]["latest_date"],
+                "yoy": fd[sid].get("yoy_change_percent"),
+                "percentile": fd[sid].get("percentile_rank"),
+            }
+
+    # Growth nowcasts & recession probability (real-time signals)
+    if "GDPNOW" in fd:
+        snapshot["growth"]["gdpnow"] = {
+            "value": fd["GDPNOW"]["latest_value"], "date": fd["GDPNOW"]["latest_date"],
+            "signal": "contracting" if fd["GDPNOW"]["latest_value"] < 0 else "stalling" if fd["GDPNOW"]["latest_value"] < 1.0 else "moderate" if fd["GDPNOW"]["latest_value"] < 3.0 else "strong",
+        }
+    if "STLENI" in fd:
+        snapshot["growth"]["stleni"] = {
+            "value": fd["STLENI"]["latest_value"], "date": fd["STLENI"]["latest_date"],
+        }
+    if "RECPROUSM156N" in fd:
+        snapshot["growth"]["recession_probability"] = {
+            "value": fd["RECPROUSM156N"]["latest_value"], "date": fd["RECPROUSM156N"]["latest_date"],
+            "signal": "elevated" if fd["RECPROUSM156N"]["latest_value"] > 30 else "moderate" if fd["RECPROUSM156N"]["latest_value"] > 10 else "low",
+        }
 
     # Regional Fed Manufacturing Surveys (PMI proxies)
     # Diffusion indices: >0 = expansion, <0 = contraction, 0 = neutral (analogous to ISM >50 / <50)
@@ -2696,7 +2803,15 @@ def build_summary_snapshot(fred_data, yahoo_data, derived, cot_data=None, ecb_da
                          ("HYG", "hyg"), ("LQD", "lqd"), ("EEM", "eem"), ("EFA", "efa"),
                          ("JPY=X", "usdjpy"), ("CHF=X", "usdchf"), ("CNY=X", "usdcny"),
                          ("BKLN", "bkln_leveraged_loans"),
-                         ("BIZD", "bizd_bdc_income")]:
+                         ("BIZD", "bizd_bdc_income"),
+                         ("^SKEW", "cboe_skew"),
+                         ("^STOXX50E", "euro_stoxx50"),
+                         ("GBPUSD=X", "gbpusd"),
+                         ("SI=F", "silver"),
+                         ("NG=F", "natgas"),
+                         ("BZ=F", "brent_crude"),
+                         ("SHV", "shv_short_treasury"),
+                         ("BDRY", "bdry_dry_bulk")]:
         if ticker in yd:
             snapshot["markets"][key] = {
                 "value": yd[ticker]["latest_value"],

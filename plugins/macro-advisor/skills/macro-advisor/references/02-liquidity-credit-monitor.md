@@ -17,9 +17,10 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 - **China Aggregate Credit** — new yuan loans, shadow banking flows. Web search only.
 
 ### Credit Conditions
-- **US high-yield credit spreads** — ICE BofA HY OAS (current level + direction)
+- **US high-yield credit spreads** — ICE BofA HY OAS (current level + direction). HY effective yield also available: `snapshot.credit.hy_effective_yield`
 - **US investment-grade spreads** — ICE BofA IG OAS
-- **European credit spreads** — iTraxx Crossover, iTraxx Main
+- **European HY credit spreads** — ICE BofA Euro HY OAS. Available in snapshot: `snapshot.credit.euro_hy_oas` with signal (distress/stress/elevated/normal/compressed). Cross-Atlantic credit stress comparison.
+- **European credit spreads** — iTraxx Crossover, iTraxx Main (web search only)
 - **Bank lending surveys** — Fed SLOOS (quarterly), ECB Bank Lending Survey (quarterly). Between releases, track commentary and analyst summaries. SLOOS tightening data available in snapshot: `snapshot.credit.private_credit_proxy.sloos_tightening_pct`.
 - **C&I loan volumes** — Commercial & Industrial Loans Outstanding (weekly). Available in snapshot: `snapshot.credit.private_credit_proxy.ci_loans_yoy_pct`. YoY contraction = credit withdrawal.
 - **Leveraged loan market** — BKLN ETF price as proxy for leveraged loan conditions. Available in snapshot: `snapshot.markets.bkln_leveraged_loans` and `snapshot.credit.private_credit_proxy.leveraged_loan_etf`.
@@ -28,6 +29,8 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 
 ### Financial Conditions Indices
 - **Chicago Fed National Financial Conditions Index (NFCI)** — weekly release. Available in snapshot: `snapshot.liquidity.financial_conditions`. This is the primary financial conditions indicator.
+- **Adjusted NFCI (ANFCI)** — Available in snapshot: `snapshot.liquidity.adjusted_nfci`. Removes business-cycle component from NFCI. Signal: "tight" if >0, "loose" if ≤0. Cross-check against headline NFCI.
+- **St. Louis Fed Financial Stress Index (STLFSI4)** — Available in snapshot: `snapshot.liquidity.stl_financial_stress`. Signal: "stress" if >0, "below_average" if ≤0. Independent cross-check of NFCI from a different regional Fed.
 - **Goldman Sachs Financial Conditions Index (GS FCI)** — proprietary, not available via web search. Do not search for it. Use NFCI as the primary indicator. If GS FCI appears in news headlines during the credit market scan (Search 2), note the headline value, but do not spend a dedicated search on it.
 - **Bloomberg Financial Conditions Index** — alternative cross-check (headlines only)
 
@@ -36,6 +39,8 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 - **QT pace** — actual vs. scheduled reduction
 - **TGA balance** — Treasury General Account at the Fed (affects reserve levels). Available in snapshot via FRED WTREGEN.
 - **Reverse repo facility (RRP)** — usage level and trend (draining = liquidity injection). Available in snapshot via FRED RRPONTSYD.
+- **SOFR** — Secured Overnight Financing Rate. Available in snapshot: `snapshot.rates.sofr` (daily) and `snapshot.rates.sofr_30d_avg` (30-day average). Fed funds plumbing indicator. Also: `snapshot.rates.fed_funds_target_upper` for the target rate upper bound.
+- **Monetary Base (BOGMBASE)** — Available in snapshot: `snapshot.liquidity.monetary_base_B`. YoY change available. Track alongside M2 for base money vs. broad money divergences.
 - **ECB balance sheet** — **available in snapshot:** `snapshot.eurozone.ecb_balance_sheet` (total assets in EUR millions, date, WoW change). Pulled from ECB SDW API (free, no key). Read from snapshot first — no web search needed.
 
 ## Execution Steps
@@ -43,10 +48,12 @@ We believe liquidity is the primary transmission mechanism to asset prices. Chan
 1. **Read the data snapshot first.** Extract all structured data from `outputs/data/latest-snapshot.json`. If any snapshot section is empty or its date is >2 months old, treat that data point as missing and fall back to web search for the latest reading.
    - **US M2:** `snapshot.liquidity.*` (level, growth regime, M2 growth metrics)
    - **Eurozone M3:** `snapshot.eurozone.m3` (EUR millions, date), `snapshot.eurozone.m3_yoy` (YoY %)
-   - **Credit spreads:** `snapshot.credit.*` (HY OAS, IG OAS — from FRED)
-   - **Financial conditions:** `snapshot.liquidity.financial_conditions` (NFCI — from FRED)
+   - **Credit spreads:** `snapshot.credit.*` (HY OAS, IG OAS, HY effective yield, Euro HY OAS — from FRED)
+   - **Financial conditions:** `snapshot.liquidity.financial_conditions` (NFCI — from FRED), plus `snapshot.liquidity.adjusted_nfci` (ANFCI) and `snapshot.liquidity.stl_financial_stress` (STLFSI4) as cross-checks
    - **Fed balance sheet:** `snapshot.liquidity.fed_total_assets_T`, `snapshot.liquidity.fed_assets_change`, **plus rolling trends:** `snapshot.liquidity.trends.fed_total_assets` (4w and 8w direction, cumulative change %). Also available: `snapshot.liquidity.trends.tga`, `snapshot.liquidity.trends.reserves`, `snapshot.liquidity.trends.m2_weekly`
    - **TGA / RRP:** via FRED data in snapshot
+   - **SOFR:** `snapshot.rates.sofr`, `snapshot.rates.sofr_30d_avg`, `snapshot.rates.fed_funds_target_upper`
+   - **Monetary base:** `snapshot.liquidity.monetary_base_B` (BOGMBASE with YoY)
    - **ECB balance sheet:** `snapshot.eurozone.ecb_balance_sheet` (total assets, WoW change)
    - **Private credit proxy:** `snapshot.credit.private_credit_proxy` (composite + components)
 2. **Check for qualitative-quantitative contradiction in private credit.** After reading the snapshot composite and writing your credit conditions prose, ask: does my qualitative assessment (from web search, news, or market events) contradict the quantitative composite? If yes, populate the `private_credit_override` field. **Override rules:**
@@ -94,6 +101,10 @@ Only search for data NOT available in the snapshot. The snapshot covers: US M2, 
 - Eurozone M3 → `snapshot.eurozone.m3`
 - ECB balance sheet → `snapshot.eurozone.ecb_balance_sheet`
 - BKLN, BIZD → `snapshot.markets.*` and `snapshot.credit.private_credit_proxy`
+- SOFR, fed funds target → `snapshot.rates.*`
+- ANFCI, STLFSI4 → `snapshot.liquidity.*`
+- Monetary base (BOGMBASE) → `snapshot.liquidity.monetary_base_B`
+- Euro HY OAS → `snapshot.credit.euro_hy_oas`
 
 ### General rules
 Prioritize: FRED data references (already in snapshot), Federal Reserve publications, ECB Statistical Data Warehouse, Reuters, Bloomberg. The data snapshot provides the quantitative foundation. Web search fills two gaps: (1) data not available via API (China TSF), and (2) qualitative market developments that quantitative proxies can't capture (events, commentary, policy actions).
